@@ -48,3 +48,9 @@ scripts/
 # raw 3d asset sources (processed copies live in public/models)
 assets-src/
 upload/
+
+# USER RULE: new models/assets are NOT committed until user accepts them.
+# Candidate assets awaiting acceptance go here (game loads fine, git never sees them).
+public/models/staging/
+public/audio/staging/
+public/textures/staging/

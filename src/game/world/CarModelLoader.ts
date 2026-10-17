@@ -236,6 +236,18 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     topY: bbox.max.y,
   };
 
+  // ── flatten: bake the normalization transform into the geometry itself ──
+  // Afterwards the wrapper is the identity frame: world == local for every
+  // mesh, so corner boxes, pivot positions and spin axes all live in ONE
+  // consistent space (fixes wheels orbiting a displaced pivot when the model
+  // was scaled/rotated/flipped during normalization).
+  flattenTransforms(wrapper, id);
+
+  // ── sweep showcase junk: animation-pose ghost meshes parked far outside
+  // the car volume (they would drag wheel pivots sky-high and cast stray
+  // shadows). Runs BEFORE rigging so ghosts never enter the corner math.
+  sweepJunk(wrapper, dims);
+
   // ── rig wheels ──
   const { wheelRadius } = rigWheels(wrapper);
 
@@ -274,7 +286,8 @@ function findWheelAnchors(root: THREE.Object3D): WheelAnchor[] {
   const anchors: WheelAnchor[] = [];
   root.traverse((o) => {
     const name = o.name ?? "";
-    if (/wheel/i.test(name) && !/brake/i.test(name)) {
+    // "steer" keeps the steering WHEEL (interior) out of the wheel rig
+    if (/wheel/i.test(name) && !/brake|steer/i.test(name)) {
       const meshes: THREE.Mesh[] = [];
       if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh);
       o.traverse((c) => {
@@ -286,65 +299,52 @@ function findWheelAnchors(root: THREE.Object3D): WheelAnchor[] {
   return anchors;
 }
 
-/** bake world transforms into wheel meshes, split axle pairs, build pivots */
+/**
+ * Rig wheels in the identity frame established by flattenTransforms():
+ * every mesh is a flat wrapper child with an identity transform and geometry
+ * already in final car space, so world boxes == local boxes and pivots land
+ * exactly on the wheel centres they spin around.
+ */
 function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
   const anchors = findWheelAnchors(wrapper);
   wrapper.updateMatrixWorld(true);
 
-  // candidate wheel meshes (baked into wrapper/world space)
   interface WheelPiece {
     mesh: THREE.Mesh;
     isBrake: boolean;
-    fromAnchor: string; // anchor node name
   }
   const pieces: WheelPiece[] = [];
 
   for (const a of anchors) {
     for (const m of a.meshes) {
-      const baked = bakeToWorld(m, wrapper);
-      const wb = new THREE.Box3().setFromBufferAttribute(
-        baked.geometry.attributes.position as THREE.BufferAttribute
-      );
-      // convert local (now world-baked) box since mesh transform is identity-ish
+      const wb = new THREE.Box3().setFromObject(m);
       const width = wb.max.x - wb.min.x;
       if (width > PAIR_WIDTH) {
-        // merged L+R axle pair → split by x=car centre
-        const halves = splitMeshByX(baked, 0);
-        for (const h of halves) pieces.push({ mesh: h, isBrake: false, fromAnchor: a.node.name });
-        if (!halves.includes(baked)) {
-          wrapper.remove(baked);
-          baked.geometry.dispose();
-        }
+        // merged L+R axle pair → split at the car centre line
+        const halves = splitMeshByX(m, 0);
+        wrapper.remove(m);
+        m.geometry.dispose();
+        for (const h of halves) pieces.push({ mesh: h, isBrake: false });
       } else {
-        pieces.push({ mesh: baked, isBrake: /brake/i.test(baked.name), fromAnchor: a.node.name });
+        pieces.push({ mesh: m, isBrake: /brake/i.test(m.name) });
       }
     }
   }
 
-  // brake disc / centre-cap nodes: close to a wheel but not named "wheel"
-  const extraNodes: THREE.Mesh[] = [];
+  // brake discs / centre caps / calipers: named parts that ride with a wheel
   wrapper.traverse((o) => {
     const m = o as THREE.Mesh;
-    const name = o.name ?? "";
     if (!m.isMesh) return;
-    if (/wheel|brake|disc|cap|caliper/i.test(name)) {
-      if (/brake|disc|cap|caliper/i.test(name) && !pieces.some((p) => p.mesh === m)) {
-        extraNodes.push(m);
-      }
-    } else {
-      // unnamed pieces very close to a wheel centre get pulled in
-      // (checked later once wheel centres are known)
+    if (/brake|disc|cap|caliper/i.test(o.name ?? "")) {
+      if (!pieces.some((p) => p.mesh === m)) pieces.push({ mesh: m, isBrake: true });
     }
   });
-  for (const n of extraNodes) pieces.push({ mesh: bakeToWorld(n, wrapper), isBrake: true, fromAnchor: "" });
 
   if (pieces.length === 0) return { wheelRadius: 0.38 };
 
   // ── group pieces into 4 corners ──
   interface Corner {
     key: string;
-    x: number;
-    z: number;
     meshes: THREE.Mesh[];
     bbox: THREE.Box3;
     drive: boolean;
@@ -359,7 +359,7 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
     const key = `${front ? "F" : "R"}${side}`;
     let corner = corners.find((k) => k.key === key);
     if (!corner) {
-      corner = { key, x: 0, z: front ? 1 : -1, meshes: [], bbox: new THREE.Box3(), drive: !isBrake };
+      corner = { key, meshes: [], bbox: new THREE.Box3(), drive: !isBrake };
       corners.push(corner);
     }
     corner.meshes.push(mesh);
@@ -372,32 +372,59 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
     if (!p.isBrake) c.drive = true;
   }
 
-  // unnamed loose meshes near a wheel centre (e.g. GT-R centre caps)
-  const loose: THREE.Mesh[] = [];
-  wrapper.traverse((o) => {
-    const m = o as THREE.Mesh;
-    if (!m.isMesh || m.parent === wrapper) return;
-    const name = (m.name ?? "").toLowerCase();
-    if (name.includes("wheel") || name.includes("brake")) return;
-    m.updateWorldMatrix(true, false);
-    const wp = m.getWorldPosition(new THREE.Vector3());
-    for (const corner of corners) {
-      const centre = corner.bbox.getCenter(new THREE.Vector3());
-      if (wp.distanceTo(centre) < ATTACH_RADIUS && corner.drive) {
-        loose.push(m);
-        break;
+  // ── prune non-wheel junk that rode in with the anchors ──
+  // Showcase rigs parent badges/logos under wheel nodes; their tiny boxes
+  // drag the corner bbox (and with it the spin pivot) off the wheel hub.
+  // Keep pieces that are comparably sized to the corner's largest piece or
+  // sit on the hub; reject the rest back to the static body.
+  for (const corner of corners) {
+    if (corner.meshes.length < 2) continue;
+    const boxes = new Map<THREE.Mesh, THREE.Box3>();
+    let largest: THREE.Mesh | null = null;
+    let largestDim = 0;
+    for (const m of corner.meshes) {
+      const b = new THREE.Box3().setFromObject(m);
+      boxes.set(m, b);
+      const d = b.getSize(new THREE.Vector3()).length();
+      if (d > largestDim) {
+        largestDim = d;
+        largest = m;
       }
     }
-  });
-  for (const m of loose) {
-    const corner = corners.find((c) => {
-      const centre = c.bbox.getCenter(new THREE.Vector3());
-      return m.getWorldPosition(new THREE.Vector3()).distanceTo(centre) < ATTACH_RADIUS + 0.1 && c.drive;
+    if (!largest) continue;
+    const hub = boxes.get(largest)!.getCenter(new THREE.Vector3());
+    const kept = corner.meshes.filter((m) => {
+      if (m === largest) return true;
+      const b = boxes.get(m)!;
+      const dim = b.getSize(new THREE.Vector3()).length();
+      const centre = b.getCenter(new THREE.Vector3());
+      return dim >= 0.25 * largestDim || centre.distanceTo(hub) < 0.18;
     });
-    if (corner) {
-      const baked = bakeToWorld(m, wrapper);
-      corner.meshes.push(baked);
-      corner.bbox.expandByObject(baked);
+    if (kept.length === corner.meshes.length) continue;
+    const bbox = new THREE.Box3();
+    for (const m of kept) bbox.union(boxes.get(m)!);
+    corner.meshes = kept;
+    corner.bbox = bbox;
+  }
+
+  // small unnamed pieces hugging a wheel centre (e.g. GT-R centre caps)
+  // join that wheel so they spin with it
+  const pieceSet = new Set(pieces.map((p) => p.mesh));
+  for (const child of [...wrapper.children]) {
+    const m = child as THREE.Mesh;
+    if (!m.isMesh || pieceSet.has(m)) continue;
+    const name = (m.name ?? "").toLowerCase();
+    if (name.includes("wheel") || name.includes("brake")) continue;
+    const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+    for (const corner of corners) {
+      if (!corner.drive) continue;
+      const centre = corner.bbox.getCenter(new THREE.Vector3());
+      if (c.distanceTo(centre) < ATTACH_RADIUS) {
+        corner.meshes.push(m);
+        corner.bbox.expandByObject(m);
+        pieceSet.add(m);
+        break;
+      }
     }
   }
 
@@ -417,33 +444,138 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
     pivot.userData.spinAxis = axis;
     pivot.position.copy(centre);
     wrapper.add(pivot);
-    for (const mesh of corner.meshes) {
-      wrapper.remove(mesh);
-      pivot.attach(mesh);
-    }
+    // attach() preserves world transforms — with the wrapper at identity the
+    // mesh lands exactly at pivot-local (−centre), spinning on its own hub
+    for (const mesh of corner.meshes) pivot.attach(mesh);
   }
 
   return { wheelRadius };
 }
 
-/** clone mesh geometry, bake its world matrix in, reparent to wrapper root */
-function bakeToWorld(mesh: THREE.Mesh, wrapper: THREE.Group): THREE.Mesh {
-  mesh.updateWorldMatrix(true, false);
-  const world = mesh.matrixWorld.clone();
-  const parent = mesh.parent;
-  const geo = mesh.geometry.clone();
-  geo.applyMatrix4(world);
-  const copy = new THREE.Mesh(geo, mesh.material);
-  copy.name = mesh.name;
-  copy.castShadow = true;
-  if (parent && parent !== wrapper) {
-    parent.remove(mesh);
-    wrapper.add(copy);
-  } else {
-    wrapper.remove(mesh);
-    wrapper.add(copy);
+/** name patterns that mark a node as wheel hardware (mesh or ancestor) */
+const WHEELISH = /wheel|brake|disc|caliper|tire|tyre|rim/i;
+
+/**
+ * Replace an attribute with a plain non-interleaved Float32 copy.
+ * getComponent() returns denormalized values, so quantized (normalized
+ * integer) and interleaved attributes become safe for applyMatrix4().
+ */
+function dequantizeAttribute(geo: THREE.BufferGeometry, name: string): void {
+  const attr = geo.getAttribute(name) as
+    | THREE.BufferAttribute
+    | THREE.InterleavedBufferAttribute
+    | undefined;
+  if (!attr) return;
+  const plain = attr as unknown as {
+    isInterleavedBufferAttribute?: boolean;
+    normalized?: boolean;
+    array: { constructor: Float32ArrayConstructor | Int16ArrayConstructor } & ArrayLike<number>;
+  };
+  if (
+    !plain.isInterleavedBufferAttribute &&
+    !plain.normalized &&
+    plain.array instanceof Float32Array
+  ) {
+    return; // already a plain float attribute
   }
-  return copy;
+  const itemSize = attr.itemSize;
+  const out = new Float32Array(attr.count * itemSize);
+  for (let i = 0; i < attr.count; i++) {
+    for (let c = 0; c < itemSize; c++) {
+      out[i * itemSize + c] = attr.getComponent(i, c);
+    }
+  }
+  geo.setAttribute(name, new THREE.BufferAttribute(out, itemSize));
+}
+
+/** flat mesh name: own name if wheel-ish, else nearest wheel-ish ancestor + own */
+function semanticName(mesh: THREE.Mesh, root: THREE.Object3D): string {
+  const own = mesh.name ?? "";
+  if (WHEELISH.test(own)) return own;
+  let p: THREE.Object3D | null = mesh.parent;
+  while (p && p !== root) {
+    const n = p.name ?? "";
+    if (WHEELISH.test(n)) return own ? `${n}_${own}` : n;
+    p = p.parent;
+  }
+  return own;
+}
+
+/**
+ * Bake the wrapper's normalization transform (scale/rotation/ground offset)
+ * into every geometry and reparent all meshes flat under the wrapper, which
+ * is then reset to the identity transform. Kills frame mismatches between
+ * baked geometry, pivot positions and spin axes — no matter how the source
+ * model was oriented, scaled or flipped.
+ */
+function flattenTransforms(wrapper: THREE.Group, id = ""): void {
+  wrapper.updateMatrixWorld(true);
+  const meshes: THREE.Mesh[] = [];
+  wrapper.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.parent !== wrapper) meshes.push(m);
+  });
+  if (meshes.length === 0) return;
+
+  const copies: THREE.Mesh[] = [];
+  for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true, false);
+    if ((mesh as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+      console.warn(`[CarModelLoader] skinned mesh "${mesh.name}" frozen to static pose`);
+    }
+    const geo = mesh.geometry.clone();
+    // GLTF quantized models keep positions as NORMALIZED int16/int8 —
+    // applyMatrix4() would truncate transformed floats back into the integer
+    // array (geometry garbage). Convert to plain Float32 first.
+    dequantizeAttribute(geo, "position");
+    dequantizeAttribute(geo, "normal");
+    dequantizeAttribute(geo, "tangent");
+    geo.applyMatrix4(mesh.matrixWorld);
+    const copy = new THREE.Mesh(geo, mesh.material);
+    // keep wheel identity alive through flattening: meshes with generic
+    // names (e.g. "Nismo-027001") inherit the nearest wheel-ish ancestor
+    // name ("Wheel.Ft.L_...") so rigWheels can still find them
+    copy.name = semanticName(mesh, wrapper);
+    copies.push(copy);
+  }
+
+  // drop the original hierarchy and make the wrapper the identity frame
+  for (const child of [...wrapper.children]) wrapper.remove(child);
+  wrapper.position.set(0, 0, 0);
+  wrapper.rotation.set(0, 0, 0);
+  wrapper.scale.setScalar(1);
+  wrapper.updateMatrixWorld(true);
+  for (const copy of copies) wrapper.add(copy);
+
+  // free the pre-bake geometries — the flat copies own their baked clones
+  const disposed = new Set<THREE.BufferGeometry>();
+  for (const mesh of meshes) {
+    if (mesh.geometry && !disposed.has(mesh.geometry)) {
+      disposed.add(mesh.geometry);
+      mesh.geometry.dispose();
+    }
+  }
+}
+
+/**
+ * Remove meshes whose centre sits far outside the car volume — showcase
+ * leftovers such as animation-pose ghost wheels hovering 28 m above the car.
+ * They would otherwise drag wheel pivots sky-high, sweep through the road
+ * while spinning and cast stray shadows.
+ */
+function sweepJunk(wrapper: THREE.Group, dims: CarDims): void {
+  const halfW = dims.width / 2 + 0.6;
+  const halfL = Math.max(dims.length, 1) / 2 + 0.6;
+  const maxY = dims.topY + 0.8;
+  for (const child of [...wrapper.children]) {
+    const m = child as THREE.Mesh;
+    if (!m.isMesh) continue;
+    const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+    if (c.y > maxY || c.y < -0.6 || Math.abs(c.x) > halfW || Math.abs(c.z) > halfL) {
+      wrapper.remove(m);
+      m.geometry.dispose();
+    }
+  }
 }
 
 /** split a baked (identity-transform) mesh by local x into L/R halves */
@@ -474,10 +606,6 @@ function splitMeshByX(mesh: THREE.Mesh, splitX: number): THREE.Mesh[] {
     out.push(m);
   }
   return out;
-}
-
-function wrapperOf(mesh: THREE.Mesh): THREE.Object3D | null {
-  return mesh.parent;
 }
 
 function extractTriangles(geo: THREE.BufferGeometry, triIndices: number[]): THREE.BufferGeometry {

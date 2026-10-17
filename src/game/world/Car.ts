@@ -130,7 +130,8 @@ export class Car {
       this.bodyGroup.add(flame);
     }
 
-    // underglow
+    // underglow — polygonOffset + clearance keeps it from z-fighting the
+    // road when the body pitches/rolls over crests (looked like noise)
     const glowTex = radialGlowTexture();
     const glowMat = new THREE.MeshBasicMaterial({
       map: glowTex,
@@ -139,14 +140,18 @@ export class Car {
       opacity: 0.55,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
     });
     this.owned.push(glowMat, glowTex);
     const underglow = new THREE.Mesh(
-      new THREE.PlaneGeometry(d.width + 1.1, d.length + 1.4),
+      new THREE.PlaneGeometry(d.width + 0.7, d.length + 0.9),
       glowMat
     );
     underglow.rotation.x = -Math.PI / 2;
-    underglow.position.y = 0.06;
+    underglow.position.y = 0.09;
+    underglow.renderOrder = 2;
     this.bodyGroup.add(underglow);
 
     this.attachHeadlightsAndLabel(d);
@@ -263,10 +268,10 @@ export class Car {
       this.bodyGroup.add(flame);
     }
 
-    // underglow (NFS night vibe)
+    // underglow (NFS night vibe) — offset material avoids road z-fighting
     const glowTex = radialGlowTexture();
     const underglow = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.6, 6.6),
+      new THREE.PlaneGeometry(4.2, 6.0),
       new THREE.MeshBasicMaterial({
         map: glowTex,
         color: new THREE.Color(this.color),
@@ -274,10 +279,14 @@ export class Car {
         opacity: 0.55,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
       })
     );
     underglow.rotation.x = -Math.PI / 2;
-    underglow.position.y = 0.06;
+    underglow.position.y = 0.09;
+    underglow.renderOrder = 2;
 
     // wheels
     const tireGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.3, 14);

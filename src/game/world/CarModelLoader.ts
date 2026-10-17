@@ -47,6 +47,8 @@ interface Template {
 const TARGET_LENGTH = 4.55;
 /** wheel mesh wider than this = a merged L+R axle pair needing a split */
 const PAIR_WIDTH = 1.15;
+/** wheel mesh longer than this = merged front+rear wheels needing a split */
+const MERGED_AXLE_LENGTH = 1.2;
 /** max distance for attaching loose nodes (brake discs, centre caps) to a wheel */
 const ATTACH_RADIUS = 0.55;
 
@@ -189,6 +191,11 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     }
   });
 
+  // ── strip showcase environment (Sketchfab studio floor/ceiling/curtains) ──
+  // Giant or far-away meshes poison the bbox used for normalization (toy-car
+  // scale, wrong forward axis). Runs BEFORE any bbox math.
+  pruneShowroom(scene);
+
   // ── normalize: longest horizontal axis = forward (+Z), ground y=0 ──
   let bbox = new THREE.Box3().setFromObject(wrapper);
   if (bbox.getSize(new THREE.Vector3()).x > bbox.getSize(new THREE.Vector3()).z) {
@@ -218,6 +225,18 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
         wrapper.rotation.y += Math.PI;
         wrapper.updateMatrixWorld(true);
       }
+    }
+  }
+
+  // forward fallback for models whose semantics live in MATERIAL names
+  // (generic "Object_42" nodes): head/fog lights at one end, tail/brake at
+  // the other — orient so the lit end faces +Z
+  if (!anchorProbe.some((a) => /ft|front|fr\b|bk|rear|rr\b/i.test(a.node.name))) {
+    const headZ = lightCentreZ(wrapper, /head.?light|fog.?light|front.?light|low.?beam|high.?beam/i);
+    const tailZ = lightCentreZ(wrapper, /tail|brake.?light|reverse.?light|rear.?light|plate|license/i);
+    if (headZ !== null && tailZ !== null && headZ < tailZ) {
+      wrapper.rotation.y += Math.PI;
+      wrapper.updateMatrixWorld(true);
     }
   }
 
@@ -259,7 +278,10 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     if (!mesh.isMesh) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
-      if (m && (/carpaint/i.test(m.name ?? "") || /(^|_)details$|(^|_)paint$/i.test(m.name ?? ""))) {
+      const mn = m?.name ?? "";
+      // "…_by_Author": Sketchfab materialmerger names the primary body
+      // material after the model — treat it as paint so garage colours work
+      if (m && (/carpaint/i.test(mn) || /(^|_)details$|(^|_)paint$/i.test(mn) || /by[_\s]/i.test(mn))) {
         paintNames.add(m.name);
       }
     }
@@ -283,19 +305,45 @@ interface WheelAnchor {
   meshes: THREE.Mesh[];
 }
 
+/** wheel-ish names in MATERIALS — Sketchfab OBJ→glTF exports carry all
+ *  semantics in material names (tireL, rim1, brakedisk…) while nodes are
+ *  generic "Object_42" */
+const WHEEL_MAT = /wheel|tire|tyre|(^|[_\s\d])rim|rim($|[_\s\d.])|brake/i;
+/** wheel-ish material names that are NOT wheels (lights, signals, interior) */
+const MAT_EXCLUDE = /light|lamp|glow|steer|turn/i;
+
+/** every semantic label of a mesh: node name + its material names */
+function meshLabels(m: THREE.Mesh): string {
+  const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+  return `${m.name ?? ""} ${mats.map((x) => (x as THREE.Material)?.name ?? "").join(" ")}`;
+}
+
 function findWheelAnchors(root: THREE.Object3D): WheelAnchor[] {
   const anchors: WheelAnchor[] = [];
+  const anchored = new Set<THREE.Object3D>();
+  // 1) wheel-NAMED nodes (the classic rig: "Wheel.Ft.L", "wheel_FL"…)
   root.traverse((o) => {
     const name = o.name ?? "";
     // "steer" keeps the steering WHEEL (interior) out of the wheel rig
-    if (/wheel/i.test(name) && !/brake|steer/i.test(name)) {
-      const meshes: THREE.Mesh[] = [];
-      if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh);
-      o.traverse((c) => {
-        if ((c as THREE.Mesh).isMesh && c !== o) meshes.push(c as THREE.Mesh);
-      });
-      if (meshes.length) anchors.push({ node: o, meshes });
+    if (!(/wheel/i.test(name) && !/brake|steer/i.test(name))) return;
+    const meshes: THREE.Mesh[] = [];
+    if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh);
+    o.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh && c !== o) meshes.push(c as THREE.Mesh);
+    });
+    if (meshes.length) {
+      anchors.push({ node: o, meshes });
+      for (const m of meshes) anchored.add(m);
     }
+  });
+  // 2) wheel-named MATERIALS on generically-named meshes
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || anchored.has(m)) return;
+    const labels = meshLabels(m);
+    if (!WHEEL_MAT.test(labels) || MAT_EXCLUDE.test(labels)) return;
+    anchors.push({ node: m, meshes: [m] });
+    anchored.add(m);
   });
   return anchors;
 }
@@ -316,28 +364,44 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
   }
   const pieces: WheelPiece[] = [];
 
-  for (const a of anchors) {
-    for (const m of a.meshes) {
-      const wb = new THREE.Box3().setFromObject(m);
-      const width = wb.max.x - wb.min.x;
-      if (width > PAIR_WIDTH) {
-        // merged L+R axle pair → split at the car centre line
-        const halves = splitMeshByX(m, 0);
-        wrapper.remove(m);
-        m.geometry.dispose();
-        for (const h of halves) pieces.push({ mesh: h, isBrake: false });
+  // shared piece pipeline: split merged L+R pairs and merged F+R axles so
+  // every piece lands in exactly one corner (a whole-car "brakedisk" mesh
+  // would otherwise drag one corner's pivot across the car)
+  const addPiece = (mesh: THREE.Mesh, forceBrake = false) => {
+    let parts: THREE.Mesh[] = [mesh];
+    const wb = new THREE.Box3().setFromObject(mesh);
+    if (wb.max.x - wb.min.x > PAIR_WIDTH) {
+      // merged L+R axle pair → split at the car centre line
+      const halves = splitMeshByPlane(mesh, "x", 0);
+      wrapper.remove(mesh);
+      mesh.geometry.dispose();
+      parts = halves;
+    }
+    for (const part of parts) {
+      const b = new THREE.Box3().setFromObject(part);
+      if (b.max.z - b.min.z > MERGED_AXLE_LENGTH) {
+        // merged front+rear wheels (one mesh per side) → split at the
+        // axle gap, which straddles the car centre
+        const ends = splitMeshByPlane(part, "z", 0);
+        part.parent?.remove(part);
+        part.geometry.dispose();
+        for (const e of ends) pieces.push({ mesh: e, isBrake: forceBrake || /brake/i.test(meshLabels(e)) });
       } else {
-        pieces.push({ mesh: m, isBrake: /brake/i.test(m.name) });
+        pieces.push({ mesh: part, isBrake: forceBrake || /brake/i.test(meshLabels(part)) });
       }
     }
+  };
+
+  for (const a of anchors) {
+    for (const m of a.meshes) addPiece(m);
   }
 
   // brake discs / centre caps / calipers: named parts that ride with a wheel
   wrapper.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
-    if (/brake|disc|cap|caliper/i.test(o.name ?? "")) {
-      if (!pieces.some((p) => p.mesh === m)) pieces.push({ mesh: m, isBrake: true });
+    if (/brake|disc|cap|caliper/i.test(meshLabels(m))) {
+      if (!pieces.some((p) => p.mesh === m)) addPiece(m, true);
     }
   });
 
@@ -409,13 +473,14 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
   }
 
   // small unnamed pieces hugging a wheel centre (e.g. GT-R centre caps)
-  // join that wheel so they spin with it
+  // join that wheel so they spin with it — never whole body panels
   const pieceSet = new Set(pieces.map((p) => p.mesh));
   for (const child of [...wrapper.children]) {
     const m = child as THREE.Mesh;
     if (!m.isMesh || pieceSet.has(m)) continue;
-    const name = (m.name ?? "").toLowerCase();
-    if (name.includes("wheel") || name.includes("brake")) continue;
+    const name = meshLabels(m).toLowerCase();
+    if (name.includes("wheel") || name.includes("brake") || name.includes("light")) continue;
+    if (new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).length() > 1.1) continue;
     const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
     for (const corner of corners) {
       if (!corner.drive) continue;
@@ -575,16 +640,89 @@ function sweepJunk(wrapper: THREE.Group, dims: CarDims): void {
     if (c.y > maxY || c.y < -0.6 || Math.abs(c.x) > halfW || Math.abs(c.z) > halfL) {
       wrapper.remove(m);
       m.geometry.dispose();
+      continue;
+    }
+    // flat ground-shadow quads (Sketchfab "carshadow") sit exactly on the
+    // road plane and z-fight with it at speed
+    if (/shadow/i.test(meshLabels(m)) && new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).y < 0.08) {
+      wrapper.remove(m);
+      m.geometry.dispose();
     }
   }
 }
 
-/** split a baked (identity-transform) mesh by local x into L/R halves */
-function splitMeshByX(mesh: THREE.Mesh, splitX: number): THREE.Mesh[] {
+/**
+ * Strip the showcase environment that Sketchfab studio exports bake into
+ * the file: a giant floor/ceiling/curtain box around the car plus far-away
+ * props (banners, stands). They poison the bounding box used for
+ * normalization (toy-car scale, wrong forward axis), so this runs BEFORE
+ * any bbox math. Scale-invariant: thresholds are relative to mesh statistics.
+ */
+function pruneShowroom(root: THREE.Object3D): void {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) meshes.push(m);
+  });
+  if (meshes.length < 4) return;
+
+  const boxes = new Map<THREE.Mesh, THREE.Box3>();
+  const diags: number[] = [];
+  for (const m of meshes) {
+    const b = new THREE.Box3().setFromObject(m);
+    if (b.isEmpty()) continue;
+    boxes.set(m, b);
+    diags.push(b.getSize(new THREE.Vector3()).length());
+  }
+  if (diags.length < 4) return;
+  diags.sort((a, b) => a - b);
+  const p90 = diags[Math.floor(diags.length * 0.9)];
+
+  // pass 1 — giants: showroom floor/ceiling/curtains dwarf every car part
+  let alive = [...boxes.entries()].filter(
+    ([, b]) => b.getSize(new THREE.Vector3()).length() <= p90 * 2,
+  );
+  if (alive.length === 0) return;
+
+  // pass 2 — far props: outside the dense car cluster around the centroid
+  if (alive.length > 3) {
+    const centroid = new THREE.Vector3();
+    for (const [, b] of alive) centroid.add(b.getCenter(new THREE.Vector3()));
+    centroid.multiplyScalar(1 / alive.length);
+    const near = alive.filter(
+      ([, b]) => b.getCenter(new THREE.Vector3()).distanceTo(centroid) < Math.max(p90 * 0.9, 0.5),
+    );
+    if (near.length >= 3 && near.length < alive.length) alive = near;
+  }
+
+  const survivors = new Set(alive.map(([m]) => m));
+  for (const m of meshes) {
+    if (!boxes.has(m) || survivors.has(m)) continue;
+    m.parent?.remove(m);
+    m.geometry.dispose();
+  }
+}
+
+/** average world Z of meshes whose node/material names match `re` */
+function lightCentreZ(root: THREE.Object3D, re: RegExp): number | null {
+  let acc = 0;
+  let n = 0;
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !re.test(meshLabels(m))) return;
+    acc += new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()).z;
+    n++;
+  });
+  return n > 0 ? acc / n : null;
+}
+
+/** split a baked (identity-transform) mesh by a local x/z plane into halves */
+function splitMeshByPlane(mesh: THREE.Mesh, axis: "x" | "z", splitAt: number): THREE.Mesh[] {
   const geo = mesh.geometry;
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const idx = geo.index;
   const triCount = Math.floor((idx ? idx.count : pos.count) / 3);
+  const coord = axis === "x" ? (i: number) => pos.getX(i) : (i: number) => pos.getZ(i);
 
   const leftTris: number[] = [];
   const rightTris: number[] = [];
@@ -592,8 +730,8 @@ function splitMeshByX(mesh: THREE.Mesh, splitX: number): THREE.Mesh[] {
     const a = idx ? idx.getX(t * 3) : t * 3;
     const b = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
     const c = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
-    const cx = (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
-    (cx < splitX ? leftTris : rightTris).push(a, b, c);
+    const centre = (coord(a) + coord(b) + coord(c)) / 3;
+    (centre < splitAt ? leftTris : rightTris).push(a, b, c);
   }
 
   const out: THREE.Mesh[] = [];
@@ -601,7 +739,7 @@ function splitMeshByX(mesh: THREE.Mesh, splitX: number): THREE.Mesh[] {
     if (tris.length === 0) continue;
     const g = extractTriangles(geo, tris);
     const m = new THREE.Mesh(g, mesh.material);
-    m.name = `${mesh.name}_half`;
+    m.name = `${mesh.name}_${axis}half`;
     m.castShadow = true;
     mesh.parent?.add(m);
     out.push(m);

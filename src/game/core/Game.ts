@@ -5,7 +5,7 @@ import { Track } from "../world/Track";
 import { CityEnvironment } from "../world/CityEnvironment";
 import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
-import { instantiateCar, hasCarModel, type CarModelInstance } from "../world/CarModelLoader";
+import { instantiateCar, hasCarModel, carDef, type CarModelInstance } from "../world/CarModelLoader";
 import { ParticlePool } from "../world/Particles";
 import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
@@ -200,6 +200,12 @@ export class Game {
       let car: Car;
       if (i === playerGrid) {
         const model = hasCarModel(carId) ? instantiateCar(carId, this.opts.carColor) ?? undefined : undefined;
+        if (!model && carDef(carId)?.modelUrl) {
+          console.warn(
+            `[Game] model for "${carId}" (${carDef(carId)!.modelUrl}) failed to load — ` +
+              "falling back to the procedural car. Check the file exists / re-select the car.",
+          );
+        }
         car = this.player = new Car("player", this.opts.carColor, this.opts.playerName, model);
       } else {
         const aiId = aiPool[i % aiPool.length];

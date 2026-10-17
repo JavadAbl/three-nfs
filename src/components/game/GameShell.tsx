@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Game, type GameMode } from "@/game/core/Game";
 import { NetClient } from "@/game/net/NetClient";
+import { loadCarModel } from "@/game/world/CarModelLoader";
 import { useGameStore } from "@/stores/gameStore";
 import { HUD } from "@/components/game/HUD";
 import { MainMenu } from "@/components/game/MainMenu";
@@ -30,6 +31,7 @@ export function GameShell() {
   const mode = useGameStore((s) => s.mode);
   const playerName = useGameStore((s) => s.playerName);
   const carColor = useGameStore((s) => s.carColor);
+  const carId = useGameStore((s) => s.carId);
   const muted = useGameStore((s) => s.muted);
   const lobbyPlayers = useGameStore((s) => s.lobby.players);
   const setScreen = useGameStore((s) => s.setScreen);
@@ -42,6 +44,13 @@ export function GameShell() {
   const setMuted = useGameStore((s) => s.setMuted);
 
   const [raceSession, setRaceSession] = useState<StartRequest | null>(null);
+  const launchingRef = useRef(false);
+
+  // warm the model cache while the user is in the menus
+  useEffect(() => {
+    void loadCarModel("gtr").catch(() => {});
+    void loadCarModel("audi").catch(() => {});
+  }, []);
 
   const disposeGame = useCallback(() => {
     gameRef.current?.quit();
@@ -63,17 +72,24 @@ export function GameShell() {
   // ── build the Game instance (canvas is always mounted, so handler-time creation is safe) ──
   const launchGame = useCallback(
     (m: GameMode, laps: number) => {
-      if (!canvasRef.current) return;
+      if (!canvasRef.current || launchingRef.current) return;
+      launchingRef.current = true;
       disposeGame();
-      const game = new Game(
-        canvasRef.current,
-        {
-          mode: m,
-          playerName: playerName.trim() || "DRIVER",
-          carColor,
-          laps,
-          net: m === "online" ? netRef.current : null,
-        },
+      void (async () => {
+        // ensure the selected (and rival) car models are in cache — instant if warm
+        await Promise.allSettled([loadCarModel(carId), loadCarModel("gtr"), loadCarModel("audi")]);
+        launchingRef.current = false;
+        if (!canvasRef.current) return; // unmounted while loading
+        const game = new Game(
+          canvasRef.current,
+          {
+            mode: m,
+            playerName: playerName.trim() || "DRIVER",
+            carColor,
+            carId,
+            laps,
+            net: m === "online" ? netRef.current : null,
+          },
         {
           onHud: setHud,
           onCountdown: (step) => {
@@ -110,8 +126,9 @@ export function GameShell() {
       game.audio.setMuted(muted);
       game.beginCountdown();
       setRaceSession({ mode: m, laps });
+      })();
     },
-    [disposeGame, playerName, carColor, muted, setHud, setCountdown, flashLap, setResults, setScreen]
+    [disposeGame, playerName, carColor, carId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
   );
 
   // ── pause / resume sync ──

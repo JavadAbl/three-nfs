@@ -44,3 +44,7 @@ next-env.d.ts
 # internal (not part of the game repo)
 skills/
 scripts/
+
+# raw 3d asset sources (processed copies live in public/models)
+assets-src/
+upload/

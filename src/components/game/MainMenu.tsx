@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CAR_COLORS } from "@/game/constants";
+import { CAR_LIBRARY } from "@/game/world/CarModelLoader";
 import { fmtTime } from "@/game/core/Game";
 import { useGameStore } from "@/stores/gameStore";
-import { Trophy, Wifi, Timer, Gauge, User } from "lucide-react";
+import { Trophy, Wifi, Timer, Gauge, User, CarFront } from "lucide-react";
 
 interface LapRecord {
   id: string;
@@ -21,7 +22,7 @@ interface LapRecord {
 }
 
 export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "trial") => void; onOpenLobby: () => void }) {
-  const { playerName, setPlayerName, carColor, setCarColor } = useGameStore();
+  const { playerName, setPlayerName, carColor, setCarColor, carId, setCarId } = useGameStore();
   const [records, setRecords] = useState<LapRecord[]>([]);
   const [tab, setTab] = useState<"garage" | "board">("garage");
 
@@ -93,6 +94,30 @@ export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "
               {tab === "garage" ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">RIDE</span>
+                    <span className="text-xs font-bold tracking-wider text-amber-400">
+                      {CAR_LIBRARY.find((c) => c.id === carId)?.name ?? "—"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {CAR_LIBRARY.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setCarId(c.id)}
+                        aria-label={`Select ${c.name}`}
+                        className={`car-card ${carId === c.id ? "car-card-active" : ""}`}
+                      >
+                        <CarFront className="size-4 mx-auto mb-1.5 text-amber-500/80" />
+                        <span className="block text-[11px] font-black italic tracking-wide leading-tight">
+                          {c.name}
+                        </span>
+                        <span className="block text-[9px] text-zinc-500 tracking-wider mt-0.5">
+                          {c.spec}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between">
                     <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">PAINT</span>
                     <span
                       className="text-xs font-bold tracking-wider"
@@ -113,8 +138,7 @@ export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "
                     ))}
                   </div>
                   <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Barebone muscle car — drop-in model support comes with the asset
-                    update (public/models). Controls: <b className="text-zinc-300">WASD</b> drive,{" "}
+                    Pick a ride, choose your paint and hit the grid. Controls: <b className="text-zinc-300">WASD</b> drive,{" "}
                     <b className="text-zinc-300">SPACE</b> drift,{" "}
                     <b className="text-zinc-300">SHIFT</b> nitro,{" "}
                     <b className="text-zinc-300">C</b> camera,{" "}

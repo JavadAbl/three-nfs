@@ -3,14 +3,15 @@ import * as THREE from "three";
 import { AI_TUNING, CAR_TUNING } from "../constants";
 import type { Track } from "./Track";
 import { Car } from "./Car";
+import type { CarModelInstance } from "./CarModelLoader";
 
 export class AICar extends Car {
   private skill: number;
   private lateralOffset: number;
   stuckTimer = 0;
 
-  constructor(color: string, name: string, index: number) {
-    super("ai", color, name);
+  constructor(color: string, name: string, index: number, model?: CarModelInstance) {
+    super("ai", color, name, model);
     const [lo, hi] = AI_TUNING.skillRange;
     this.skill = THREE.MathUtils.lerp(lo, hi, (index % 5) / 4);
     this.lateralOffset = [-2.2, 2.2, -1.1, 1.6, 3.0][index % 5];

@@ -243,6 +243,27 @@
   box-shadow: 0 0 14px rgba(245, 158, 11, 0.55), inset 0 -3px 6px rgba(0, 0, 0, 0.45);
 }
 
+/* garage car selector cards */
+.car-card {
+  border-radius: 10px;
+  padding: 10px 6px 8px;
+  background: linear-gradient(160deg, rgba(24, 24, 29, 0.9), rgba(10, 10, 13, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #d4d4d8;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.car-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.car-card-active {
+  border-color: #f59e0b;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
+  background: linear-gradient(160deg, rgba(48, 36, 14, 0.7), rgba(10, 10, 13, 0.95));
+}
+
 /* lobby lap picker */
 .lap-pick {
   min-width: 34px;

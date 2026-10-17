@@ -1,8 +1,9 @@
-// ─── Car: arcade physics + procedural low-poly visual ───────────────────────
+// ─── Car: arcade physics + procedural low-poly visual OR GLB model ───────
 import * as THREE from "three";
 import { CAR_TUNING } from "../constants";
 import type { Track, TrackLocation } from "./Track";
 import type { CarControls } from "../core/Input";
+import { type CarModelInstance, type ModelWheel } from "./CarModelLoader";
 
 export type CarKind = "player" | "ai" | "remote";
 
@@ -47,7 +48,10 @@ export class Car {
   // visuals
   group = new THREE.Group();
   private bodyGroup = new THREE.Group();
-  private wheels: THREE.Mesh[] = [];
+  private wheels: THREE.Group[] = [];
+  private modelWheels: ModelWheel[] = [];
+  private model?: CarModelInstance;
+  private wheelRadius = 0.38;
   private wheelSpin = 0;
   private brakeLights!: THREE.Mesh;
   private nitroFlames: THREE.Mesh[] = [];
@@ -55,20 +59,135 @@ export class Car {
   private headBeamR?: THREE.SpotLight;
   private label?: THREE.Sprite;
   private rollVisual = 0;
+  /** resources owned by this instance (model cars share template resources) */
+  private owned: (THREE.Material | THREE.Texture)[] = [];
 
   /** smoke emission request consumed by the particle pool owner */
   smokeRequest: { pos: THREE.Vector3; strength: number } | null = null;
 
-  constructor(kind: CarKind, color: string, name = "") {
+  constructor(kind: CarKind, color: string, name = "", model?: CarModelInstance) {
     this.kind = kind;
     this.color = color;
     this.name = name;
+    this.model = model;
     this.buildVisual();
   }
 
   // ─── visual construction ────────────────────────────────────────────────
 
   private buildVisual() {
+    if (this.model) this.buildModelVisual();
+    else this.buildProceduralVisual();
+  }
+
+  // ─── GLB model path — real car with procedural lights/flare FX ──────────
+  private buildModelVisual() {
+    const m = this.model!;
+    this.wheelRadius = m.wheelRadius || 0.38;
+    this.modelWheels = m.wheels;
+    this.bodyGroup.add(m.root);
+
+    const d = m.dims;
+    const w2 = d.width / 2;
+
+    // lights
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
+    this.owned.push(headMat);
+    for (const sx of [1, -1]) {
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.06), headMat);
+      head.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ - 0.02);
+      this.bodyGroup.add(head);
+    }
+    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    this.owned.push(tailMat);
+    for (const sx of [1, -1]) {
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.06), tailMat);
+      tail.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.02);
+      this.bodyGroup.add(tail);
+    }
+    this.brakeLights = new THREE.Mesh(
+      new THREE.BoxGeometry(d.width * 0.8, 0.09, 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.3 })
+    );
+    this.owned.push(this.brakeLights.material as THREE.Material);
+    this.brakeLights.position.set(0, d.topY * 0.62, d.rearZ + 0.03);
+    this.bodyGroup.add(this.brakeLights);
+
+    // nitro flames
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffb347,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+    });
+    this.owned.push(flameMat);
+    for (const sx of [1, -1]) {
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.75, 7), flameMat);
+      flame.rotation.x = Math.PI / 2;
+      flame.position.set(sx * w2 * 0.35, 0.32, d.rearZ - 0.35);
+      flame.visible = false;
+      this.nitroFlames.push(flame);
+      this.bodyGroup.add(flame);
+    }
+
+    // underglow
+    const glowTex = radialGlowTexture();
+    const glowMat = new THREE.MeshBasicMaterial({
+      map: glowTex,
+      color: new THREE.Color(this.color),
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.owned.push(glowMat, glowTex);
+    const underglow = new THREE.Mesh(
+      new THREE.PlaneGeometry(d.width + 1.1, d.length + 1.4),
+      glowMat
+    );
+    underglow.rotation.x = -Math.PI / 2;
+    underglow.position.y = 0.06;
+    this.bodyGroup.add(underglow);
+
+    this.attachHeadlightsAndLabel(d);
+
+    this.group.add(this.bodyGroup);
+    this.group.castShadow = true;
+  }
+
+  private attachHeadlightsAndLabel(d: { frontZ: number; topY: number; width: number; length: number }) {
+    const w2 = d.width / 2;
+    if (this.kind === "player") {
+      for (const sx of [0.62, -0.62]) {
+        const beam = new THREE.SpotLight(0xfff0c8, 90, 90, 0.45, 0.55, 1.6);
+        beam.position.set(sx * w2, d.topY * 0.55, d.frontZ - 0.1);
+        const target = new THREE.Object3D();
+        target.position.set(sx * 6, 0, d.frontZ + 34);
+        this.bodyGroup.add(target);
+        beam.target = target;
+        this.bodyGroup.add(beam);
+        if (sx > 0) this.headBeamL = beam;
+        else this.headBeamR = beam;
+      }
+    } else {
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: 0xfff0c0,
+        transparent: true,
+        opacity: 0.07,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.owned.push(coneMat);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 16, 8, 1, true), coneMat);
+      cone.rotation.x = Math.PI / 2;
+      cone.position.set(0, 0.5, d.frontZ + 9.5);
+      this.bodyGroup.add(cone);
+      if (this.kind === "remote") this.addLabel(d.topY);
+    }
+  }
+
+  // ─── procedural fallback path (original stacked-box muscle car) ─────────
+  private buildProceduralVisual() {
     const paint = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(this.color),
       metalness: 0.85,
@@ -184,7 +303,7 @@ export class Car {
       wheel.add(tire, rim);
       wheel.position.set(x, 0.38, z);
       (wheel as unknown as { isFront: boolean }).isFront = front === 1;
-      this.wheels.push(wheel as unknown as THREE.Mesh);
+      this.wheels.push(wheel);
       this.bodyGroup.add(wheel);
     }
 
@@ -192,40 +311,13 @@ export class Car {
       this.bodyGroup.add(m);
     this.bodyGroup.add(underglow);
 
-    // real headlight beams only for the local player (performance)
-    if (this.kind === "player") {
-      for (const x of [0.62, -0.62]) {
-        const beam = new THREE.SpotLight(0xfff0c8, 90, 90, 0.45, 0.55, 1.6);
-        beam.position.set(x, 0.6, 2.5);
-        const target = new THREE.Object3D();
-        target.position.set(x * 2, 0, 34);
-        this.bodyGroup.add(target);
-        beam.target = target;
-        this.bodyGroup.add(beam);
-        if (x > 0) this.headBeamL = beam;
-        else this.headBeamR = beam;
-      }
-    } else {
-      // fake light cone for AI / remote cars
-      const coneMat = new THREE.MeshBasicMaterial({
-        color: 0xfff0c0,
-        transparent: true,
-        opacity: 0.07,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 16, 8, 1, true), coneMat);
-      cone.rotation.x = Math.PI / 2;
-      cone.position.set(0, 0.5, 9.5);
-      this.bodyGroup.add(cone);
-      if (this.kind === "remote") this.addLabel();
-    }
+    this.attachHeadlightsAndLabel({ frontZ: 2.58, topY: 1.25, width: 2.05, length: 4.6 });
 
     this.group.add(this.bodyGroup);
     this.group.castShadow = true;
   }
 
-  private addLabel() {
+  private addLabel(topY = 1.25) {
     const canvas = document.createElement("canvas");
     canvas.width = 256;
     canvas.height = 64;
@@ -242,8 +334,9 @@ export class Car {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
     );
+    this.owned.push(tex, sprite.material as THREE.Material);
     sprite.scale.set(5.2, 1.3, 1);
-    sprite.position.y = 2.6;
+    sprite.position.y = topY + 1.4;
     this.group.add(sprite);
     this.label = sprite;
   }
@@ -404,11 +497,15 @@ export class Car {
     this.group.rotation.x = pitch;
 
     // wheels
-    this.wheelSpin += (this.speed / 0.38) * (dt || 0.016);
+    this.wheelSpin += (this.speed / this.wheelRadius) * (dt || 0.016);
     for (const w of this.wheels) {
       w.rotation.x = this.wheelSpin;
       const isFront = (w as unknown as { isFront: boolean }).isFront;
       if (isFront) w.rotation.y = this.controls.steer * -0.45;
+    }
+    for (const w of this.modelWheels) {
+      w.pivot.rotation[w.axis] = this.wheelSpin;
+      if (w.isFront) w.pivot.rotation.y = this.controls.steer * -0.45;
     }
 
     // brake lights
@@ -451,6 +548,13 @@ export class Car {
   }
 
   dispose() {
+    if (this.model) {
+      // model cars share template geometry/textures — only dispose own resources
+      for (const r of this.owned) r.dispose();
+      this.owned = [];
+      for (const pm of this.model.paintMaterials) pm.dispose();
+      return;
+    }
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
@@ -468,8 +572,8 @@ export class RemoteCar {
   private targetHeading = 0;
   private lerp = 10;
 
-  constructor(public id: string, name: string, color: string) {
-    this.car = new Car("remote", color, name);
+  constructor(public id: string, name: string, color: string, model?: CarModelInstance) {
+    this.car = new Car("remote", color, name, model);
   }
 
   setTarget(snap: CarSnapshot) {

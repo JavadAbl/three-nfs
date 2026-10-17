@@ -5,6 +5,7 @@ import { Track } from "../world/Track";
 import { CityEnvironment } from "../world/CityEnvironment";
 import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
+import { instantiateCar, hasCarModel, type CarModelInstance } from "../world/CarModelLoader";
 import { ParticlePool } from "../world/Particles";
 import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
@@ -46,6 +47,8 @@ export interface GameOptions {
   mode: GameMode;
   playerName: string;
   carColor: string;
+  /** selected car id from CAR_LIBRARY ("gtr" | "audi" | "classic") */
+  carId?: string;
   laps?: number;
   net?: NetClient | null;
 }
@@ -190,12 +193,18 @@ export class Game {
     const total = this.mode === "quick" ? 1 + GAME_CONFIG.AI_COUNT : 1;
     // player starts at the back of the grid (NFS style)
     const playerGrid = total - 1;
+    const carId = this.opts.carId ?? "classic";
+    // AI rivals rotate through the other models for variety
+    const aiPool = ["gtr", "audi", "classic"].filter((c) => c !== carId);
     for (let i = 0; i < total; i++) {
       let car: Car;
       if (i === playerGrid) {
-        car = this.player = new Car("player", this.opts.carColor, this.opts.playerName);
+        const model = hasCarModel(carId) ? instantiateCar(carId, this.opts.carColor) ?? undefined : undefined;
+        car = this.player = new Car("player", this.opts.carColor, this.opts.playerName, model);
       } else {
-        const ai = new AICar(AI_COLORS[i % AI_COLORS.length], AI_NAMES[i % AI_NAMES.length], i);
+        const aiId = aiPool[i % aiPool.length];
+        const model = hasCarModel(aiId) ? instantiateCar(aiId, AI_COLORS[i % AI_COLORS.length]) ?? undefined : undefined;
+        const ai = new AICar(AI_COLORS[i % AI_COLORS.length], AI_NAMES[i % AI_NAMES.length], i, model);
         this.ais.push(ai);
         car = ai;
       }
@@ -229,7 +238,11 @@ export class Game {
         let rc = this.remotes.get(id);
         if (!rc) {
           const p = net.players.find((x) => x.id === id);
-          rc = new RemoteCar(id, p?.name ?? "RACER", p?.color ?? "#e2e8f0");
+          const carId = this.opts.carId ?? "gtr";
+          const model: CarModelInstance | undefined = hasCarModel(carId)
+            ? instantiateCar(carId, p?.color ?? "#e2e8f0") ?? undefined
+            : undefined;
+          rc = new RemoteCar(id, p?.name ?? "RACER", p?.color ?? "#e2e8f0", model);
           this.remotes.set(id, rc);
           this.scene.add(rc.car.group);
           if (!this.allCars.includes(rc.car)) this.allCars.push(rc.car);

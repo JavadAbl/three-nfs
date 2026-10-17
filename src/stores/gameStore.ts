@@ -11,6 +11,7 @@ interface GameStore {
   mode: GameMode;
   playerName: string;
   carColor: string;
+  carId: string;
   muted: boolean;
 
   hud: HudState;
@@ -30,6 +31,7 @@ interface GameStore {
   setMode: (m: GameMode) => void;
   setPlayerName: (n: string) => void;
   setCarColor: (c: string) => void;
+  setCarId: (id: string) => void;
   setMuted: (m: boolean) => void;
   setHud: (h: HudState) => void;
   setCountdown: (c: number | null) => void;
@@ -41,16 +43,18 @@ interface GameStore {
 
 const LS_NAME = "three-nfs:name";
 const LS_COLOR = "three-nfs:color";
+const LS_CAR = "three-nfs:car";
 
 function loadPersisted() {
-  if (typeof window === "undefined") return { name: "", color: "#f59e0b" };
+  if (typeof window === "undefined") return { name: "", color: "#f59e0b", car: "gtr" };
   try {
     return {
       name: window.localStorage.getItem(LS_NAME) ?? "",
       color: window.localStorage.getItem(LS_COLOR) ?? "#f59e0b",
+      car: window.localStorage.getItem(LS_CAR) ?? "gtr",
     };
   } catch {
-    return { name: "", color: "#f59e0b" };
+    return { name: "", color: "#f59e0b", car: "gtr" };
   }
 }
 
@@ -81,6 +85,7 @@ export const useGameStore = create<GameStore>((set) => {
     mode: "quick",
     playerName: persisted.name,
     carColor: persisted.color,
+    carId: persisted.car,
     muted: false,
     hud: emptyHud,
     countdown: null,
@@ -101,6 +106,12 @@ export const useGameStore = create<GameStore>((set) => {
         window.localStorage.setItem(LS_COLOR, c);
       } catch {}
       set({ carColor: c });
+    },
+    setCarId: (id) => {
+      try {
+        window.localStorage.setItem(LS_CAR, id);
+      } catch {}
+      set({ carId: id });
     },
     setMuted: (m) => set({ muted: m }),
     setHud: (h) => set({ hud: h }),

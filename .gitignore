@@ -1,2 +1,46 @@
-skills/
+# dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# builds
+.next/
+out/
+build/
+dist/
+
+# env & db
+.env
+.env*.local
+db/
+*.db
+*.db-journal
+
+# logs
+*.log
+dev.log
+server.log
+race-service.log
+
+# sandbox infra
+.zscripts/
+download/
+worklog.md
+
+# misc
+.DS_Store
+*.pem
+*.tar
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# next.js
+.vercel
+next-env.d.ts
+*.tsbuildinfo
+
+# internal (not part of the game repo)
+skills/
+scripts/

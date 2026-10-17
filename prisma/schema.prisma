@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Best lap times — persisted across sessions
+model LapRecord {
+  id          String   @id @default(cuid())
+  playerName  String
+  lapTimeMs   Int
+  mode        String   // "quick" | "trial" | "online"
+  carColor    String   @default("#f59e0b")
+  createdAt   DateTime @default(now())
+
+  @@index([lapTimeMs])
+  @@index([mode, lapTimeMs])
+}

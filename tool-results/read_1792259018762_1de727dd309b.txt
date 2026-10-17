@@ -1,0 +1,777 @@
+     1→// ─── CarModelLoader: loads, normalizes & rigs GLB car models ─────────────────
+     2→// Any GLB dropped into /public/models can become a drivable car:
+     3→//   1. normalized: forward +Z, ground y=0, target length, centered
+     4→//   2. wheels auto-detected by node name (/wheel/i), axle pairs split L/R,
+     5→//      wrapped in spin/steer pivots
+     6→//   3. paint materials detected (/carpaint/i or /_details$/) for per-player tint
+     7→import * as THREE from "three";
+     8→import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+     9→
+    10→export interface ModelWheel {
+    11→  /** pivot: rotate .rotation[axis] for spin, .rotation.y for steering (front) */
+    12→  pivot: THREE.Group;
+    13→  isFront: boolean;
+    14→  radius: number;
+    15→  /** spin axis in pivot local space */
+    16→  axis: "x" | "z";
+    17→  side: "L" | "R";
+    18→}
+    19→
+    20→export interface CarDims {
+    21→  length: number;
+    22→  width: number;
+    23→  height: number;
+    24→  frontZ: number;
+    25→  rearZ: number;
+    26→  topY: number;
+    27→}
+    28→
+    29→export interface CarModelInstance {
+    30→  root: THREE.Group;
+    31→  wheels: ModelWheel[];
+    32→  dims: CarDims;
+    33→  wheelRadius: number;
+    34→  /** per-instance cloned tintable materials */
+    35→  paintMaterials: THREE.MeshStandardMaterial[];
+    36→}
+    37→
+    38→interface Template {
+    39→  url: string;
+    40→  wrapper: THREE.Group; // normalized + rigged (pivots named wheelPivot_XX)
+    41→  dims: CarDims;
+    42→  wheelRadius: number;
+    43→  paintNames: Set<string>;
+    44→}
+    45→
+    46→/** how long every model car is normalized to (matches physics tuning) */
+    47→const TARGET_LENGTH = 4.55;
+    48→/** wheel mesh wider than this = a merged L+R axle pair needing a split */
+    49→const PAIR_WIDTH = 1.15;
+    50→/** wheel mesh longer than this = merged front+rear wheels needing a split */
+    51→const MERGED_AXLE_LENGTH = 1.2;
+    52→/** max distance for attaching loose nodes (brake discs, centre caps) to a wheel */
+    53→const ATTACH_RADIUS = 0.55;
+    54→
+    55→const loader = new GLTFLoader();
+    56→const templates = new Map<string, Template>();
+    57→const inflight = new Map<string, Promise<Template>>();
+    58→
+    59→export interface CarDef {
+    60→  id: string;
+    61→  name: string;
+    62→  modelUrl: string | null;
+    63→  spec: string;
+    64→}
+    65→
+    66→/** registry mirrored in constants.ts — kept here to avoid a circular import */
+    67→const CAR_DEFS: CarDef[] = [
+    68→  { id: "gtr", name: "NISSAN GT-R R35", modelUrl: "/models/nissan-gtr-r35.glb", spec: "NISMO · 600 HP" },
+    69→  { id: "audi", name: "AUDI TT RS", modelUrl: "/models/audi-tt-rs.glb", spec: "QUATTRO · 400 HP" },
+    70→  { id: "viper", name: "DODGE VIPER GTS", modelUrl: "/models/staging/dodge-viper-gts.glb", spec: "V10 · 450 HP" },
+    71→  { id: "classic", name: "STREET MUSCLE", modelUrl: null, spec: "V8 · PROCEDURAL" },
+    72→];
+    73→
+    74→export const CAR_LIBRARY = CAR_DEFS;
+    75→
+    76→export function carDef(id: string): CarDef | undefined {
+    77→  return CAR_DEFS.find((c) => c.id === id);
+    78→}
+    79→
+    80→/** load (and cache) a car template — resolves null for procedural (no-model) cars */
+    81→export function loadCarModel(id: string): Promise<Template | null> {
+    82→  const def = carDef(id);
+    83→  if (!def) return Promise.reject(new Error(`unknown car "${id}"`));
+    84→  if (!def.modelUrl) return Promise.resolve(null);
+    85→  const cached = templates.get(id);
+    86→  if (cached) return Promise.resolve(cached);
+    87→  const pending = inflight.get(id);
+    88→  if (pending) return pending;
+    89→  const p = loader
+    90→    .loadAsync(def.modelUrl)
+    91→    .then((gltf) => {
+    92→      const tpl = buildTemplate(id, gltf.scene);
+    93→      templates.set(id, tpl);
+    94→      inflight.delete(id);
+    95→      return tpl;
+    96→    })
+    97→    .catch((err) => {
+    98→      inflight.delete(id);
+    99→      throw err;
+   100→    });
+   101→  inflight.set(id, p);
+   102→  return p;
+   103→}
+   104→
+   105→/** warm the cache for every model car (called on menu mount) */
+   106→export function preloadAllCarModels(): Promise<PromiseSettledResult<Template | null>[]> {
+   107→  return Promise.allSettled(CAR_DEFS.map((c) => loadCarModel(c.id)));
+   108→}
+   109→
+   110→/** true when the template is already in cache */
+   111→export function hasCarModel(id: string): boolean {
+   112→  return templates.has(id);
+   113→}
+   114→
+   115→// ─── instantiate a drivable copy ────────────────────────────────────────────
+   116→export function instantiateCar(id: string, paintColor?: string): CarModelInstance | null {
+   117→  const tpl = templates.get(id);
+   118→  if (!tpl) return null;
+   119→  const root = tpl.wrapper.clone(true);
+   120→
+   121→  // clone paint materials per-instance (so tinting one car doesn't tint all)
+   122→  const paintMaterials: THREE.MeshStandardMaterial[] = [];
+   123→  const cloneMap = new Map<THREE.Material, THREE.Material>();
+   124→  root.traverse((o) => {
+   125→    const mesh = o as THREE.Mesh;
+   126→    if (!mesh.isMesh || !mesh.material) return;
+   127→    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+   128→    const replaced = mats.map((m) => {
+   129→      if (!tpl.paintNames.has(m.name ?? "")) return m;
+   130→      let c = cloneMap.get(m);
+   131→      if (!c) {
+   132→        c = m.clone();
+   133→        cloneMap.set(m, c);
+   134→        paintMaterials.push(c as THREE.MeshStandardMaterial);
+   135→      }
+   136→      return c;
+   137→    });
+   138→    mesh.material = Array.isArray(mesh.material)
+   139→      ? (replaced as THREE.Material[])
+   140→      : (replaced[0] as THREE.Material);
+   141→  });
+   142→
+   143→  if (paintColor) applyPaint(paintMaterials, paintColor);
+   144→
+   145→  // collect wheel pivots from the clone (stable names from the template rig)
+   146→  const wheels: ModelWheel[] = [];
+   147→  root.traverse((o) => {
+   148→    const g = o as THREE.Group;
+   149→    const m = /^wheelPivot_(F|R)(L|R)$/.exec(g.name ?? "");
+   150→    if (m) {
+   151→      wheels.push({
+   152→        pivot: g,
+   153→        isFront: m[1] === "F",
+   154→        side: m[2] as "L" | "R",
+   155→        radius: tpl.wheelRadius,
+   156→        axis: g.userData.spinAxis === "z" ? "z" : "x",
+   157→      });
+   158→    }
+   159→  });
+   160→
+   161→  return { root, wheels, dims: { ...tpl.dims }, wheelRadius: tpl.wheelRadius, paintMaterials };
+   162→}
+   163→
+   164→export function applyPaint(mats: THREE.MeshStandardMaterial[], color: string) {
+   165→  const c = new THREE.Color(color);
+   166→  for (const m of mats) {
+   167→    // textured paints get a tint; plain paints get the full colour
+   168→    if (m.map) m.color.copy(c.clone().lerp(new THREE.Color(1, 1, 1), 0.25));
+   169→    else m.color.copy(c);
+   170→  }
+   171→}
+   172→
+   173→// ─── template build: normalize + rig ────────────────────────────────────────
+   174→function buildTemplate(id: string, scene: THREE.Group): Template {
+   175→  const wrapper = new THREE.Group();
+   176→  wrapper.name = `carModel_${id}`;
+   177→  wrapper.add(scene);
+   178→  wrapper.updateMatrixWorld(true);
+   179→
+   180→  // strip transmission (heavy per-frame render pass) → plain transparent glass
+   181→  scene.traverse((o) => {
+   182→    const m = (o as THREE.Mesh).material as THREE.MeshPhysicalMaterial | THREE.MeshPhysicalMaterial[];
+   183→    const list = Array.isArray(m) ? m : m ? [m] : [];
+   184→    for (const mat of list) {
+   185→      if (mat.isMeshPhysicalMaterial && mat.transmission > 0) {
+   186→        mat.transmission = 0;
+   187→        mat.transparent = true;
+   188→        mat.opacity = Math.min(mat.opacity >= 1 ? 0.4 : mat.opacity, 0.5);
+   189→        mat.depthWrite = false;
+   190→      }
+   191→    }
+   192→  });
+   193→
+   194→  // ── strip showcase environment (Sketchfab studio floor/ceiling/curtains) ──
+   195→  // Giant or far-away meshes poison the bbox used for normalization (toy-car
+   196→  // scale, wrong forward axis). Runs BEFORE any bbox math.
+   197→  pruneShowroom(scene);
+   198→
+   199→  // ── normalize: longest horizontal axis = forward (+Z), ground y=0 ──
+   200→  let bbox = new THREE.Box3().setFromObject(wrapper);
+   201→  if (bbox.getSize(new THREE.Vector3()).x > bbox.getSize(new THREE.Vector3()).z) {
+   202→    wrapper.rotation.y = Math.PI / 2; // sideways model → rotate onto Z
+   203→    wrapper.updateMatrixWorld(true);
+   204→    bbox = new THREE.Box3().setFromObject(wrapper);
+   205→  }
+   206→  const size = bbox.getSize(new THREE.Vector3());
+   207→  const scale = TARGET_LENGTH / size.z;
+   208→  wrapper.scale.setScalar(scale);
+   209→  wrapper.updateMatrixWorld(true);
+   210→  bbox = new THREE.Box3().setFromObject(wrapper);
+   211→  const center = bbox.getCenter(new THREE.Vector3());
+   212→  wrapper.position.x -= center.x;
+   213→  wrapper.position.z -= center.z;
+   214→
+   215→  // forward direction: front wheels should sit at +Z
+   216→  const anchorProbe = findWheelAnchors(wrapper);
+   217→  if (anchorProbe.length > 0) {
+   218→    const namedFront = anchorProbe.find((a) => /ft|front|fr\b/i.test(a.node.name));
+   219→    const namedRear = anchorProbe.find((a) => /bk|rear|rr\b/i.test(a.node.name));
+   220→    if (namedFront && namedRear) {
+   221→      wrapper.updateMatrixWorld(true);
+   222→      const f = namedFront.node.getWorldPosition(new THREE.Vector3());
+   223→      const r = namedRear.node.getWorldPosition(new THREE.Vector3());
+   224→      if (f.z < r.z) {
+   225→        wrapper.rotation.y += Math.PI;
+   226→        wrapper.updateMatrixWorld(true);
+   227→      }
+   228→    }
+   229→  }
+   230→
+   231→  // forward fallback for models whose semantics live in MATERIAL names
+   232→  // (generic "Object_42" nodes): head/fog lights at one end, tail/brake at
+   233→  // the other — orient so the lit end faces +Z
+   234→  if (!anchorProbe.some((a) => /ft|front|fr\b|bk|rear|rr\b/i.test(a.node.name))) {
+   235→    const headZ = lightCentreZ(wrapper, /head.?light|fog.?light|front.?light|low.?beam|high.?beam/i);
+   236→    const tailZ = lightCentreZ(wrapper, /tail|brake.?light|reverse.?light|rear.?light|plate|license/i);
+   237→    if (headZ !== null && tailZ !== null && headZ < tailZ) {
+   238→      wrapper.rotation.y += Math.PI;
+   239→      wrapper.updateMatrixWorld(true);
+   240→    }
+   241→  }
+   242→
+   243→  wrapper.updateMatrixWorld(true);
+   244→  bbox = new THREE.Box3().setFromObject(wrapper);
+   245→  wrapper.position.y -= bbox.min.y; // ground contact
+   246→  wrapper.updateMatrixWorld(true);
+   247→  bbox = new THREE.Box3().setFromObject(wrapper);
+   248→  const sz = bbox.getSize(new THREE.Vector3());
+   249→  const ctr = bbox.getCenter(new THREE.Vector3());
+   250→  const dims: CarDims = {
+   251→    length: sz.z,
+   252→    width: sz.x,
+   253→    height: sz.y,
+   254→    frontZ: bbox.max.z - 0.06,
+   255→    rearZ: bbox.min.z + 0.06,
+   256→    topY: bbox.max.y,
+   257→  };
+   258→
+   259→  // ── flatten: bake the normalization transform into the geometry itself ──
+   260→  // Afterwards the wrapper is the identity frame: world == local for every
+   261→  // mesh, so corner boxes, pivot positions and spin axes all live in ONE
+   262→  // consistent space (fixes wheels orbiting a displaced pivot when the model
+   263→  // was scaled/rotated/flipped during normalization).
+   264→  flattenTransforms(wrapper, id);
+   265→
+   266→  // ── sweep showcase junk: animation-pose ghost meshes parked far outside
+   267→  // the car volume (they would drag wheel pivots sky-high and cast stray
+   268→  // shadows). Runs BEFORE rigging so ghosts never enter the corner math.
+   269→  sweepJunk(wrapper, dims);
+   270→
+   271→  // ── rig wheels ──
+   272→  const { wheelRadius } = rigWheels(wrapper);
+   273→
+   274→  // paint material names
+   275→  const paintNames = new Set<string>();
+   276→  wrapper.traverse((o) => {
+   277→    const mesh = o as THREE.Mesh;
+   278→    if (!mesh.isMesh) return;
+   279→    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+   280→    for (const m of mats) {
+   281→      const mn = m?.name ?? "";
+   282→      // "…_by_Author": Sketchfab materialmerger names the primary body
+   283→      // material after the model — treat it as paint so garage colours work
+   284→      if (m && (/carpaint/i.test(mn) || /(^|_)details$|(^|_)paint$/i.test(mn) || /by[_\s]/i.test(mn))) {
+   285→        paintNames.add(m.name);
+   286→      }
+   287→    }
+   288→  });
+   289→
+   290→  // shadows for the whole car
+   291→  wrapper.traverse((o) => {
+   292→    const mesh = o as THREE.Mesh;
+   293→    if (mesh.isMesh) {
+   294→      mesh.castShadow = true;
+   295→      mesh.receiveShadow = false;
+   296→    }
+   297→  });
+   298→
+   299→  return { url: id, wrapper, dims, wheelRadius, paintNames };
+   300→}
+   301→
+   302→// ─── wheel rigging ──────────────────────────────────────────────────────────
+   303→interface WheelAnchor {
+   304→  node: THREE.Object3D;
+   305→  meshes: THREE.Mesh[];
+   306→}
+   307→
+   308→/** wheel-ish names in MATERIALS — Sketchfab OBJ→glTF exports carry all
+   309→ *  semantics in material names (tireL, rim1, brakedisk…) while nodes are
+   310→ *  generic "Object_42" */
+   311→const WHEEL_MAT = /wheel|tire|tyre|(^|[_\s\d])rim|rim($|[_\s\d.])|brake/i;
+   312→/** wheel-ish material names that are NOT wheels (lights, signals, interior) */
+   313→const MAT_EXCLUDE = /light|lamp|glow|steer|turn/i;
+   314→
+   315→/** every semantic label of a mesh: node name + its material names */
+   316→function meshLabels(m: THREE.Mesh): string {
+   317→  const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+   318→  return `${m.name ?? ""} ${mats.map((x) => (x as THREE.Material)?.name ?? "").join(" ")}`;
+   319→}
+   320→
+   321→function findWheelAnchors(root: THREE.Object3D): WheelAnchor[] {
+   322→  const anchors: WheelAnchor[] = [];
+   323→  const anchored = new Set<THREE.Object3D>();
+   324→  // 1) wheel-NAMED nodes (the classic rig: "Wheel.Ft.L", "wheel_FL"…)
+   325→  root.traverse((o) => {
+   326→    const name = o.name ?? "";
+   327→    // "steer" keeps the steering WHEEL (interior) out of the wheel rig
+   328→    if (!(/wheel/i.test(name) && !/brake|steer/i.test(name))) return;
+   329→    const meshes: THREE.Mesh[] = [];
+   330→    if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh);
+   331→    o.traverse((c) => {
+   332→      if ((c as THREE.Mesh).isMesh && c !== o) meshes.push(c as THREE.Mesh);
+   333→    });
+   334→    if (meshes.length) {
+   335→      anchors.push({ node: o, meshes });
+   336→      for (const m of meshes) anchored.add(m);
+   337→    }
+   338→  });
+   339→  // 2) wheel-named MATERIALS on generically-named meshes
+   340→  root.traverse((o) => {
+   341→    const m = o as THREE.Mesh;
+   342→    if (!m.isMesh || anchored.has(m)) return;
+   343→    const labels = meshLabels(m);
+   344→    if (!WHEEL_MAT.test(labels) || MAT_EXCLUDE.test(labels)) return;
+   345→    anchors.push({ node: m, meshes: [m] });
+   346→    anchored.add(m);
+   347→  });
+   348→  return anchors;
+   349→}
+   350→
+   351→/**
+   352→ * Rig wheels in the identity frame established by flattenTransforms():
+   353→ * every mesh is a flat wrapper child with an identity transform and geometry
+   354→ * already in final car space, so world boxes == local boxes and pivots land
+   355→ * exactly on the wheel centres they spin around.
+   356→ */
+   357→function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
+   358→  const anchors = findWheelAnchors(wrapper);
+   359→  wrapper.updateMatrixWorld(true);
+   360→
+   361→  interface WheelPiece {
+   362→    mesh: THREE.Mesh;
+   363→    isBrake: boolean;
+   364→  }
+   365→  const pieces: WheelPiece[] = [];
+   366→
+   367→  // shared piece pipeline: split merged L+R pairs and merged F+R axles so
+   368→  // every piece lands in exactly one corner (a whole-car "brakedisk" mesh
+   369→  // would otherwise drag one corner's pivot across the car)
+   370→  const addPiece = (mesh: THREE.Mesh, forceBrake = false) => {
+   371→    let parts: THREE.Mesh[] = [mesh];
+   372→    const wb = new THREE.Box3().setFromObject(mesh);
+   373→    if (wb.max.x - wb.min.x > PAIR_WIDTH) {
+   374→      // merged L+R axle pair → split at the car centre line
+   375→      const halves = splitMeshByPlane(mesh, "x", 0);
+   376→      wrapper.remove(mesh);
+   377→      mesh.geometry.dispose();
+   378→      parts = halves;
+   379→    }
+   380→    for (const part of parts) {
+   381→      const b = new THREE.Box3().setFromObject(part);
+   382→      if (b.max.z - b.min.z > MERGED_AXLE_LENGTH) {
+   383→        // merged front+rear wheels (one mesh per side) → split at the
+   384→        // axle gap, which straddles the car centre
+   385→        const ends = splitMeshByPlane(part, "z", 0);
+   386→        part.parent?.remove(part);
+   387→        part.geometry.dispose();
+   388→        for (const e of ends) pieces.push({ mesh: e, isBrake: forceBrake || /brake/i.test(meshLabels(e)) });
+   389→      } else {
+   390→        pieces.push({ mesh: part, isBrake: forceBrake || /brake/i.test(meshLabels(part)) });
+   391→      }
+   392→    }
+   393→  };
+   394→
+   395→  for (const a of anchors) {
+   396→    for (const m of a.meshes) addPiece(m);
+   397→  }
+   398→
+   399→  // brake discs / centre caps / calipers: named parts that ride with a wheel
+   400→  wrapper.traverse((o) => {
+   401→    const m = o as THREE.Mesh;
+   402→    if (!m.isMesh) return;
+   403→    if (/brake|disc|cap|caliper/i.test(meshLabels(m))) {
+   404→      if (!pieces.some((p) => p.mesh === m)) addPiece(m, true);
+   405→    }
+   406→  });
+   407→
+   408→  if (pieces.length === 0) return { wheelRadius: 0.38 };
+   409→
+   410→  // ── group pieces into 4 corners ──
+   411→  interface Corner {
+   412→    key: string;
+   413→    meshes: THREE.Mesh[];
+   414→    bbox: THREE.Box3;
+   415→    drive: boolean;
+   416→  }
+   417→  const corners: Corner[] = [];
+   418→
+   419→  const cornerFor = (mesh: THREE.Mesh, isBrake: boolean): Corner => {
+   420→    const b = new THREE.Box3().setFromObject(mesh);
+   421→    const c = b.getCenter(new THREE.Vector3());
+   422→    const front = c.z > 0;
+   423→    const side = c.x >= 0 ? "L" : "R";
+   424→    const key = `${front ? "F" : "R"}${side}`;
+   425→    let corner = corners.find((k) => k.key === key);
+   426→    if (!corner) {
+   427→      corner = { key, meshes: [], bbox: new THREE.Box3(), drive: !isBrake };
+   428→      corners.push(corner);
+   429→    }
+   430→    corner.meshes.push(mesh);
+   431→    return corner;
+   432→  };
+   433→
+   434→  for (const p of pieces) {
+   435→    const c = cornerFor(p.mesh, p.isBrake);
+   436→    c.bbox.expandByObject(p.mesh);
+   437→    if (!p.isBrake) c.drive = true;
+   438→  }
+   439→
+   440→  // ── prune non-wheel junk that rode in with the anchors ──
+   441→  // Showcase rigs parent badges/logos under wheel nodes; their tiny boxes
+   442→  // drag the corner bbox (and with it the spin pivot) off the wheel hub.
+   443→  // Keep pieces that are comparably sized to the corner's largest piece or
+   444→  // sit on the hub; reject the rest back to the static body.
+   445→  for (const corner of corners) {
+   446→    if (corner.meshes.length < 2) continue;
+   447→    const boxes = new Map<THREE.Mesh, THREE.Box3>();
+   448→    let largest: THREE.Mesh | null = null;
+   449→    let largestDim = 0;
+   450→    for (const m of corner.meshes) {
+   451→      const b = new THREE.Box3().setFromObject(m);
+   452→      boxes.set(m, b);
+   453→      const d = b.getSize(new THREE.Vector3()).length();
+   454→      if (d > largestDim) {
+   455→        largestDim = d;
+   456→        largest = m;
+   457→      }
+   458→    }
+   459→    if (!largest) continue;
+   460→    const hub = boxes.get(largest)!.getCenter(new THREE.Vector3());
+   461→    const kept = corner.meshes.filter((m) => {
+   462→      if (m === largest) return true;
+   463→      const b = boxes.get(m)!;
+   464→      const dim = b.getSize(new THREE.Vector3()).length();
+   465→      const centre = b.getCenter(new THREE.Vector3());
+   466→      return dim >= 0.25 * largestDim || centre.distanceTo(hub) < 0.18;
+   467→    });
+   468→    if (kept.length === corner.meshes.length) continue;
+   469→    const bbox = new THREE.Box3();
+   470→    for (const m of kept) bbox.union(boxes.get(m)!);
+   471→    corner.meshes = kept;
+   472→    corner.bbox = bbox;
+   473→  }
+   474→
+   475→  // small unnamed pieces hugging a wheel centre (e.g. GT-R centre caps)
+   476→  // join that wheel so they spin with it — never whole body panels
+   477→  const pieceSet = new Set(pieces.map((p) => p.mesh));
+   478→  for (const child of [...wrapper.children]) {
+   479→    const m = child as THREE.Mesh;
+   480→    if (!m.isMesh || pieceSet.has(m)) continue;
+   481→    const name = meshLabels(m).toLowerCase();
+   482→    if (name.includes("wheel") || name.includes("brake") || name.includes("light")) continue;
+   483→    if (new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).length() > 1.1) continue;
+   484→    const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+   485→    for (const corner of corners) {
+   486→      if (!corner.drive) continue;
+   487→      const centre = corner.bbox.getCenter(new THREE.Vector3());
+   488→      if (c.distanceTo(centre) < ATTACH_RADIUS) {
+   489→        corner.meshes.push(m);
+   490→        corner.bbox.expandByObject(m);
+   491→        pieceSet.add(m);
+   492→        break;
+   493→      }
+   494→    }
+   495→  }
+   496→
+   497→  // ── build a pivot per corner ──
+   498→  let wheelRadius = 0.38;
+   499→  for (const corner of corners) {
+   500→    if (!corner.drive) continue;
+   501→    const centre = corner.bbox.getCenter(new THREE.Vector3());
+   502→    const sz = corner.bbox.getSize(new THREE.Vector3());
+   503→    wheelRadius = Math.max(wheelRadius, sz.y / 2);
+   504→
+   505→    // axle = thinnest horizontal axis
+   506→    const axis: "x" | "z" = sz.x <= sz.z ? "x" : "z";
+   507→    const pivot = new THREE.Group();
+   508→    pivot.name = `wheelPivot_${corner.key}`;
+   509→    pivot.rotation.order = axis === "x" ? "YXZ" : "YZX";
+   510→    pivot.userData.spinAxis = axis;
+   511→    pivot.position.copy(centre);
+   512→    wrapper.add(pivot);
+   513→    // attach() preserves world transforms — with the wrapper at identity the
+   514→    // mesh lands exactly at pivot-local (−centre), spinning on its own hub
+   515→    for (const mesh of corner.meshes) pivot.attach(mesh);
+   516→  }
+   517→
+   518→  return { wheelRadius };
+   519→}
+   520→
+   521→/** name patterns that mark a node as wheel hardware (mesh or ancestor) */
+   522→const WHEELISH = /wheel|brake|disc|caliper|tire|tyre|rim/i;
+   523→
+   524→/**
+   525→ * Replace an attribute with a plain non-interleaved Float32 copy.
+   526→ * getComponent() returns denormalized values, so quantized (normalized
+   527→ * integer) and interleaved attributes become safe for applyMatrix4().
+   528→ */
+   529→function dequantizeAttribute(geo: THREE.BufferGeometry, name: string): void {
+   530→  const attr = geo.getAttribute(name) as
+   531→    | THREE.BufferAttribute
+   532→    | THREE.InterleavedBufferAttribute
+   533→    | undefined;
+   534→  if (!attr) return;
+   535→  const plain = attr as unknown as {
+   536→    isInterleavedBufferAttribute?: boolean;
+   537→    normalized?: boolean;
+   538→    array: { constructor: Float32ArrayConstructor | Int16ArrayConstructor } & ArrayLike<number>;
+   539→  };
+   540→  if (
+   541→    !plain.isInterleavedBufferAttribute &&
+   542→    !plain.normalized &&
+   543→    plain.array instanceof Float32Array
+   544→  ) {
+   545→    return; // already a plain float attribute
+   546→  }
+   547→  const itemSize = attr.itemSize;
+   548→  const out = new Float32Array(attr.count * itemSize);
+   549→  for (let i = 0; i < attr.count; i++) {
+   550→    for (let c = 0; c < itemSize; c++) {
+   551→      out[i * itemSize + c] = attr.getComponent(i, c);
+   552→    }
+   553→  }
+   554→  geo.setAttribute(name, new THREE.BufferAttribute(out, itemSize));
+   555→}
+   556→
+   557→/** flat mesh name: own name if wheel-ish, else nearest wheel-ish ancestor + own */
+   558→function semanticName(mesh: THREE.Mesh, root: THREE.Object3D): string {
+   559→  const own = mesh.name ?? "";
+   560→  if (WHEELISH.test(own)) return own;
+   561→  let p: THREE.Object3D | null = mesh.parent;
+   562→  while (p && p !== root) {
+   563→    const n = p.name ?? "";
+   564→    if (WHEELISH.test(n)) return own ? `${n}_${own}` : n;
+   565→    p = p.parent;
+   566→  }
+   567→  return own;
+   568→}
+   569→
+   570→/**
+   571→ * Bake the wrapper's normalization transform (scale/rotation/ground offset)
+   572→ * into every geometry and reparent all meshes flat under the wrapper, which
+   573→ * is then reset to the identity transform. Kills frame mismatches between
+   574→ * baked geometry, pivot positions and spin axes — no matter how the source
+   575→ * model was oriented, scaled or flipped.
+   576→ */
+   577→function flattenTransforms(wrapper: THREE.Group, id = ""): void {
+   578→  wrapper.updateMatrixWorld(true);
+   579→  const meshes: THREE.Mesh[] = [];
+   580→  wrapper.traverse((o) => {
+   581→    const m = o as THREE.Mesh;
+   582→    if (m.isMesh && m.parent !== wrapper) meshes.push(m);
+   583→  });
+   584→  if (meshes.length === 0) return;
+   585→
+   586→  const copies: THREE.Mesh[] = [];
+   587→  for (const mesh of meshes) {
+   588→    mesh.updateWorldMatrix(true, false);
+   589→    if ((mesh as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+   590→      console.warn(`[CarModelLoader] skinned mesh "${mesh.name}" frozen to static pose`);
+   591→    }
+   592→    const geo = mesh.geometry.clone();
+   593→    // GLTF quantized models keep positions as NORMALIZED int16/int8 —
+   594→    // applyMatrix4() would truncate transformed floats back into the integer
+   595→    // array (geometry garbage). Convert to plain Float32 first.
+   596→    dequantizeAttribute(geo, "position");
+   597→    dequantizeAttribute(geo, "normal");
+   598→    dequantizeAttribute(geo, "tangent");
+   599→    geo.applyMatrix4(mesh.matrixWorld);
+   600→    const copy = new THREE.Mesh(geo, mesh.material);
+   601→    // keep wheel identity alive through flattening: meshes with generic
+   602→    // names (e.g. "Nismo-027001") inherit the nearest wheel-ish ancestor
+   603→    // name ("Wheel.Ft.L_...") so rigWheels can still find them
+   604→    copy.name = semanticName(mesh, wrapper);
+   605→    copies.push(copy);
+   606→  }
+   607→
+   608→  // drop the original hierarchy and make the wrapper the identity frame
+   609→  for (const child of [...wrapper.children]) wrapper.remove(child);
+   610→  wrapper.position.set(0, 0, 0);
+   611→  wrapper.rotation.set(0, 0, 0);
+   612→  wrapper.scale.setScalar(1);
+   613→  wrapper.updateMatrixWorld(true);
+   614→  for (const copy of copies) wrapper.add(copy);
+   615→
+   616→  // free the pre-bake geometries — the flat copies own their baked clones
+   617→  const disposed = new Set<THREE.BufferGeometry>();
+   618→  for (const mesh of meshes) {
+   619→    if (mesh.geometry && !disposed.has(mesh.geometry)) {
+   620→      disposed.add(mesh.geometry);
+   621→      mesh.geometry.dispose();
+   622→    }
+   623→  }
+   624→}
+   625→
+   626→/**
+   627→ * Remove meshes whose centre sits far outside the car volume — showcase
+   628→ * leftovers such as animation-pose ghost wheels hovering 28 m above the car.
+   629→ * They would otherwise drag wheel pivots sky-high, sweep through the road
+   630→ * while spinning and cast stray shadows.
+   631→ */
+   632→function sweepJunk(wrapper: THREE.Group, dims: CarDims): void {
+   633→  const halfW = dims.width / 2 + 0.6;
+   634→  const halfL = Math.max(dims.length, 1) / 2 + 0.6;
+   635→  const maxY = dims.topY + 0.8;
+   636→  for (const child of [...wrapper.children]) {
+   637→    const m = child as THREE.Mesh;
+   638→    if (!m.isMesh) continue;
+   639→    const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+   640→    if (c.y > maxY || c.y < -0.6 || Math.abs(c.x) > halfW || Math.abs(c.z) > halfL) {
+   641→      wrapper.remove(m);
+   642→      m.geometry.dispose();
+   643→      continue;
+   644→    }
+   645→    // flat ground-shadow quads (Sketchfab "carshadow") sit exactly on the
+   646→    // road plane and z-fight with it at speed
+   647→    if (/shadow/i.test(meshLabels(m)) && new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).y < 0.08) {
+   648→      wrapper.remove(m);
+   649→      m.geometry.dispose();
+   650→    }
+   651→  }
+   652→}
+   653→
+   654→/**
+   655→ * Strip the showcase environment that Sketchfab studio exports bake into
+   656→ * the file: a giant floor/ceiling/curtain box around the car plus far-away
+   657→ * props (banners, stands). They poison the bounding box used for
+   658→ * normalization (toy-car scale, wrong forward axis), so this runs BEFORE
+   659→ * any bbox math. Scale-invariant: thresholds are relative to mesh statistics.
+   660→ */
+   661→function pruneShowroom(root: THREE.Object3D): void {
+   662→  const meshes: THREE.Mesh[] = [];
+   663→  root.traverse((o) => {
+   664→    const m = o as THREE.Mesh;
+   665→    if (m.isMesh) meshes.push(m);
+   666→  });
+   667→  if (meshes.length < 4) return;
+   668→
+   669→  const boxes = new Map<THREE.Mesh, THREE.Box3>();
+   670→  const diags: number[] = [];
+   671→  for (const m of meshes) {
+   672→    const b = new THREE.Box3().setFromObject(m);
+   673→    if (b.isEmpty()) continue;
+   674→    boxes.set(m, b);
+   675→    diags.push(b.getSize(new THREE.Vector3()).length());
+   676→  }
+   677→  if (diags.length < 4) return;
+   678→  diags.sort((a, b) => a - b);
+   679→  const p90 = diags[Math.floor(diags.length * 0.9)];
+   680→
+   681→  // pass 1 — giants: showroom floor/ceiling/curtains dwarf every car part
+   682→  let alive = [...boxes.entries()].filter(
+   683→    ([, b]) => b.getSize(new THREE.Vector3()).length() <= p90 * 2,
+   684→  );
+   685→  if (alive.length === 0) return;
+   686→
+   687→  // pass 2 — far props: outside the dense car cluster around the centroid
+   688→  if (alive.length > 3) {
+   689→    const centroid = new THREE.Vector3();
+   690→    for (const [, b] of alive) centroid.add(b.getCenter(new THREE.Vector3()));
+   691→    centroid.multiplyScalar(1 / alive.length);
+   692→    const near = alive.filter(
+   693→      ([, b]) => b.getCenter(new THREE.Vector3()).distanceTo(centroid) < Math.max(p90 * 0.9, 0.5),
+   694→    );
+   695→    if (near.length >= 3 && near.length < alive.length) alive = near;
+   696→  }
+   697→
+   698→  const survivors = new Set(alive.map(([m]) => m));
+   699→  for (const m of meshes) {
+   700→    if (!boxes.has(m) || survivors.has(m)) continue;
+   701→    m.parent?.remove(m);
+   702→    m.geometry.dispose();
+   703→  }
+   704→}
+   705→
+   706→/** average world Z of meshes whose node/material names match `re` */
+   707→function lightCentreZ(root: THREE.Object3D, re: RegExp): number | null {
+   708→  let acc = 0;
+   709→  let n = 0;
+   710→  root.traverse((o) => {
+   711→    const m = o as THREE.Mesh;
+   712→    if (!m.isMesh || !re.test(meshLabels(m))) return;
+   713→    acc += new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()).z;
+   714→    n++;
+   715→  });
+   716→  return n > 0 ? acc / n : null;
+   717→}
+   718→
+   719→/** split a baked (identity-transform) mesh by a local x/z plane into halves */
+   720→function splitMeshByPlane(mesh: THREE.Mesh, axis: "x" | "z", splitAt: number): THREE.Mesh[] {
+   721→  const geo = mesh.geometry;
+   722→  const pos = geo.attributes.position as THREE.BufferAttribute;
+   723→  const idx = geo.index;
+   724→  const triCount = Math.floor((idx ? idx.count : pos.count) / 3);
+   725→  const coord = axis === "x" ? (i: number) => pos.getX(i) : (i: number) => pos.getZ(i);
+   726→
+   727→  const leftTris: number[] = [];
+   728→  const rightTris: number[] = [];
+   729→  for (let t = 0; t < triCount; t++) {
+   730→    const a = idx ? idx.getX(t * 3) : t * 3;
+   731→    const b = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
+   732→    const c = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+   733→    const centre = (coord(a) + coord(b) + coord(c)) / 3;
+   734→    (centre < splitAt ? leftTris : rightTris).push(a, b, c);
+   735→  }
+   736→
+   737→  const out: THREE.Mesh[] = [];
+   738→  for (const tris of [leftTris, rightTris]) {
+   739→    if (tris.length === 0) continue;
+   740→    const g = extractTriangles(geo, tris);
+   741→    const m = new THREE.Mesh(g, mesh.material);
+   742→    m.name = `${mesh.name}_${axis}half`;
+   743→    m.castShadow = true;
+   744→    mesh.parent?.add(m);
+   745→    out.push(m);
+   746→  }
+   747→  return out;
+   748→}
+   749→
+   750→function extractTriangles(geo: THREE.BufferGeometry, triIndices: number[]): THREE.BufferGeometry {
+   751→  const pos = geo.attributes.position as THREE.BufferAttribute;
+   752→  const nor = geo.attributes.normal as THREE.BufferAttribute | undefined;
+   753→  const uv = geo.attributes.uv as THREE.BufferAttribute | undefined;
+   754→  const remap = new Map<number, number>();
+   755→  const newPos: number[] = [];
+   756→  const newNor: number[] = [];
+   757→  const newUv: number[] = [];
+   758→  const newIndex: number[] = [];
+   759→  for (const vi of triIndices) {
+   760→    let ni = remap.get(vi);
+   761→    if (ni === undefined) {
+   762→      ni = newPos.length / 3;
+   763→      remap.set(vi, ni);
+   764→      newPos.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+   765→      if (nor) newNor.push(nor.getX(vi), nor.getY(vi), nor.getZ(vi));
+   766→      if (uv) newUv.push(uv.getX(vi), uv.getY(vi));
+   767→    }
+   768→    newIndex.push(ni);
+   769→  }
+   770→  const g = new THREE.BufferGeometry();
+   771→  g.setAttribute("position", new THREE.Float32BufferAttribute(newPos, 3));
+   772→  if (newNor.length) g.setAttribute("normal", new THREE.Float32BufferAttribute(newNor, 3));
+   773→  if (newUv.length) g.setAttribute("uv", new THREE.Float32BufferAttribute(newUv, 2));
+   774→  g.setIndex(newIndex);
+   775→  return g;
+   776→}
+   777→

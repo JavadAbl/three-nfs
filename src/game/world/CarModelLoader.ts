@@ -68,6 +68,7 @@ const CAR_DEFS: CarDef[] = [
   { id: "gtr", name: "NISSAN GT-R R35", modelUrl: "/models/nissan-gtr-r35.glb", spec: "NISMO · 600 HP" },
   { id: "audi", name: "AUDI TT RS", modelUrl: "/models/audi-tt-rs.glb", spec: "QUATTRO · 400 HP" },
   { id: "viper", name: "DODGE VIPER GTS", modelUrl: "/models/staging/dodge-viper-gts.glb", spec: "V10 · 450 HP" },
+  { id: "viper2", name: "DODGE VIPER SRT", modelUrl: "/models/staging/dodge-viper-v2.glb", spec: "V10 · 645 HP" },
   { id: "classic", name: "STREET MUSCLE", modelUrl: null, spec: "V8 · PROCEDURAL" },
 ];
 
@@ -196,6 +197,14 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
   // scale, wrong forward axis). Runs BEFORE any bbox math.
   pruneShowroom(scene);
 
+  // ── tag wheel-assembly groups BEFORE flatten ──
+  // Game rips (CSR2/Forza) carry each wheel as a multi-mesh assembly under a
+  // generically named group ("Object_4.001") whose tire mesh has no wheel-ish
+  // name at all. Renaming qualifying groups lets flatten's semanticName carry
+  // wheel identity down to EVERY child (tire, caps, badges) so the whole
+  // assembly spins with the rim.
+  tagWheelAssemblies(scene);
+
   // ── normalize: longest horizontal axis = forward (+Z), ground y=0 ──
   let bbox = new THREE.Box3().setFromObject(wrapper);
   if (bbox.getSize(new THREE.Vector3()).x > bbox.getSize(new THREE.Vector3()).z) {
@@ -280,8 +289,17 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     for (const m of mats) {
       const mn = m?.name ?? "";
       // "…_by_Author": Sketchfab materialmerger names the primary body
-      // material after the model — treat it as paint so garage colours work
-      if (m && (/carpaint/i.test(mn) || /(^|_)details$|(^|_)paint$/i.test(mn) || /by[_\s]/i.test(mn))) {
+      // material after the model — treat it as paint so garage colours work.
+      // "painted2"/"pickup": CSR2 game rips name the tintable body paint
+      // "<car>_painted<N>" / "pickup" (a leftover name, never "pickup_glass")
+      if (
+        m &&
+        (/carpaint/i.test(mn) ||
+          /(^|_)details$|(^|_)paint$/i.test(mn) ||
+          /by[_\s]/i.test(mn) ||
+          /painted/i.test(mn) ||
+          /(^|_)pickup$/i.test(mn))
+      ) {
         paintNames.add(m.name);
       }
     }
@@ -310,7 +328,7 @@ interface WheelAnchor {
  *  generic "Object_42" */
 const WHEEL_MAT = /wheel|tire|tyre|(^|[_\s\d])rim|rim($|[_\s\d.])|brake/i;
 /** wheel-ish material names that are NOT wheels (lights, signals, interior) */
-const MAT_EXCLUDE = /light|lamp|glow|steer|turn/i;
+const MAT_EXCLUDE = /light|lamp|glow|steer|turn|pedal/i;
 
 /** every semantic label of a mesh: node name + its material names */
 function meshLabels(m: THREE.Mesh): string {
@@ -400,6 +418,7 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
   wrapper.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
+    if (/pedal/i.test(meshLabels(m))) return; // gas/clutch/brake pedals are interior, not wheel hardware
     if (/brake|disc|cap|caliper/i.test(meshLabels(m))) {
       if (!pieces.some((p) => p.mesh === m)) addPiece(m, true);
     }
@@ -652,6 +671,45 @@ function sweepJunk(wrapper: THREE.Group, dims: CarDims): void {
 }
 
 /**
+ * Game rips (CSR2/Forza) ship each wheel as a multi-mesh assembly under a
+ * generically named group ("Object_4.001"): rim + brake + caliper carry
+ * wheel-ish names, but the tire ("Scene_-_Root") and caps/badges do not —
+ * without help they stay welded to the body while the rim spins inside them.
+ * A group whose DIRECT mesh children include >= 2 wheel-ish parts AND whose
+ * children span only a wheel-sized cluster (vs the whole scene — v1's OBJ
+ * container holds 58 meshes across the entire car) is a wheel assembly:
+ * renaming it lets semanticName()/WHEEL_MAT see every child as wheel
+ * hardware so the whole assembly is rigged to the corner pivot.
+ */
+function tagWheelAssemblies(root: THREE.Object3D): void {
+  const WHEELISH_GROUP = /wheel|tire|tyre|rim|brake|caliper|disc/i;
+  root.updateMatrixWorld(true);
+  const sceneDiag = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3()).length();
+  if (!(sceneDiag > 0)) return;
+  root.traverse((o) => {
+    const g = o as THREE.Group;
+    if (!g.children || g.children.length < 2) return;
+    if (WHEELISH_GROUP.test(g.name ?? "")) return;
+    let wheelish = 0;
+    let meshes = 0;
+    const box = new THREE.Box3();
+    for (const c of g.children) {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh) continue;
+      meshes++;
+      box.expandByObject(m);
+      const label = meshLabels(m);
+      if (WHEELISH_GROUP.test(label) && !MAT_EXCLUDE.test(label)) wheelish++;
+    }
+    if (meshes < 2 || wheelish < 2) return;
+    // containers (RootNode / OBJ merge roots) span the whole car — never tag
+    const span = box.getSize(new THREE.Vector3()).length();
+    if (span > 0.25 * sceneDiag) return;
+    g.name = `wheelAssy_${g.name ?? "group"}`;
+  });
+}
+
+/**
  * Strip the showcase environment that Sketchfab studio exports bake into
  * the file: a giant floor/ceiling/curtain box around the car plus far-away
  * props (banners, stands). They poison the bounding box used for
@@ -678,11 +736,26 @@ function pruneShowroom(root: THREE.Object3D): void {
   diags.sort((a, b) => a - b);
   const p90 = diags[Math.floor(diags.length * 0.9)];
 
-  // pass 1 — giants: showroom floor/ceiling/curtains dwarf every car part
+  // pass 1 — giants: a showroom floor/ceiling/curtain dwarfs EVERY car part.
+  // Detailed game rips have huge body shells that can trip a naive size
+  // filter, so giants are only pruned when they truly dwarf the largest
+  // surviving car part (ratio < 0.4). Otherwise the "giants" ARE the car.
   let alive = [...boxes.entries()].filter(
     ([, b]) => b.getSize(new THREE.Vector3()).length() <= p90 * 2,
   );
   if (alive.length === 0) return;
+  if (alive.length < boxes.size) {
+    const giantDiags = [...boxes.entries()]
+      .filter(([m]) => !alive.some(([am]) => am === m))
+      .map(([, b]) => b.getSize(new THREE.Vector3()).length());
+    const biggestCar = Math.max(
+      ...alive.map(([, b]) => b.getSize(new THREE.Vector3()).length()),
+    );
+    const smallestGiant = Math.min(...giantDiags);
+    if (biggestCar >= 0.4 * smallestGiant) {
+      alive = [...boxes.entries()]; // no real showroom here — keep everything
+    }
+  }
 
   // pass 2 — far props: outside the dense car cluster around the centroid
   if (alive.length > 3) {

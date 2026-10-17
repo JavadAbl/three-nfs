@@ -77,7 +77,13 @@ export function GameShell() {
       disposeGame();
       void (async () => {
         // ensure the selected (and rival) car models are in cache — instant if warm
-        await Promise.allSettled([loadCarModel(carId), loadCarModel("gtr"), loadCarModel("audi")]);
+        await Promise.allSettled([
+          loadCarModel(carId),
+          loadCarModel("gtr"),
+          loadCarModel("audi"),
+          loadCarModel("viper"),
+          loadCarModel("viper2"),
+        ]);
         launchingRef.current = false;
         if (!canvasRef.current) return; // unmounted while loading
         const game = new Game(

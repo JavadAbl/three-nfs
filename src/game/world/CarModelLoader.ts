@@ -67,8 +67,7 @@ export interface CarDef {
 const CAR_DEFS: CarDef[] = [
   { id: "gtr", name: "NISSAN GT-R R35", modelUrl: "/models/nissan-gtr-r35.glb", spec: "NISMO · 600 HP" },
   { id: "audi", name: "AUDI TT RS", modelUrl: "/models/audi-tt-rs.glb", spec: "QUATTRO · 400 HP" },
-  { id: "viper", name: "DODGE VIPER GTS", modelUrl: "/models/staging/dodge-viper-gts.glb", spec: "V10 · 450 HP" },
-  { id: "viper2", name: "DODGE VIPER SRT", modelUrl: "/models/staging/dodge-viper-v2.glb", spec: "V10 · 645 HP" },
+  { id: "viper", name: "DODGE VIPER SRT", modelUrl: "/models/staging/dodge-viper-srt.glb", spec: "V10 · 645 HP" },
   { id: "classic", name: "STREET MUSCLE", modelUrl: null, spec: "V8 · PROCEDURAL" },
 ];
 

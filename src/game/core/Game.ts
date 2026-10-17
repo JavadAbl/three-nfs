@@ -47,7 +47,7 @@ export interface GameOptions {
   mode: GameMode;
   playerName: string;
   carColor: string;
-  /** selected car id from CAR_LIBRARY ("gtr" | "audi" | "classic") */
+  /** selected car id from CAR_LIBRARY ("gtr" | "audi" | "viper" | "classic") */
   carId?: string;
   laps?: number;
   net?: NetClient | null;
@@ -195,7 +195,7 @@ export class Game {
     const playerGrid = total - 1;
     const carId = this.opts.carId ?? "classic";
     // AI rivals rotate through the other models for variety
-    const aiPool = ["gtr", "audi", "viper", "viper2", "classic"].filter((c) => c !== carId);
+    const aiPool = ["gtr", "audi", "viper", "classic"].filter((c) => c !== carId);
     for (let i = 0; i < total; i++) {
       let car: Car;
       if (i === playerGrid) {

@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { HudState, GameMode, RaceResultEntry } from "@/game/core/Game";
 import type { NetPlayer } from "@/game/net/NetClient";
+import { CAR_LIBRARY } from "@/game/world/CarModelLoader";
 
 export type Screen = "menu" | "lobby" | "countdown" | "racing" | "paused" | "results";
 
@@ -45,13 +46,22 @@ const LS_NAME = "three-nfs:name";
 const LS_COLOR = "three-nfs:color";
 const LS_CAR = "three-nfs:car";
 
+/** retired car ids → their replacement (GTS was dropped in favour of the SRT) */
+const LEGACY_CAR_IDS: Record<string, string> = { viper2: "viper" };
+
+/** map a persisted id onto a car that still exists in the garage */
+function resolvePersistedCar(raw: string | null): string {
+  const id = raw ? LEGACY_CAR_IDS[raw] ?? raw : "gtr";
+  return CAR_LIBRARY.some((c) => c.id === id) ? id : "gtr";
+}
+
 function loadPersisted() {
   if (typeof window === "undefined") return { name: "", color: "#f59e0b", car: "gtr" };
   try {
     return {
       name: window.localStorage.getItem(LS_NAME) ?? "",
       color: window.localStorage.getItem(LS_COLOR) ?? "#f59e0b",
-      car: window.localStorage.getItem(LS_CAR) ?? "gtr",
+      car: resolvePersistedCar(window.localStorage.getItem(LS_CAR)),
     };
   } catch {
     return { name: "", color: "#f59e0b", car: "gtr" };

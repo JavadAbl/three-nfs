@@ -4,6 +4,7 @@ import { DEFAULT_CAR_TUNING, type CarTuning } from "../cars/registry";
 import type { Track, TrackLocation } from "./Track";
 import type { CarControls } from "../core/Input";
 import { type CarModelInstance, type ModelWheel } from "./CarModelLoader";
+import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "./ProceduralMuscle";
 
 export type CarKind = "player" | "ai" | "remote";
 
@@ -241,47 +242,12 @@ export class Car {
   private buildProceduralVisual() {
     this.collHalfW = 1.05; // body 2.05 wide, wheels at ±0.95
     this.collHalfL = 2.35; // 4.6 long + bumpers
-    const paint = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(this.color),
-      metalness: 0.85,
-      roughness: 0.32,
-      clearcoat: 1,
-      clearcoatRoughness: 0.12,
-    });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.55, metalness: 0.4 });
-    const glass = new THREE.MeshPhysicalMaterial({
-      color: 0x090a12,
-      metalness: 0.9,
-      roughness: 0.08,
-      transparent: true,
-      opacity: 0.85,
-    });
 
-    // main body — muscle-car silhouette from stacked boxes
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.5, 4.6), paint);
-    body.position.y = 0.52;
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.34, 1.1), paint);
-    nose.position.set(0, 0.42, 2.05);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.42, 0.9), paint);
-    tail.position.set(0, 0.55, -2.2);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.5, 2.1), paint);
-    cabin.position.set(0, 0.98, -0.35);
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.42, 0.7), glass);
-    windshield.position.set(0, 1.0, 0.75);
-    windshield.rotation.x = -0.42;
-    const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.38, 0.55), glass);
-    rearGlass.position.set(0, 1.02, -1.42);
-    rearGlass.rotation.x = 0.5;
-    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.08, 0.5), dark);
-    spoiler.position.set(0, 1.15, -2.35);
-    const spoilerStand1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.3), dark);
-    spoilerStand1.position.set(0.7, 0.98, -2.3);
-    const spoilerStand2 = spoilerStand1.clone();
-    spoilerStand2.position.x = -0.7;
-    const sideSkirtL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 2.8), dark);
-    sideSkirtL.position.set(1.02, 0.34, 0);
-    const sideSkirtR = sideSkirtL.clone();
-    sideSkirtR.position.x = -1.02;
+    // shared muscle silhouette — the same builder the showroom turntable
+    // uses, so the car you preview in the garage is the car you drive
+    // (shell carries body + glass + trim; disposal via the traverse below)
+    const shell = buildMuscleBody(this.color);
+    this.bodyGroup.add(shell.root);
 
     // lights
     const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
@@ -360,36 +326,17 @@ export class Car {
     underglow.position.y = 0.09;
     underglow.renderOrder = 2;
 
-    // wheels
-    const tireGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.3, 14);
-    const rimGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.32, 10);
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.95 });
-    const rimMat = new THREE.MeshStandardMaterial({
-      color: 0xb8a06a,
-      metalness: 0.95,
-      roughness: 0.25,
-      emissive: 0x241a05,
-    });
-    for (const [x, z, front] of [
-      [0.95, 1.55, 1],
-      [-0.95, 1.55, 1],
-      [0.95, -1.6, 0],
-      [-0.95, -1.6, 0],
-    ] as [number, number, number][]) {
-      const wheel = new THREE.Group();
-      const tire = new THREE.Mesh(tireGeo, tireMat);
-      tire.rotation.z = Math.PI / 2;
-      const rim = new THREE.Mesh(rimGeo, rimMat);
-      rim.rotation.z = Math.PI / 2;
-      wheel.add(tire, rim);
-      wheel.position.set(x, 0.38, z);
-      (wheel as unknown as { isFront: boolean }).isFront = front === 1;
+    // wheels — shared builder (tire + gold rim), slots + front flags from
+    // the same single source the showroom preview uses
+    for (const [x, y, z, front] of MUSCLE_WHEEL_POS) {
+      const wheel = buildMuscleWheel();
+      wheel.position.set(x, y, z);
+      (wheel as unknown as { isFront: boolean }).isFront = front;
       this.wheels.push(wheel);
       this.bodyGroup.add(wheel);
     }
 
-    for (const m of [body, nose, tail, cabin, windshield, rearGlass, spoiler, spoilerStand1, spoilerStand2, sideSkirtL, sideSkirtR, headL, headR, tailL, tailR, this.brakeLights])
-      this.bodyGroup.add(m);
+    for (const m of [headL, headR, tailL, tailR, this.brakeLights]) this.bodyGroup.add(m);
     this.bodyGroup.add(underglow);
 
     this.attachHeadlightsAndLabel({ frontZ: 2.58, topY: 1.25, width: 2.05, length: 4.6 });

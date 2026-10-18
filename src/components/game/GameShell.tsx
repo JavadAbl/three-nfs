@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Game, type GameMode } from "@/game/core/Game";
 import { NetClient } from "@/game/net/NetClient";
-import { loadCarModel } from "@/game/world/CarModelLoader";
+import { loadCarModel, preloadAllCarModels } from "@/game/world/CarModelLoader";
 import { preloadCarIds } from "@/game/cars/registry";
 import { mapDef } from "@/game/maps/registry";
 import { useGameStore } from "@/stores/gameStore";
 import { HUD } from "@/components/game/HUD";
 import { MainMenu } from "@/components/game/MainMenu";
+import { OnlineBrowser } from "@/components/game/OnlineBrowser";
 import { OnlineLobby } from "@/components/game/OnlineLobby";
 import { ResultsScreen } from "@/components/game/ResultsScreen";
 import { TouchControls } from "@/components/game/TouchControls";
@@ -16,6 +17,7 @@ import { PauseOverlay } from "@/components/game/PauseOverlay";
 import { useToast } from "@/hooks/use-toast";
 import { Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { RoomVisibility } from "@/game/net/NetClient";
 
 interface StartRequest {
   mode: GameMode;
@@ -34,7 +36,6 @@ export function GameShell() {
   const playerName = useGameStore((s) => s.playerName);
   const carColor = useGameStore((s) => s.carColor);
   const carId = useGameStore((s) => s.carId);
-  const mapId = useGameStore((s) => s.mapId);
   const muted = useGameStore((s) => s.muted);
   const lobbyPlayers = useGameStore((s) => s.lobby.players);
   const setScreen = useGameStore((s) => s.setScreen);
@@ -49,11 +50,11 @@ export function GameShell() {
   const [raceSession, setRaceSession] = useState<StartRequest | null>(null);
   const launchingRef = useRef(false);
 
-  // warm the selected car's model while the user is in the menus (the full
-  // AI pool is loaded at launch) — derived from the registry, never listed
+  // warm the model cache while the user is in the menus (all registry cars —
+  // draco viper GLBs included — so the garage + countdown are instant)
   useEffect(() => {
-    void loadCarModel(carId).catch(() => {});
-  }, [carId]);
+    void preloadAllCarModels();
+  }, []);
 
   const disposeGame = useCallback(() => {
     gameRef.current?.quit();
@@ -73,16 +74,18 @@ export function GameShell() {
   }, [net]);
 
   // ── build the Game instance (canvas is always mounted, so handler-time creation is safe) ──
-  // online races run the circuit the HOST picked — not the local menu selection
   const launchGame = useCallback(
-    (m: GameMode, laps: number, netMapId?: string) => {
+    (m: GameMode, laps: number) => {
       if (!canvasRef.current || launchingRef.current) return;
       launchingRef.current = true;
       disposeGame();
-      const raceMapId = m === "online" && netMapId ? netMapId : mapId;
       void (async () => {
-        // ensure every car that can appear is cached: player + AI pool offline,
-        // player + whatever the lobby peers drive online
+        // map: online rooms use the host's pick, offline uses the wizard pick
+        const mapId = m === "online" ? useGameStore.getState().lobby.mapId : useGameStore.getState().mapId;
+        // ensure every car that can appear is cached: player + AI pool
+        // offline; player + whatever the lobby peers drive online —
+        // derived from the registry, never listed here
+        const lobbyPlayers = useGameStore.getState().lobby.players;
         const ids =
           m === "online"
             ? [carId, ...lobbyPlayers.map((p) => p.carId).filter((id) => id && id !== carId)]
@@ -97,7 +100,7 @@ export function GameShell() {
             playerName: playerName.trim() || "DRIVER",
             carColor,
             carId,
-            mapId: raceMapId,
+            mapId,
             laps,
             net: m === "online" ? netRef.current : null,
           },
@@ -122,8 +125,6 @@ export function GameShell() {
                   lapTimeMs: mine.bestLapMs,
                   mode: m,
                   carColor,
-                  carId,
-                  mapId: raceMapId,
                 }),
               }).catch(() => {});
             }
@@ -141,7 +142,7 @@ export function GameShell() {
       setRaceSession({ mode: m, laps });
       })();
     },
-    [disposeGame, playerName, carColor, carId, mapId, lobbyPlayers, muted, setHud, setCountdown, flashLap, setResults, setScreen]
+    [disposeGame, playerName, carColor, carId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
   );
 
   // ── pause / resume sync ──
@@ -182,9 +183,9 @@ export function GameShell() {
       setMode(m);
       setScreen("countdown");
       // laps default to the selected circuit's registry value
-      launchGame(m, mapDef(mapId)?.defaultLaps ?? 3);
+      launchGame(m, mapDef(useGameStore.getState().mapId)?.defaultLaps ?? 3);
     },
-    [requireName, setMode, setScreen, launchGame, mapId]
+    [requireName, setMode, setScreen, launchGame]
   );
 
   const handleQuitToMenu = useCallback(() => {
@@ -199,11 +200,30 @@ export function GameShell() {
     setScreen("menu");
   }, [disposeGame, setScreen]);
 
-  const handleOpenLobby = useCallback(() => {
+  const handleOpenBrowser = useCallback(() => {
     if (!requireName()) return;
     setMode("online");
-    setScreen("lobby");
+    setScreen("browser");
   }, [requireName, setMode, setScreen]);
+
+  // ── browser told us we're in a room (created or joined) ──
+  const handleEnterRoom = useCallback(
+    (roomId: string, isHost: boolean, visibility: RoomVisibility) => {
+      setLobby({ roomId, isHost, visibility, connected: true });
+      setScreen("lobby");
+    },
+    [setLobby, setScreen]
+  );
+
+  // ── kicked by the host: drop room state, land back in the browser ──
+  const handleKicked = useCallback(() => {
+    netRef.current?.leave();
+    netRef.current = null;
+    setNet(null);
+    setLobby({ roomId: "", isHost: false, players: [], connected: false });
+    toast({ title: "Kicked from room", description: "The host removed you from the grid." });
+    setScreen("browser");
+  }, [setLobby, setScreen, toast]);
 
   // ── leave the online room (destroys the NetClient + lobby state) ──
   const handleLeaveRoom = useCallback(() => {
@@ -214,11 +234,11 @@ export function GameShell() {
   }, [setLobby]);
 
   const handleRaceStarting = useCallback(
-    (laps: number, mapId: string) => {
-      // server says GO — build the game with net wiring on the host's circuit
-      setLobby({ laps, mapId });
+    (laps: number) => {
+      // server says GO — build the game with net wiring
+      setLobby({ laps });
       setScreen("countdown");
-      launchGame("online", laps, mapId || undefined);
+      launchGame("online", laps);
     },
     [setLobby, setScreen, launchGame]
   );
@@ -293,9 +313,19 @@ export function GameShell() {
         </div>
       )}
 
-      {screen === "menu" && <MainMenu onStart={startOffline} onOpenLobby={handleOpenLobby} />}
+      {screen === "menu" && <MainMenu onStart={startOffline} onOpenBrowser={handleOpenBrowser} />}
+      {screen === "browser" && (
+        <OnlineBrowser net={net} ensureNet={ensureNet} netRef={netRef} onBack={() => setScreen("menu")} onEnterRoom={handleEnterRoom} onNetReset={handleLeaveRoom} />
+      )}
       {screen === "lobby" && (
-        <OnlineLobby net={net} ensureNet={ensureNet} netRef={netRef} onBack={() => setScreen("menu")} onRaceStarting={handleRaceStarting} onLeaveRoom={handleLeaveRoom} />
+        <OnlineLobby
+          net={net}
+          netRef={netRef}
+          onBack={() => setScreen("browser")}
+          onRaceStarting={handleRaceStarting}
+          onLeaveRoom={handleLeaveRoom}
+          onKicked={handleKicked}
+        />
       )}
       {screen === "paused" && (
         <PauseOverlay

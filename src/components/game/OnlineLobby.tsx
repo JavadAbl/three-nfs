@@ -1,58 +1,65 @@
 "use client";
-// ─── Online lobby: create / join rooms, player list, host starts race ────────
+// ─── Online lobby: driver list, MY RIDE modal, READY gate, host controls ────
+// The host picks map + laps and can kick; everyone (host included) toggles
+// their own READY — START stays locked until the whole grid is ready.
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGameStore } from "@/stores/gameStore";
 import { NetClient } from "@/game/net/NetClient";
-import { CAR_COLORS } from "@/game/constants";
-import { MAP_LIBRARY, mapDef, resolveMapId } from "@/game/maps/registry";
-import { ArrowLeft, Crown, LogOut, MapPin, Play, Users, Wifi, WifiOff } from "lucide-react";
+import { MAPS, mapEntry } from "@/game/maps/registry";
+import { carEntry } from "@/game/cars/registry";
+import { MapSchematic } from "./MapSchematic";
+import { RideSelect } from "./RideSelect";
 import { useToast } from "@/hooks/use-toast";
+import {
+  ArrowLeft, CarFront, Check, Crown, Globe, LogOut, Lock, Play, Users, Wifi, WifiOff, X,
+} from "lucide-react";
 
 export function OnlineLobby({
   net,
-  ensureNet,
   netRef,
   onBack,
   onRaceStarting,
   onLeaveRoom,
+  onKicked,
 }: {
   net: NetClient | null;
-  ensureNet: () => NetClient | null;
   netRef: React.MutableRefObject<NetClient | null>;
   onBack: () => void;
-  onRaceStarting: (laps: number, mapId: string) => void;
+  onRaceStarting: (laps: number) => void;
   onLeaveRoom: () => void;
+  onKicked: () => void;
 }) {
-  const { playerName, setPlayerName, carColor, setCarColor, carId, mapId, setMapId, lobby, setLobby } = useGameStore();
+  const { carId, setCarId, carColor, setCarColor, lobby, setLobby } = useGameStore();
   const { toast } = useToast();
-  const [joinCode, setJoinCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const inRoom = lobby.roomId !== "";
+  const [rideModal, setRideModal] = useState(false);
   const startedRef = useRef(false);
+
+  const myId = netRef.current?.socket?.id ?? net?.socket?.id ?? "";
+  const me = lobby.players.find((p) => p.id === myId);
+  const allReady = lobby.players.length > 0 && lobby.players.every((p) => p.ready);
+  const notReadyCount = lobby.players.filter((p) => !p.ready).length;
+  const roomMap = mapEntry(lobby.mapId);
 
   // wire callbacks whenever the NetClient instance changes
   useEffect(() => {
     if (!net) return;
-    net.onPlayers = (players) => {
-      setLobby({ players });
-    };
+    net.onPlayers = (players) => setLobby({ players, hostId: net.hostId });
     net.onConnected = (connected) => setLobby({ connected });
-    net.onRoomMap = (roomMapId) => {
-      // the host's pick is authoritative — keep the menu selection in sync too
-      const resolved = resolveMapId(roomMapId || null);
-      setLobby({ mapId: resolved });
-      setMapId(resolved);
-    };
-    net.onRaceStart = (laps, mapId) => {
+    net.onRoomMap = (mapId) => setLobby({ mapId });
+    net.onRaceStart = (laps) => {
       if (startedRef.current) return;
       startedRef.current = true;
-      onRaceStarting(laps, mapId);
+      setRideModal(false);
+      onRaceStarting(laps);
     };
-    net.onError = (msg) => toast({ title: "Online error", description: msg, variant: "destructive" });
+    net.onError = (msg) => toast({ title: "Cannot start", description: msg, variant: "destructive" });
+    net.onKicked = () => {
+      startedRef.current = false;
+      setRideModal(false);
+      onKicked();
+    };
     net.onDisconnected = () => {
       if (!startedRef.current) {
         setLobby({ connected: false, roomId: "", players: [] });
@@ -61,230 +68,252 @@ export function OnlineLobby({
     };
     setLobby({ connected: net.connected });
     return () => {
-      // detach callbacks so a new NetClient can wire fresh ones
       if (netRef.current === net) return; // still active — keep handlers
     };
-  }, [net, netRef, setLobby, setMapId, toast, onRaceStarting]);
+  }, [net, netRef, setLobby, toast, onRaceStarting, onKicked]);
 
-  // car changed in the garage while sitting in a room → announce it
-  useEffect(() => {
-    if (inRoom && net?.connected) net.updateCar(carId);
-  }, [carId, inRoom, net]);
-
-  const ensureConnected = (): NetClient | null => ensureNet();
-
-  const handleCreate = async () => {
-    if (!playerName.trim()) return toast({ title: "Enter a driver name first" });
-    setBusy(true);
-    try {
-      const n = ensureConnected();
-      if (!n) throw new Error("Could not start connection");
-      await waitForSocket(n);
-      const roomId = await n.createRoom(playerName.trim(), carColor, carId, mapId);
-      setLobby({ roomId, isHost: true, players: [{ id: n.socket!.id, name: playerName.trim(), color: carColor, carId, ready: true }] });
-      toast({ title: "Room created", description: `Share code ${roomId} with your crew.` });
-    } catch (e) {
-      toast({ title: "Failed to create room", description: String((e as Error).message), variant: "destructive" });
-    } finally {
-      setBusy(false);
-    }
+  // live-push car/paint choices to the room
+  const changeCar = (id: string) => {
+    setCarId(id);
+    net?.updateCar(id);
+  };
+  const changeColor = (c: string) => {
+    setCarColor(c);
+    net?.updateColor(c);
   };
 
-  const handleJoin = async () => {
-    if (!playerName.trim()) return toast({ title: "Enter a driver name first" });
-    if (joinCode.trim().length < 4) return toast({ title: "Enter the 4-character room code" });
-    setBusy(true);
-    try {
-      const n = ensureConnected();
-      if (!n) throw new Error("Could not start connection");
-      await waitForSocket(n);
-      await n.joinRoom(joinCode, playerName.trim(), carColor, carId);
-      setLobby({ roomId: joinCode.trim().toUpperCase(), isHost: false });
-    } catch (e) {
-      toast({ title: "Could not join", description: String((e as Error).message), variant: "destructive" });
-    } finally {
-      setBusy(false);
-    }
+  const toggleReady = () => net?.setReady(!me?.ready);
+
+  const handleKick = (id: string) => {
+    net?.kickPlayer(id);
   };
 
   const handleStart = () => {
-    (net ?? netRef.current)?.startRace(lobby.laps);
-  };
-
-  // host-only: switch the room's circuit
-  const handlePickMap = (id: string) => {
-    setMapId(id);
-    setLobby({ mapId: id });
-    (net ?? netRef.current)?.setRoomMap(id);
+    if (!allReady) return;
+    net?.startRace(lobby.laps);
   };
 
   const handleLeave = () => {
     startedRef.current = false;
+    setRideModal(false);
     onLeaveRoom();
+    onBack();
   };
 
   return (
-    <div className="absolute inset-0 overflow-y-auto menu-bg">
-      <div className="min-h-full flex flex-col items-center justify-center px-4 py-10">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md space-y-4">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={onBack} className="border-zinc-700" aria-label="Back">
-              <ArrowLeft className="size-4" />
-            </Button>
-            <h2 className="logo-title text-3xl font-black italic">ONLINE</h2>
-            {inRoom && (
-              <span className={`ml-auto inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-full ${
-                lobby.connected ? "bg-amber-500/15 text-amber-400" : "bg-red-500/15 text-red-400"
-              }`}>
-                {lobby.connected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-                {lobby.connected ? "LIVE" : "OFFLINE"}
-              </span>
-            )}
+    <div className="absolute inset-0 overflow-hidden menu-bg flex flex-col select-none">
+      {/* header */}
+      <header className="shrink-0 flex items-center gap-3 px-6 sm:px-10 pt-5 pb-3">
+        <Button variant="outline" size="icon" onClick={handleLeave} className="border-zinc-700" aria-label="Leave room">
+          <ArrowLeft className="size-4" />
+        </Button>
+        <h2 className="logo-title text-2xl font-black italic">ROOM</h2>
+        <span className="font-mono text-2xl font-black tracking-[0.35em] text-amber-400">{lobby.roomId}</span>
+        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full ${
+          lobby.visibility === "public" ? "bg-emerald-500/15 text-emerald-400" : "bg-zinc-500/15 text-zinc-400"
+        }`}>
+          {lobby.visibility === "public" ? <Globe className="size-3" /> : <Lock className="size-3" />}
+          {lobby.visibility.toUpperCase()}
+        </span>
+        <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800">
+          <CarFront className="size-3 text-amber-500" /> {roomMap?.name ?? lobby.mapId.toUpperCase()}
+        </span>
+        <span className={`ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full ${
+          lobby.connected ? "bg-amber-500/15 text-amber-400" : "bg-red-500/15 text-red-400"
+        }`}>
+          {lobby.connected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
+          {lobby.connected ? "LIVE" : "OFFLINE"}
+        </span>
+      </header>
+
+      <div className="flex-1 min-h-0 flex gap-5 px-6 sm:px-10 pb-6">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex-1 min-w-0 flex flex-col rounded-xl border border-zinc-800/80 bg-zinc-950/70"
+        >
+          {/* grid header */}
+          <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800/80">
+            <Users className="size-4 text-amber-500" />
+            <span className="text-xs font-bold tracking-[0.3em] text-zinc-400">
+              {lobby.players.length} DRIVER{lobby.players.length === 1 ? "" : "S"} ON THE GRID
+            </span>
+            <span className="ml-auto text-[10px] font-mono text-zinc-600">
+              {allReady ? "ALL READY" : `${notReadyCount} NOT READY`}
+            </span>
           </div>
 
-          {!inRoom ? (
-            <>
-              <Card className="bg-zinc-950/85 border-zinc-800">
-                <CardContent className="p-4 space-y-4">
-                  <Input
-                    value={playerName}
-                    onChange={(e) => setPlayerName(e.target.value.slice(0, 16))}
-                    placeholder="DRIVER NAME"
-                    className="bg-zinc-900/80 border-amber-900/50 font-semibold tracking-wider"
-                    aria-label="Driver name"
-                  />
-                  <div className="grid grid-cols-8 gap-2">
-                    {CAR_COLORS.map((c) => (
-                      <button
-                        key={c.value}
-                        onClick={() => setCarColor(c.value)}
-                        aria-label={`Paint ${c.name}`}
-                        className={`swatch ${carColor === c.value ? "swatch-active" : ""}`}
-                        style={{ backgroundColor: c.value }}
-                      />
-                    ))}
-                  </div>
-                  <Button onClick={handleCreate} disabled={busy} className="menu-btn menu-btn-accent w-full py-3">
-                    <Play className="size-4 mr-2" /> CREATE ROOM
-                  </Button>
-                  <div className="flex gap-2">
-                    <Input
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value.toUpperCase().slice(0, 4))}
-                      placeholder="CODE"
-                      className="bg-zinc-900/80 border-zinc-700 font-mono text-lg tracking-[0.4em] uppercase w-32"
-                      aria-label="Room code"
-                    />
-                    <Button onClick={handleJoin} disabled={busy} className="menu-btn flex-1">
-                      JOIN
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-              <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
-                Rooms are hosted on this sandbox race server. Create a room, share the
-                4-letter code, and wait for your crew to join.
-              </p>
-            </>
-          ) : (
-            <Card className="bg-zinc-950/85 border-zinc-800">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between">
-                  <span className="text-sm font-bold tracking-[0.25em] text-zinc-400">ROOM</span>
-                  <span className="font-mono text-2xl font-black tracking-[0.35em] text-amber-400">
-                    {lobby.roomId}
+          {/* driver rows */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+            {lobby.players.map((p) => {
+              const car = carEntry(p.carId);
+              const isMe = p.id === myId;
+              const isHost = p.id === lobby.hostId;
+              return (
+                <div key={p.id} className={`lobby-player ${p.ready ? "lobby-player-ready" : ""}`}>
+                  <span className="size-3 rounded-full border border-black/50 shrink-0" style={{ backgroundColor: p.color }} />
+                  <span className="font-bold text-zinc-100 truncate">{p.name}</span>
+                  {isHost && <Crown className="size-3.5 text-amber-500 shrink-0" aria-label="Host" />}
+                  {isMe && <span className="text-[9px] font-black text-amber-500 tracking-widest shrink-0">YOU</span>}
+                  <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-black tracking-[0.18em] text-zinc-500 border border-zinc-800 rounded px-1.5 py-0.5 shrink-0">
+                    <CarFront className="size-3 text-amber-500/80" /> {car?.short ?? "?"}
                   </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2 text-xs text-zinc-400 font-semibold tracking-wider">
-                  <Users className="size-3.5 text-amber-500" />
-                  {lobby.players.length} DRIVER{lobby.players.length === 1 ? "" : "S"} IN LOBBY
-                </div>
-                <div className="flex items-center gap-2 text-xs text-zinc-400 font-semibold tracking-wider">
-                  <MapPin className="size-3.5 text-sky-400" />
-                  TRACK:
-                  <span className="text-zinc-100">{mapDef(lobby.mapId)?.name ?? "DOWNTOWN NEON"}</span>
-                </div>
-                <div className="space-y-1.5">
-                  {lobby.players.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 bg-zinc-900/70 rounded-md px-3 py-2.5">
-                      <span className="size-3 rounded-full border border-black/50" style={{ backgroundColor: p.color }} />
-                      <span className="flex-1 font-bold text-zinc-100 truncate">{p.name}</span>
-                      {p.id === netRef.current?.socket?.id ? (
-                        <span className="text-[10px] font-bold text-amber-500 tracking-widest">YOU</span>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-
-                {lobby.isHost ? (
-                  <div className="space-y-3 pt-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Crown className="size-3.5 text-amber-500" />
-                      <span className="text-xs text-zinc-400 tracking-wider font-semibold">HOST CONTROLS</span>
-                      <span className="ml-auto flex gap-1">
-                        {[2, 3, 5].map((l) => (
-                          <button
-                            key={l}
-                            onClick={() => setLobby({ laps: l })}
-                            className={`lap-pick ${lobby.laps === l ? "lap-pick-active" : ""}`}
-                          >
-                            {l}
-                          </button>
-                        ))}
-                      </span>
-                    </div>
-                    <div className="flex gap-1.5">
-                      {MAP_LIBRARY.map((m) => (
-                        <button
-                          key={m.id}
-                          onClick={() => handlePickMap(m.id)}
-                          className={`lap-pick flex-1 !px-2 !text-[10px] ${lobby.mapId === m.id ? "lap-pick-active" : ""}`}
-                          title={m.description}
-                        >
-                          {m.name}
-                        </button>
-                      ))}
-                    </div>
-                    <Button
-                      onClick={handleStart}
-                      className="menu-btn menu-btn-accent w-full py-3.5 text-base"
+                  <span
+                    className={`inline-flex items-center gap-1 text-[9px] font-black tracking-[0.18em] px-1.5 py-0.5 rounded shrink-0 ${
+                      p.ready ? "bg-emerald-500/15 text-emerald-400" : "bg-zinc-800 text-zinc-500"
+                    }`}
+                  >
+                    {p.ready ? (
+                      <>
+                        <Check className="size-3" /> READY
+                      </>
+                    ) : (
+                      "NOT READY"
+                    )}
+                  </span>
+                  {lobby.isHost && !isMe && (
+                    <button
+                      onClick={() => handleKick(p.id)}
+                      aria-label={`Kick ${p.name}`}
+                      className="p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
                     >
-                      <Play className="size-5 mr-2" /> START RACE
-                    </Button>
-                    <p className="text-[11px] text-zinc-500 text-center">
-                      {lobby.players.length < 2
-                        ? "You can test alone, or share the code above to race friends."
-                        : "Everyone gets a 3-2-1 countdown when you start."}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="text-center py-3 border border-dashed border-zinc-700 rounded-md">
-                    <p className="text-sm text-zinc-300 font-semibold">Waiting for host to start…</p>
-                    <p className="text-[11px] text-zinc-500 mt-1">Keep this tab open.</p>
-                  </div>
-                )}
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-                <Button variant="outline" onClick={handleLeave} className="w-full border-zinc-700">
-                  <LogOut className="size-4 mr-2" /> LEAVE ROOM
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          {/* footer: my ride + ready */}
+          <div className="shrink-0 p-3 border-t border-zinc-800/80 flex gap-3">
+            <Button variant="outline" onClick={() => setRideModal(true)} className="border-zinc-700 flex-1 h-10">
+              <CarFront className="size-4 mr-2 text-amber-500" /> MY RIDE
+              <span className="ml-2 text-[9px] font-black tracking-[0.18em] text-zinc-500">
+                {carEntry(carId)?.short}
+              </span>
+            </Button>
+            <Button
+              onClick={toggleReady}
+              className={`menu-btn h-10 flex-1 ${me?.ready ? "menu-btn-accent" : ""}`}
+            >
+              <Check className="size-4" /> {me?.ready ? "READY" : "READY UP"}
+            </Button>
+          </div>
         </motion.div>
+
+        {/* right column: host controls / waiting */}
+        <div className="w-[340px] shrink-0 flex flex-col gap-5">
+          {lobby.isHost ? (
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-4 space-y-3 flex-1 flex flex-col"
+            >
+              <div className="flex items-center gap-2">
+                <Crown className="size-4 text-amber-500" />
+                <span className="text-xs font-bold tracking-[0.3em] text-zinc-400">HOST CONTROLS</span>
+                <span className="ml-auto flex gap-1">
+                  {[2, 3, 5].map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => setLobby({ laps: l })}
+                      className={`lap-pick ${lobby.laps === l ? "lap-pick-active" : ""}`}
+                      aria-label={`${l} laps`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {MAPS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => net?.setRoomMap(m.id)}
+                    className={`map-mini ${lobby.mapId === m.id ? "map-mini-active" : ""}`}
+                    aria-label={`Track ${m.name}`}
+                  >
+                    <MapSchematic map={m} className="w-10 h-10 text-amber-400/70" />
+                    <span className="text-[8px] font-black tracking-[0.12em] mt-1">{m.name.split(" ")[0]}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-auto space-y-2">
+                <Button
+                  onClick={handleStart}
+                  disabled={!allReady}
+                  className="menu-btn menu-btn-accent w-full py-3.5 text-base disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Play className="size-5" /> START RACE
+                </Button>
+                <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
+                  {allReady
+                    ? lobby.players.length < 2
+                      ? "Solo grid — green light when you fire."
+                      : "Full grid ready — drop the flag."
+                    : `START unlocks when all ${lobby.players.length} drivers are READY.`}
+                </p>
+              </div>
+            </motion.section>
+          ) : (
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-dashed border-zinc-700/80 p-6 flex-1 flex flex-col items-center justify-center text-center gap-2"
+            >
+              <Users className="size-8 text-zinc-600" />
+              <p className="text-sm text-zinc-300 font-semibold">Waiting for the host…</p>
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                Tune your ride, hit READY, and keep this tab open.
+                <br />
+                The race fires the moment the host starts it.
+              </p>
+            </motion.section>
+          )}
+
+          <Button variant="outline" onClick={handleLeave} className="border-zinc-700 py-2.5">
+            <LogOut className="size-4 mr-2" /> LEAVE ROOM
+          </Button>
+        </div>
       </div>
+
+      {/* ── MY RIDE modal ── */}
+      {rideModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl p-5 flex flex-col gap-4"
+          >
+            <div className="flex items-center gap-3">
+              <CarFront className="size-5 text-amber-500" />
+              <span className="text-sm font-black tracking-[0.3em] text-zinc-300">MY RIDE</span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setRideModal(false)}
+                className="ml-auto border-zinc-700 h-8 w-8"
+                aria-label="Close"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+            <RideSelect
+              compact
+              carId={carId}
+              onCarId={changeCar}
+              color={carColor}
+              onColor={changeColor}
+            />
+            <p className="text-[10px] text-zinc-600 text-center">
+              Car and paint broadcast to the room instantly — the grid updates for everyone.
+            </p>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
-}
-
-function waitForSocket(net: NetClient): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (net.socket?.connected) return resolve();
-    const t = setTimeout(() => reject(new Error("Race server unreachable")), 8000);
-    net.socket?.once("connect", () => {
-      clearTimeout(t);
-      resolve();
-    });
-  });
 }

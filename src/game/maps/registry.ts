@@ -216,6 +216,32 @@ export const MAP_LIBRARY: MapDef[] = [
       [-18, 0, -10],
     ],
   },
+  {
+    // ported from the local menu line — big-elevation GP circuit
+    id: "skyline",
+    name: "SKYLINE GP",
+    description: "2.9 KM · fast sweepers · big climbs",
+    points: [
+      [0, 0, 0],
+      [90, 0, -10],
+      [170, 2, -44],
+      [210, 5, -110],
+      [200, 8, -190],
+      [140, 10, -240],
+      [60, 10, -260],
+      [-20, 8, -250],
+      [-80, 6, -208],
+      [-140, 6, -160],
+      [-210, 7, -170],
+      [-270, 6, -206],
+      [-310, 4, -160],
+      [-320, 3, -92],
+      [-285, 2, -30],
+      [-220, 1, 4],
+      [-140, 0, 14],
+      [-70, 0, 10],
+    ],
+  },
 ];
 
 export const DEFAULT_MAP_ID = "downtown";
@@ -223,6 +249,11 @@ export const DEFAULT_MAP_ID = "downtown";
 export function mapDef(id: string | undefined): MapDef | undefined {
   return MAP_LIBRARY.find((m) => m.id === id);
 }
+
+// ─── display aliases (menu / lobby / browser UI layer) ─────────────────────
+export type MapEntry = MapDef;
+export const MAPS = MAP_LIBRARY;
+export const mapEntry = mapDef;
 
 /** resolve a persisted/foreign id onto a map that exists (fallback: default) */
 export function resolveMapId(raw: string | null | undefined): string {

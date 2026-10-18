@@ -1,17 +1,18 @@
 "use client";
-// ─── Main menu: mode select, garage, leaderboard ─────────────────────────────
+// ─── Main menu: mode screen + segmented no-scroll setup wizard ───────────────
+// Desktop layout is a fixed 16:9-style frame — never scrolls. Flow:
+//   MODE screen (quick / trial / online + records sidebar)
+//   → wizard: 1 TRACK → 2 RIDE (name + paint live here) → GO
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CAR_COLORS } from "@/game/constants";
-import { CAR_LIBRARY } from "@/game/cars/registry";
-import { MAP_LIBRARY, approxTrackKm, mapDef } from "@/game/maps/registry";
 import { fmtTime } from "@/game/core/Game";
 import { useGameStore } from "@/stores/gameStore";
-import { Trophy, Wifi, Timer, Gauge, User, CarFront, MapPin } from "lucide-react";
+import { MAPS } from "@/game/maps/registry";
+import { MapSchematic } from "./MapSchematic";
+import { RideSelect } from "./RideSelect";
+import { ArrowLeft, Gauge, Play, Timer, Trophy, Wifi } from "lucide-react";
 
 interface LapRecord {
   id: string;
@@ -19,16 +20,21 @@ interface LapRecord {
   lapTimeMs: number;
   mode: string;
   carColor: string;
-  carId: string | null;
-  mapId: string | null;
   createdAt: string;
 }
 
-export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "trial") => void; onOpenLobby: () => void }) {
+export function MainMenu({
+  onStart,
+  onOpenBrowser,
+}: {
+  onStart: (mode: "quick" | "trial") => void;
+  onOpenBrowser: () => void;
+}) {
   const { playerName, setPlayerName, carColor, setCarColor, carId, setCarId, mapId, setMapId } = useGameStore();
   const [records, setRecords] = useState<LapRecord[]>([]);
-  const [tab, setTab] = useState<"garage" | "board">("garage");
-  const selectedMap = mapDef(mapId);
+  const [stage, setStage] = useState<"mode" | "setup">("mode");
+  const [pendingMode, setPendingMode] = useState<"quick" | "trial">("quick");
+  const [step, setStep] = useState<"map" | "car">("map");
 
   useEffect(() => {
     fetch("/api/records")
@@ -37,214 +43,181 @@ export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "
       .catch(() => setRecords([]));
   }, []);
 
+  const enterSetup = (m: "quick" | "trial") => {
+    setPendingMode(m);
+    setStep("map");
+    setStage("setup");
+  };
+
   return (
-    <div className="absolute inset-0 overflow-y-auto menu-bg">
-      <div className="min-h-full flex flex-col items-center justify-center px-4 py-10">
-        {/* ── logo ── */}
-        <motion.div
-          initial={{ opacity: 0, y: -24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-8"
-        >
-          <h1 className="logo-title text-5xl sm:text-7xl font-black italic tracking-tight">
-            THREE<span className="text-amber-500">·</span>NFS
-          </h1>
-          <p className="mt-2 text-[11px] sm:text-xs tracking-[0.5em] text-zinc-500 font-semibold">
-            NIGHT CITY RACING — BAREBONE EDITION
-          </p>
-        </motion.div>
+    <div className="absolute inset-0 overflow-hidden menu-bg flex flex-col select-none">
+      {/* ── header ── */}
+      <header className="shrink-0 flex items-center gap-4 px-6 sm:px-10 pt-5 pb-3">
+        <h1 className="logo-title text-3xl sm:text-4xl font-black italic tracking-tight">
+          THREE<span className="text-amber-500">·</span>NFS
+        </h1>
+        <p className="hidden md:block text-[9px] tracking-[0.45em] text-zinc-600 font-semibold mt-1">
+          NIGHT CITY RACING — BAREBONE EDITION
+        </p>
+        <div className="ml-auto flex items-center gap-2 text-[10px] font-bold tracking-[0.2em]">
+          <span className="text-zinc-600">DRIVER</span>
+          <span className="hud-chip text-amber-400">{playerName.trim() || "UNNAMED"}</span>
+        </div>
+      </header>
 
-        {/* ── driver tag ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="w-full max-w-md space-y-5"
-        >
-          <div className="flex items-center gap-2">
-            <User className="size-4 text-amber-500 shrink-0" />
-            <Input
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value.slice(0, 16))}
-              placeholder="DRIVER NAME"
-              className="bg-zinc-950/70 border-amber-900/50 focus-visible:ring-amber-500/40 font-semibold tracking-wider"
-              aria-label="Driver name"
-            />
-          </div>
-
-          {/* ── tabs ── */}
-          <div className="flex gap-2">
-            <Button
-              variant={tab === "garage" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTab("garage")}
-              className={tab === "garage" ? "bg-amber-500 text-black hover:bg-amber-400" : "border-zinc-700"}
+      {/* ── body ── */}
+      <div className="flex-1 min-h-0 flex px-6 sm:px-10 pb-6 gap-6">
+        <AnimatePresence mode="wait" initial={false}>
+          {stage === "mode" ? (
+            <motion.div
+              key="mode"
+              initial={{ opacity: 0, x: -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.25 }}
+              className="flex-1 min-h-0 flex gap-6"
             >
-              GARAGE
-            </Button>
-            <Button
-              variant={tab === "board" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTab("board")}
-              className={tab === "board" ? "bg-amber-500 text-black hover:bg-amber-400" : "border-zinc-700"}
-            >
-              <Trophy className="size-3.5 mr-1" /> RECORDS
-            </Button>
-          </div>
+              {/* mode column */}
+              <div className="flex-1 max-w-xl flex flex-col justify-center gap-4">
+                <ModeCard
+                  onClick={() => enterSetup("quick")}
+                  icon={<Gauge className="size-6" />}
+                  title="QUICK RACE"
+                  subtitle="3 laps · 3 AI rivals · any circuit"
+                />
+                <ModeCard
+                  onClick={() => enterSetup("trial")}
+                  icon={<Timer className="size-6" />}
+                  title="TIME TRIAL"
+                  subtitle="Solo hot lap · chase the record"
+                />
+                <ModeCard
+                  onClick={onOpenBrowser}
+                  icon={<Wifi className="size-6" />}
+                  title="ONLINE RACE"
+                  subtitle="Public server list · or a private code room"
+                  accent
+                />
+                <p className="text-[10px] text-zinc-600 tracking-wider leading-relaxed px-1">
+                  Controls: <b className="text-zinc-400">WASD</b> drive · <b className="text-zinc-400">SPACE</b> drift ·{" "}
+                  <b className="text-zinc-400">SHIFT</b> nitro · <b className="text-zinc-400">C</b> camera ·{" "}
+                  <b className="text-zinc-400">R</b> reset · <b className="text-zinc-400">ESC</b> pause
+                </p>
+              </div>
 
-          <Card className="bg-zinc-950/80 border-zinc-800/80">
-            <CardContent className="p-4">
-              {tab === "garage" ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">TRACK</span>
-                    <span className="text-xs font-bold tracking-wider text-amber-400">
-                      {selectedMap?.name ?? "—"}
-                    </span>
+              {/* records sidebar */}
+              <aside className="w-72 shrink-0 hidden lg:flex flex-col rounded-xl border border-zinc-800/80 bg-zinc-950/70">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800/80">
+                  <Trophy className="size-4 text-amber-500" />
+                  <span className="text-xs font-bold tracking-[0.3em] text-zinc-400">RECORDS</span>
+                  <span className="ml-auto text-[10px] font-mono text-zinc-600">{records.length}</span>
+                </div>
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="p-3 space-y-1.5">
+                    {records.length === 0 ? (
+                      <p className="text-xs text-zinc-600 text-center py-8 leading-relaxed">
+                        No lap records yet.
+                        <br />
+                        Go set one.
+                      </p>
+                    ) : (
+                      records.slice(0, 12).map((r, i) => (
+                        <div key={r.id} className="flex items-center gap-2 text-xs bg-zinc-900/60 rounded-md px-2.5 py-1.5">
+                          <span className="w-5 text-zinc-600 font-mono">{i + 1}.</span>
+                          <span className="size-2.5 rounded-full shrink-0 border border-black/40" style={{ backgroundColor: r.carColor }} />
+                          <span className="flex-1 truncate font-semibold text-zinc-200">{r.playerName}</span>
+                          <span className="font-mono text-amber-400 tabular-nums">{fmtTime(r.lapTimeMs)}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {MAP_LIBRARY.map((m) => (
+                </ScrollArea>
+              </aside>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="setup"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 24 }}
+              transition={{ duration: 0.25 }}
+              className="flex-1 min-h-0 flex flex-col gap-3"
+            >
+              {/* step crumbs */}
+              <div className="shrink-0 flex items-center gap-3">
+                <Button variant="outline" size="icon" onClick={() => (step === "car" ? setStep("map") : setStage("mode"))} className="border-zinc-700 h-8 w-8" aria-label="Back">
+                  <ArrowLeft className="size-4" />
+                </Button>
+                <StepCrumb n={1} label="TRACK" active={step === "map"} done={step === "car"} />
+                <span className="text-zinc-700 font-black">›</span>
+                <StepCrumb n={2} label="RIDE" active={step === "car"} />
+                <span className="text-zinc-700 font-black">›</span>
+                <StepCrumb n={3} label="RACE" active={false} />
+                <span className="ml-auto text-[10px] font-bold tracking-[0.25em] text-zinc-600">
+                  {pendingMode === "quick" ? "QUICK RACE" : "TIME TRIAL"}
+                </span>
+              </div>
+
+              {step === "map" ? (
+                <div className="flex-1 min-h-0 flex flex-col gap-3">
+                  <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
+                    {MAPS.map((m) => (
                       <button
                         key={m.id}
                         onClick={() => setMapId(m.id)}
-                        aria-label={`Select track ${m.name}`}
+                        aria-label={`Select ${m.name}`}
                         className={`map-card ${mapId === m.id ? "map-card-active" : ""}`}
                       >
-                        <MapThumb points={m.points} />
-                        <span className="block text-[11px] font-black italic tracking-wide leading-tight">
-                          {m.name}
-                        </span>
-                        <span className="block text-[9px] text-zinc-500 tracking-wider mt-0.5">
-                          {approxTrackKm(m.points)} KM · {m.defaultLaps ?? 3} LAPS
-                        </span>
+                        <MapSchematic map={m} className="w-full flex-1 min-h-0 text-amber-400/70" />
+                        <div className="shrink-0 pt-2 text-left">
+                          <div className="text-sm font-black italic tracking-wide">{m.name}</div>
+                          <div className="text-[9px] text-zinc-500 tracking-[0.18em] font-bold mt-0.5">{m.description}</div>
+                        </div>
                       </button>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">RIDE</span>
-                    <span className="text-xs font-bold tracking-wider text-amber-400">
-                      {CAR_LIBRARY.find((c) => c.id === carId)?.name ?? "—"}
-                    </span>
+                  <div className="shrink-0 flex items-center gap-3">
+                    <p className="text-[11px] text-zinc-500 leading-relaxed flex-1">
+                      {MAPS.find((m) => m.id === mapId)?.name} — {MAPS.find((m) => m.id === mapId)?.description}.
+                      {pendingMode === "trial" ? " Time trial runs this circuit solo; your best lap goes on the board." : " 3 laps against 3 AI rivals."}
+                    </p>
+                    <Button onClick={() => setStep("car")} className="menu-btn menu-btn-accent px-8 py-3 text-base">
+                      NEXT: PICK RIDE <Play className="size-4 ml-1" />
+                    </Button>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {CAR_LIBRARY.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setCarId(c.id)}
-                        aria-label={`Select ${c.name}`}
-                        className={`car-card ${carId === c.id ? "car-card-active" : ""}`}
-                      >
-                        <CarFront className="size-4 mx-auto mb-1.5 text-amber-500/80" />
-                        <span className="block text-[11px] font-black italic tracking-wide leading-tight">
-                          {c.name}
-                        </span>
-                        <span className="block text-[9px] text-zinc-500 tracking-wider mt-0.5">
-                          {c.spec}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">PAINT</span>
-                    <span
-                      className="text-xs font-bold tracking-wider"
-                      style={{ color: carColor }}
-                    >
-                      {CAR_COLORS.find((c) => c.value === carColor)?.name ?? "CUSTOM"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-8 gap-2">
-                    {CAR_COLORS.map((c) => (
-                      <button
-                        key={c.value}
-                        onClick={() => setCarColor(c.value)}
-                        aria-label={`Paint ${c.name}`}
-                        className={`swatch ${carColor === c.value ? "swatch-active" : ""}`}
-                        style={{ backgroundColor: c.value }}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Pick a ride, choose your paint and hit the grid. Controls: <b className="text-zinc-300">WASD</b> drive,{" "}
-                    <b className="text-zinc-300">SPACE</b> drift,{" "}
-                    <b className="text-zinc-300">SHIFT</b> nitro,{" "}
-                    <b className="text-zinc-300">C</b> camera,{" "}
-                    <b className="text-zinc-300">R</b> reset.
-                  </p>
                 </div>
               ) : (
-                <ScrollArea className="h-44">
-                  {records.length === 0 ? (
-                    <p className="text-sm text-zinc-500 text-center py-8">
-                      No lap records yet — go set one.
+                <div className="flex-1 min-h-0 flex flex-col gap-3">
+                  <RideSelect
+                    carId={carId}
+                    onCarId={setCarId}
+                    color={carColor}
+                    onColor={setCarColor}
+                    name={playerName}
+                    onName={setPlayerName}
+                  />
+                  <div className="shrink-0 flex items-center gap-3">
+                    <p className="text-[11px] text-zinc-500 leading-relaxed flex-1">
+                      Paint and driver tag apply instantly — your name rides the leaderboard.
                     </p>
-                  ) : (
-                    <div className="space-y-1.5 pr-2">
-                      {records.map((r, i) => (
-                        <div
-                          key={r.id}
-                          className="flex items-center gap-2 text-sm bg-zinc-900/60 rounded-md px-2.5 py-1.5"
-                        >
-                          <span className="w-6 text-zinc-500 font-mono">{i + 1}.</span>
-                          <span
-                            className="size-2.5 rounded-full shrink-0 border border-black/40"
-                            style={{ backgroundColor: r.carColor }}
-                          />
-                          <span className="flex-1 truncate font-semibold text-zinc-200">
-                            {r.playerName}
-                            {r.mapId && mapDef(r.mapId) && (
-                              <span className="ml-1.5 text-[9px] font-bold tracking-wider text-zinc-500 align-middle">
-                                <MapPin className="inline size-2.5 mr-0.5 -mt-0.5" />
-                                {mapDef(r.mapId)!.name}
-                              </span>
-                            )}
-                          </span>
-                          <span className="font-mono text-amber-400 tabular-nums">
-                            {fmtTime(r.lapTimeMs)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
+                    <Button
+                      onClick={() => onStart(pendingMode)}
+                      className="menu-btn menu-btn-accent px-10 py-3.5 text-lg"
+                    >
+                      <Play className="size-5" /> GO
+                    </Button>
+                  </div>
+                </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* ── race mode buttons ── */}
-          <div className="grid gap-3">
-            <MenuButton
-              onClick={() => onStart("quick")}
-              icon={<Gauge className="size-5" />}
-              title="QUICK RACE"
-              subtitle={`${selectedMap?.defaultLaps ?? 3} laps · 3 AI rivals · ${(selectedMap?.name ?? "night circuit").toLowerCase()}`}
-            />
-            <MenuButton
-              onClick={() => onStart("trial")}
-              icon={<Timer className="size-5" />}
-              title="TIME TRIAL"
-              subtitle="Solo hot lap · chase the record"
-            />
-            <MenuButton
-              onClick={onOpenLobby}
-              icon={<Wifi className="size-5" />}
-              title="ONLINE RACE"
-              subtitle="Create or join a room · race friends"
-              accent
-            />
-          </div>
-
-          <p className="text-[10px] text-zinc-600 text-center tracking-wider pb-2">
-            An original NFS-Carbon-inspired arcade racer · three.js + Next.js
-          </p>
-        </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-function MenuButton({
+function ModeCard({
   onClick,
   icon,
   title,
@@ -258,51 +231,28 @@ function MenuButton({
   accent?: boolean;
 }) {
   return (
-    <Button
-      onClick={onClick}
-      className={`menu-btn h-auto py-3.5 px-4 justify-start group ${
-        accent ? "menu-btn-accent" : ""
-      }`}
-    >
-      <span className="mr-3 p-2 rounded-md bg-black/50 text-amber-500 group-hover:scale-110 transition-transform">
-        {icon}
-      </span>
+    <Button onClick={onClick} className={`menu-btn h-auto py-4 px-5 justify-start group ${accent ? "menu-btn-accent" : ""}`}>
+      <span className="mr-4 p-2.5 rounded-md bg-black/50 text-amber-500 group-hover:scale-110 transition-transform">{icon}</span>
       <span className="text-left">
-        <span className="block text-base font-black italic tracking-wide">{title}</span>
+        <span className="block text-lg font-black italic tracking-wide">{title}</span>
         <span className="block text-[11px] font-medium text-zinc-400 tracking-wide">{subtitle}</span>
       </span>
     </Button>
   );
 }
 
-/** plan-view circuit thumbnail rendered straight from registry control points */
-function MapThumb({ points }: { points: [number, number, number][] }) {
-  const xs = points.map((p) => p[0]);
-  const zs = points.map((p) => p[2]);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minZ = Math.min(...zs);
-  const maxZ = Math.max(...zs);
-  const w = maxX - minX || 1;
-  const h = maxZ - minZ || 1;
-  const scale = Math.min(84 / w, 44 / h);
-  const offX = 50 - (minX + w / 2) * scale;
-  const offY = 30 - (minZ + h / 2) * scale;
-  const px = (x: number, z: number) => `${(x * scale + offX).toFixed(1)},${(z * scale + offY).toFixed(1)}`;
-  // close the loop visually by repeating the first point
-  const path = [...points, points[0]].map((p) => px(p[0], p[2])).join(" ");
+function StepCrumb({ n, label, active, done }: { n: number; label: string; active: boolean; done?: boolean }) {
   return (
-    <svg viewBox="0 0 100 60" className="w-full h-14 block mb-1" aria-hidden="true">
-      <polyline
-        points={path}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        opacity="0.85"
-      />
-      <circle cx={points[0][0] * scale + offX} cy={points[0][2] * scale + offY} r="3" fill="currentColor" />
-    </svg>
+    <span
+      className={`inline-flex items-center gap-1.5 text-[11px] font-black tracking-[0.22em] px-2.5 py-1 rounded-md border ${
+        active
+          ? "border-amber-500/70 text-amber-400 bg-amber-500/10"
+          : done
+            ? "border-zinc-700 text-zinc-400"
+            : "border-zinc-800 text-zinc-600"
+      }`}
+    >
+      <span className="font-mono">{n}</span> {label}
+    </span>
   );
 }

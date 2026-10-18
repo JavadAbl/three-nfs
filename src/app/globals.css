@@ -264,28 +264,6 @@
   background: linear-gradient(160deg, rgba(48, 36, 14, 0.7), rgba(10, 10, 13, 0.95));
 }
 
-/* track selector cards (minimap stroke follows currentColor) */
-.map-card {
-  border-radius: 10px;
-  padding: 8px 6px 7px;
-  background: linear-gradient(160deg, rgba(24, 24, 29, 0.9), rgba(10, 10, 13, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #71717a;
-  text-align: center;
-  cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
-}
-.map-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(245, 158, 11, 0.5);
-}
-.map-card-active {
-  border-color: #f59e0b;
-  box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
-  background: linear-gradient(160deg, rgba(48, 36, 14, 0.7), rgba(10, 10, 13, 0.95));
-  color: #fbbf24;
-}
-
 /* lobby lap picker */
 .lap-pick {
   min-width: 34px;
@@ -366,3 +344,157 @@
   scrollbar-color: #2c2c34 transparent;
 }
 
+
+/* ─── garage spec bars (NFS 3-stat) ─── */
+.stat-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(8, 8, 12, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transform: skewX(-12deg);
+  overflow: hidden;
+}
+.stat-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #b45309, #f59e0b 55%, #fde047);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+}
+
+/* ─── garage car chips (short names) ─── */
+.car-chip {
+  padding: 6px 2px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, rgba(24, 24, 29, 0.9), rgba(10, 10, 13, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #a1a1aa;
+  font-size: 10px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.08em;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.car-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #e4e4e7;
+}
+.car-chip-active {
+  border-color: #f59e0b;
+  color: #fde047;
+  background: linear-gradient(160deg, rgba(48, 36, 14, 0.8), rgba(10, 10, 13, 0.95));
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
+}
+
+/* ─── wizard map cards ─── */
+.map-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(160deg, rgba(24, 24, 29, 0.9), rgba(10, 10, 13, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #d4d4d8;
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+  min-height: 0;
+}
+.map-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.map-card-active {
+  border-color: #f59e0b;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+  background: linear-gradient(160deg, rgba(48, 36, 14, 0.7), rgba(10, 10, 13, 0.95));
+}
+.map-card-active svg {
+  color: #fbbf24;
+}
+
+/* ─── lobby host map minis ─── */
+.map-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: #101014;
+  border: 1px solid #2c2c34;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.map-mini:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.map-mini-active {
+  border-color: #f59e0b;
+  color: #fde047;
+  background: #241a08;
+}
+
+/* ─── room browser visibility toggle ─── */
+.vis-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 10px 6px;
+  border-radius: 9px;
+  background: #101014;
+  border: 1px solid #2c2c34;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.vis-pick:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.vis-pick-active {
+  border-color: #f59e0b;
+  color: #fde047;
+  background: #241a08;
+}
+
+/* ─── browser room rows ─── */
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(24, 24, 29, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.room-row:hover {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(38, 30, 16, 0.6);
+}
+
+/* ─── lobby driver rows ─── */
+.lobby-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: rgba(24, 24, 29, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.lobby-player-ready {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(6, 34, 26, 0.5);
+}
+
+/* slow spin for the browser LIVE indicator */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 3.2s linear infinite;
+}

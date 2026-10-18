@@ -6,7 +6,7 @@ import type { NetPlayer } from "@/game/net/NetClient";
 import { CAR_LIBRARY } from "@/game/cars/registry";
 import { DEFAULT_MAP_ID, resolveMapId } from "@/game/maps/registry";
 
-export type Screen = "menu" | "lobby" | "countdown" | "racing" | "paused" | "results";
+export type Screen = "menu" | "browser" | "lobby" | "countdown" | "racing" | "paused" | "results";
 
 interface GameStore {
   screen: Screen;
@@ -25,10 +25,13 @@ interface GameStore {
   lobby: {
     roomId: string;
     isHost: boolean;
+    /** host socket id — crown marker in the lobby */
+    hostId: string;
     connected: boolean;
     players: NetPlayer[];
     laps: number;
-    /** circuit the host picked for the room (registry id) */
+    visibility: "public" | "private";
+    /** map the host picked for this room */
     mapId: string;
   };
 
@@ -58,18 +61,10 @@ const LEGACY_CAR_IDS: Record<string, string> = {
   viper2: "viper08",
 };
 
-/** retired map ids → their replacement (none retired yet — first maps ship now) */
-const LEGACY_MAP_IDS: Record<string, string> = {};
-
 /** map a persisted id onto a car that still exists in the garage */
 function resolvePersistedCar(raw: string | null): string {
   const id = raw ? LEGACY_CAR_IDS[raw] ?? raw : "gtr";
   return CAR_LIBRARY.some((c) => c.id === id) ? id : "gtr";
-}
-
-/** map a persisted id onto a map that still exists in the registry */
-function resolvePersistedMap(raw: string | null): string {
-  return resolveMapId(raw ? LEGACY_MAP_IDS[raw] ?? raw : null);
 }
 
 function loadPersisted() {
@@ -79,7 +74,7 @@ function loadPersisted() {
       name: window.localStorage.getItem(LS_NAME) ?? "",
       color: window.localStorage.getItem(LS_COLOR) ?? "#f59e0b",
       car: resolvePersistedCar(window.localStorage.getItem(LS_CAR)),
-      map: resolvePersistedMap(window.localStorage.getItem(LS_MAP)),
+      map: resolveMapId(window.localStorage.getItem(LS_MAP)),
     };
   } catch {
     return { name: "", color: "#f59e0b", car: "gtr", map: DEFAULT_MAP_ID };
@@ -120,7 +115,7 @@ export const useGameStore = create<GameStore>((set) => {
     countdown: null,
     lapFlash: null,
     results: [],
-    lobby: { roomId: "", isHost: false, connected: false, players: [], laps: 3, mapId: "" },
+    lobby: { roomId: "", isHost: false, hostId: "", connected: false, players: [], laps: 3, visibility: "private", mapId: "downtown" },
 
     setScreen: (s) => set({ screen: s }),
     setMode: (m) => set({ mode: m }),
@@ -166,7 +161,7 @@ export const useGameStore = create<GameStore>((set) => {
         countdown: null,
         lapFlash: null,
         results: [],
-        lobby: { roomId: "", isHost: false, connected: false, players: [], laps: 3, mapId: "" },
+        lobby: { roomId: "", isHost: false, hostId: "", connected: false, players: [], laps: 3, visibility: "private", mapId: "downtown" },
       }),
   };
 });

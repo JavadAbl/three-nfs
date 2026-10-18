@@ -5,6 +5,7 @@ import { Game, type GameMode } from "@/game/core/Game";
 import { NetClient } from "@/game/net/NetClient";
 import { loadCarModel } from "@/game/world/CarModelLoader";
 import { preloadCarIds } from "@/game/cars/registry";
+import { mapDef } from "@/game/maps/registry";
 import { useGameStore } from "@/stores/gameStore";
 import { HUD } from "@/components/game/HUD";
 import { MainMenu } from "@/components/game/MainMenu";
@@ -33,6 +34,7 @@ export function GameShell() {
   const playerName = useGameStore((s) => s.playerName);
   const carColor = useGameStore((s) => s.carColor);
   const carId = useGameStore((s) => s.carId);
+  const mapId = useGameStore((s) => s.mapId);
   const muted = useGameStore((s) => s.muted);
   const lobbyPlayers = useGameStore((s) => s.lobby.players);
   const setScreen = useGameStore((s) => s.setScreen);
@@ -88,6 +90,7 @@ export function GameShell() {
             playerName: playerName.trim() || "DRIVER",
             carColor,
             carId,
+            mapId,
             laps,
             net: m === "online" ? netRef.current : null,
           },
@@ -112,6 +115,8 @@ export function GameShell() {
                   lapTimeMs: mine.bestLapMs,
                   mode: m,
                   carColor,
+                  carId,
+                  mapId,
                 }),
               }).catch(() => {});
             }
@@ -129,7 +134,7 @@ export function GameShell() {
       setRaceSession({ mode: m, laps });
       })();
     },
-    [disposeGame, playerName, carColor, carId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
+    [disposeGame, playerName, carColor, carId, mapId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
   );
 
   // ── pause / resume sync ──
@@ -169,9 +174,10 @@ export function GameShell() {
       if (!requireName()) return;
       setMode(m);
       setScreen("countdown");
-      launchGame(m, 3);
+      // laps default to the selected circuit's registry value
+      launchGame(m, mapDef(mapId)?.defaultLaps ?? 3);
     },
-    [requireName, setMode, setScreen, launchGame]
+    [requireName, setMode, setScreen, launchGame, mapId]
   );
 
   const handleQuitToMenu = useCallback(() => {

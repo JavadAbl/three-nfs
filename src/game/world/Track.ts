@@ -1,6 +1,8 @@
 // ─── Spline circuit: road mesh, samples, checkpoints ────────────────────────
 import * as THREE from "three";
-import { GAME_CONFIG, PALETTE, TRACK_POINTS } from "../constants";
+import { GAME_CONFIG } from "../constants";
+import type { MapDef } from "../maps/registry";
+import { resolveMapPalette } from "../maps/registry";
 
 export interface TrackSample {
   pos: THREE.Vector3;
@@ -24,21 +26,34 @@ export class Track {
   samples: TrackSample[] = [];
   readonly sampleCount: number;
   readonly length: number;
-  readonly halfWidth = GAME_CONFIG.ROAD_HALF_WIDTH;
+  readonly mapId: string;
+  readonly halfWidth: number;
   /** lateral metres (from centre line) where the guardrail mesh stands — physics matches the visual */
-  readonly railLateral = GAME_CONFIG.ROAD_HALF_WIDTH + 1.4;
-  readonly checkpointCount = GAME_CONFIG.CHECKPOINTS;
+  readonly railLateral: number;
+  readonly checkpointCount: number;
   /** sample indices that mark each checkpoint gate */
   checkpointIndices: number[] = [];
   group = new THREE.Group();
+  /** fully-resolved look for this map (road, lines, lamps, finish) */
+  private readonly P: ReturnType<typeof resolveMapPalette>;
 
-  constructor() {
-    const pts = TRACK_POINTS.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+  /**
+   * Build a circuit from a registry MapDef. Unspecified fields fall back to
+   * the global GAME_CONFIG defaults, so a bare points-only entry reproduces
+   * the legacy hardcoded track exactly.
+   */
+  constructor(def: MapDef) {
+    this.mapId = def.id;
+    this.P = resolveMapPalette(def);
+    const pts = def.points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
 
     // ── resample the closed curve evenly by arc length ──
-    const N = GAME_CONFIG.TRACK_SAMPLES;
+    const N = def.samples ?? GAME_CONFIG.TRACK_SAMPLES;
     this.sampleCount = N;
+    this.halfWidth = def.roadHalfWidth ?? GAME_CONFIG.ROAD_HALF_WIDTH;
+    this.railLateral = this.halfWidth + 1.4;
+    this.checkpointCount = def.checkpoints ?? GAME_CONFIG.CHECKPOINTS;
     const positions = this.curve.getSpacedPoints(N);
     // getSpacedPoints(N) returns N+1 points with last == first; drop duplicate
     positions.pop();
@@ -78,9 +93,9 @@ export class Track {
     // store per-vertex lateral sign so the shader-free approach works with vertex colors
     const colors: number[] = [];
 
-    const base = new THREE.Color(PALETTE.asphalt);
-    const edge = new THREE.Color(PALETTE.roadEdge);
-    const line = new THREE.Color(PALETTE.roadLine);
+    const base = new THREE.Color(this.P.asphalt);
+    const edge = new THREE.Color(this.P.roadEdge);
+    const line = new THREE.Color(this.P.roadLine);
 
     for (let i = 0; i <= N; i++) {
       const s = this.samples[i % N];
@@ -188,7 +203,7 @@ export class Track {
       new THREE.BoxGeometry(hw * 2 + 1, 1.6, 0.5),
       new THREE.MeshStandardMaterial({
         color: 0x101014,
-        emissive: new THREE.Color(PALETTE.finishPrimary),
+        emissive: new THREE.Color(this.P.finishPrimary),
         emissiveIntensity: 0.85,
       })
     );
@@ -202,9 +217,9 @@ export class Track {
     const N = this.sampleCount;
     const spacing = Math.floor(N / 46);
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x191920, roughness: 0.6, metalness: 0.6 });
-    const lampMat = new THREE.MeshBasicMaterial({ color: PALETTE.lamp });
+    const lampMat = new THREE.MeshBasicMaterial({ color: this.P.lamp });
     const glowMat = new THREE.MeshBasicMaterial({
-      color: PALETTE.lamp,
+      color: this.P.lamp,
       transparent: true,
       opacity: 0.32,
       depthWrite: false,

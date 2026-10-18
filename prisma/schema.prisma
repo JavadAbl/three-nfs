@@ -14,8 +14,11 @@ model LapRecord {
   lapTimeMs   Int
   mode        String   // "quick" | "trial" | "online"
   carColor    String   @default("#f59e0b")
+  carId       String?  // registry id (src/game/cars/registry.ts) — null = legacy row / procedural
+  mapId       String?  // registry id (src/game/maps/registry.ts) — null = legacy row
   createdAt   DateTime @default(now())
 
   @@index([lapTimeMs])
   @@index([mode, lapTimeMs])
+  @@index([mapId, lapTimeMs])
 }

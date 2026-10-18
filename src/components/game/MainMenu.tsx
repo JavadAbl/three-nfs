@@ -8,9 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CAR_COLORS } from "@/game/constants";
 import { CAR_LIBRARY } from "@/game/cars/registry";
+import { MAP_LIBRARY, approxTrackKm, mapDef } from "@/game/maps/registry";
 import { fmtTime } from "@/game/core/Game";
 import { useGameStore } from "@/stores/gameStore";
-import { Trophy, Wifi, Timer, Gauge, User, CarFront } from "lucide-react";
+import { Trophy, Wifi, Timer, Gauge, User, CarFront, MapPin } from "lucide-react";
 
 interface LapRecord {
   id: string;
@@ -18,13 +19,16 @@ interface LapRecord {
   lapTimeMs: number;
   mode: string;
   carColor: string;
+  carId: string | null;
+  mapId: string | null;
   createdAt: string;
 }
 
 export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "trial") => void; onOpenLobby: () => void }) {
-  const { playerName, setPlayerName, carColor, setCarColor, carId, setCarId } = useGameStore();
+  const { playerName, setPlayerName, carColor, setCarColor, carId, setCarId, mapId, setMapId } = useGameStore();
   const [records, setRecords] = useState<LapRecord[]>([]);
   const [tab, setTab] = useState<"garage" | "board">("garage");
+  const selectedMap = mapDef(mapId);
 
   useEffect(() => {
     fetch("/api/records")
@@ -93,6 +97,30 @@ export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "
             <CardContent className="p-4">
               {tab === "garage" ? (
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">TRACK</span>
+                    <span className="text-xs font-bold tracking-wider text-amber-400">
+                      {selectedMap?.name ?? "—"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MAP_LIBRARY.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => setMapId(m.id)}
+                        aria-label={`Select track ${m.name}`}
+                        className={`map-card ${mapId === m.id ? "map-card-active" : ""}`}
+                      >
+                        <MapThumb points={m.points} />
+                        <span className="block text-[11px] font-black italic tracking-wide leading-tight">
+                          {m.name}
+                        </span>
+                        <span className="block text-[9px] text-zinc-500 tracking-wider mt-0.5">
+                          {approxTrackKm(m.points)} KM · {m.defaultLaps ?? 3} LAPS
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold tracking-[0.25em] text-zinc-400">RIDE</span>
                     <span className="text-xs font-bold tracking-wider text-amber-400">
@@ -165,6 +193,12 @@ export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "
                           />
                           <span className="flex-1 truncate font-semibold text-zinc-200">
                             {r.playerName}
+                            {r.mapId && mapDef(r.mapId) && (
+                              <span className="ml-1.5 text-[9px] font-bold tracking-wider text-zinc-500 align-middle">
+                                <MapPin className="inline size-2.5 mr-0.5 -mt-0.5" />
+                                {mapDef(r.mapId)!.name}
+                              </span>
+                            )}
                           </span>
                           <span className="font-mono text-amber-400 tabular-nums">
                             {fmtTime(r.lapTimeMs)}
@@ -184,7 +218,7 @@ export function MainMenu({ onStart, onOpenLobby }: { onStart: (mode: "quick" | "
               onClick={() => onStart("quick")}
               icon={<Gauge className="size-5" />}
               title="QUICK RACE"
-              subtitle="3 laps · 3 AI rivals · night circuit"
+              subtitle={`${selectedMap?.defaultLaps ?? 3} laps · 3 AI rivals · ${(selectedMap?.name ?? "night circuit").toLowerCase()}`}
             />
             <MenuButton
               onClick={() => onStart("trial")}
@@ -238,5 +272,37 @@ function MenuButton({
         <span className="block text-[11px] font-medium text-zinc-400 tracking-wide">{subtitle}</span>
       </span>
     </Button>
+  );
+}
+
+/** plan-view circuit thumbnail rendered straight from registry control points */
+function MapThumb({ points }: { points: [number, number, number][] }) {
+  const xs = points.map((p) => p[0]);
+  const zs = points.map((p) => p[2]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minZ = Math.min(...zs);
+  const maxZ = Math.max(...zs);
+  const w = maxX - minX || 1;
+  const h = maxZ - minZ || 1;
+  const scale = Math.min(84 / w, 44 / h);
+  const offX = 50 - (minX + w / 2) * scale;
+  const offY = 30 - (minZ + h / 2) * scale;
+  const px = (x: number, z: number) => `${(x * scale + offX).toFixed(1)},${(z * scale + offY).toFixed(1)}`;
+  // close the loop visually by repeating the first point
+  const path = [...points, points[0]].map((p) => px(p[0], p[2])).join(" ");
+  return (
+    <svg viewBox="0 0 100 60" className="w-full h-14 block mb-1" aria-hidden="true">
+      <polyline
+        points={path}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        opacity="0.85"
+      />
+      <circle cx={points[0][0] * scale + offX} cy={points[0][2] * scale + offY} r="3" fill="currentColor" />
+    </svg>
   );
 }

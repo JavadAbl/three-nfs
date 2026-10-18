@@ -1,12 +1,13 @@
 // ─── Game: renderer, world, race loop, HUD feed, online wiring ──────────────
 import * as THREE from "three";
-import { GAME_CONFIG, PALETTE } from "../constants";
+import { GAME_CONFIG } from "../constants";
 import { Track } from "../world/Track";
 import { CityEnvironment } from "../world/CityEnvironment";
 import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
 import { instantiateCar, hasCarModel, type CarModelInstance } from "../world/CarModelLoader";
 import { AI_POOL_IDS, carDef, resolveCarTuning } from "../cars/registry";
+import { DEFAULT_MAP_ID, mapDef, resolveEnvTheme, resolveMapPalette } from "../maps/registry";
 import { ParticlePool } from "../world/Particles";
 import { resolveCarCollisions } from "../world/Collisions";
 import { RaceManager } from "../race/RaceManager";
@@ -51,6 +52,8 @@ export interface GameOptions {
   carColor: string;
   /** selected car id from the registry (src/game/cars/registry.ts) */
   carId?: string;
+  /** selected map id from the registry (src/game/maps/registry.ts) */
+  mapId?: string;
   laps?: number;
   net?: NetClient | null;
 }
@@ -77,7 +80,7 @@ export class Game {
   clock = new THREE.Clock();
 
   // world
-  track = new Track();
+  track: Track;
   city: CityEnvironment;
   particles = new ParticlePool(240);
 
@@ -91,6 +94,8 @@ export class Game {
   raceManager: RaceManager | null = null;
   mode: GameMode;
   laps: number;
+  /** map actually being raced (resolved against the registry) */
+  readonly mapId: string;
   phase: "idle" | "countdown" | "racing" | "finished" = "idle";
   private countdownTimer = 0;
   private countdownStep = 0;
@@ -116,7 +121,10 @@ export class Game {
   ) {
     this.opts = opts;
     this.mode = opts.mode;
-    this.laps = opts.laps ?? GAME_CONFIG.LAPS;
+    // resolve the map first — geometry, look and laps all come from it
+    const map = mapDef(opts.mapId) ?? mapDef(DEFAULT_MAP_ID)!;
+    this.mapId = map.id;
+    this.laps = opts.laps ?? map.defaultLaps ?? GAME_CONFIG.LAPS;
     this.net = opts.net ?? null;
     this.cb = callbacks;
 
@@ -132,9 +140,10 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(74, canvas.clientWidth / canvas.clientHeight, 0.1, 1400);
     this.cameraRig = new CameraRig(this.camera);
 
-    // ── scene: night atmosphere ──
-    this.scene.background = new THREE.Color(PALETTE.sky);
-    this.scene.fog = new THREE.FogExp2(PALETTE.fog, 0.0105);
+    // ── scene: night atmosphere (map palette) ──
+    const P = resolveMapPalette(map);
+    this.scene.background = new THREE.Color(P.sky);
+    this.scene.fog = new THREE.FogExp2(P.fog, 0.0105);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04);
@@ -158,8 +167,9 @@ export class Game {
     this.scene.add(this.moon, this.moon.target);
 
     // ── world ──
+    this.track = new Track(map);
     this.scene.add(this.track.group);
-    this.city = new CityEnvironment(this.track);
+    this.city = new CityEnvironment(this.track, resolveEnvTheme(map));
     this.scene.add(this.city.group);
     this.scene.add(this.particles.points);
 

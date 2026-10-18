@@ -1,12 +1,15 @@
 // ─── Night city: instanced buildings, ground, stars, neon ───────────────────
 import * as THREE from "three";
-import { PALETTE } from "../constants";
 import type { Track } from "./Track";
+import { ENV_THEMES, type EnvThemeSpec } from "../maps/registry";
 
 export class CityEnvironment {
   group = new THREE.Group();
+  private readonly theme: EnvThemeSpec;
 
-  constructor(track: Track) {
+  /** builds the world furniture from a map's environment theme */
+  constructor(track: Track, theme: EnvThemeSpec = ENV_THEMES.city) {
+    this.theme = theme;
     this.group.add(this.makeGround());
     this.group.add(this.makeStars());
     this.buildBuildings(track);
@@ -14,7 +17,7 @@ export class CityEnvironment {
 
   private makeGround(): THREE.Mesh {
     const geo = new THREE.PlaneGeometry(2200, 2200, 1, 1);
-    const mat = new THREE.MeshStandardMaterial({ color: PALETTE.ground, roughness: 1 });
+    const mat = new THREE.MeshStandardMaterial({ color: this.theme.groundColor, roughness: 1 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = -0.4;
@@ -23,7 +26,7 @@ export class CityEnvironment {
   }
 
   private makeStars(): THREE.Points {
-    const N = 900;
+    const N = this.theme.starCount;
     const positions = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
       // dome distribution
@@ -48,19 +51,20 @@ export class CityEnvironment {
   }
 
   private buildBuildings(track: Track) {
+    const T = this.theme;
     // candidate grid, keep clear of the track corridor
-    const spacing = 34;
-    const range = 460;
+    const spacing = T.spacing;
+    const range = T.range;
     const cands: { x: number; z: number }[] = [];
     const samples = track.samples;
     const checkStep = 3; // coarse check against every 3rd sample
-    const clearance = 26;
+    const clearance = T.clearance;
 
     for (let x = -range; x <= range; x += spacing) {
       for (let z = -range; z <= range; z += spacing) {
         // jitter
-        const jx = x + (Math.random() - 0.5) * 14;
-        const jz = z + (Math.random() - 0.5) * 14;
+        const jx = x + (Math.random() - 0.5) * T.jitter;
+        const jz = z + (Math.random() - 0.5) * T.jitter;
         let ok = true;
         for (let i = 0; i < samples.length; i += checkStep) {
           const s = samples[i];
@@ -77,9 +81,9 @@ export class CityEnvironment {
 
     // 3 instanced meshes with different window textures
     const variants = [
-      { tex: windowTexture(PALETTE.windowWarm, 0.55), base: PALETTE.buildingA },
-      { tex: windowTexture(PALETTE.windowCool, 0.35), base: PALETTE.buildingB },
-      { tex: windowTexture("#ffd9a0", 0.7), base: PALETTE.buildingC },
+      { tex: windowTexture(T.windowWarm, 0.55), base: T.buildingColors[0] },
+      { tex: windowTexture(T.windowCool, 0.35), base: T.buildingColors[1] },
+      { tex: windowTexture(T.windowAccent, 0.7), base: T.buildingColors[2] },
     ];
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     // shift origin to bottom so scaling grows upward
@@ -102,9 +106,9 @@ export class CityEnvironment {
       const m = new THREE.Matrix4();
       const color = new THREE.Color();
       batch.forEach((c, i) => {
-        const h = 14 + Math.random() * Math.random() * 92;
-        const w = 12 + Math.random() * 16;
-        const d = 12 + Math.random() * 16;
+        const h = T.minHeight + Math.random() * Math.random() * T.heightSpan;
+        const w = T.minWidth + Math.random() * T.widthSpan;
+        const d = T.minWidth + Math.random() * T.widthSpan;
         m.makeScale(w, h, d);
         m.setPosition(c.x, -0.4, c.z);
         inst.setMatrixAt(i, m);
@@ -118,9 +122,9 @@ export class CityEnvironment {
     }
 
     // a few neon billboards near the track for Carbon flavour
-    const neonColors = [0xf59e0b, 0xff5e3a, 0xff2d78, 0x22d3a7];
-    for (let i = 0; i < 10; i++) {
-      const s = samples[Math.floor((i / 10) * samples.length)];
+    const neonColors = T.neonColors;
+    for (let i = 0; i < T.neonCount; i++) {
+      const s = samples[Math.floor((i / T.neonCount) * samples.length)];
       const side = i % 2 === 0 ? 1 : -1;
       const p = s.pos.clone().addScaledVector(s.normal, side * (track.halfWidth + 8));
       const w = 7 + Math.random() * 6;

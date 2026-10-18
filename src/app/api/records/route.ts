@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { CAR_LIBRARY } from "@/game/cars/registry";
+import { MAP_LIBRARY } from "@/game/maps/registry";
+
+/** keep an id only if it exists in its registry — otherwise store null */
+function validId(raw: unknown, library: { id: string }[]): string | null {
+  if (typeof raw !== "string") return null;
+  return library.some((x) => x.id === raw) ? raw : null;
+}
 
 export async function GET() {
   try {
@@ -17,7 +25,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { playerName, lapTimeMs, mode, carColor } = body;
+    const { playerName, lapTimeMs, mode, carColor, carId, mapId } = body;
 
     if (
       typeof playerName !== "string" ||
@@ -35,6 +43,8 @@ export async function POST(request: Request) {
         lapTimeMs: Math.round(lapTimeMs),
         mode,
         carColor: typeof carColor === "string" ? carColor.slice(0, 9) : "#f59e0b",
+        carId: validId(carId, CAR_LIBRARY),
+        mapId: validId(mapId, MAP_LIBRARY),
       },
     });
 

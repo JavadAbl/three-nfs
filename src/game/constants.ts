@@ -83,28 +83,5 @@ export const CAR_COLORS = [
   { name: "Mint", value: "#14b8a6" },
 ] as const;
 
-/** Circuit control points [x, y (elevation), z] — a flowing night circuit */
-export const TRACK_POINTS: [number, number, number][] = [
-  [0, 0, 0],
-  [70, 0, -6],
-  [140, 1, -26],
-  [188, 3, -74],
-  [196, 5, -140],
-  [160, 6, -198],
-  [104, 7, -232],
-  [40, 6, -238],
-  [-14, 5, -216],
-  [-46, 4, -170],
-  [-72, 3, -122],
-  [-118, 4, -96],
-  [-172, 5, -108],
-  [-212, 6, -152],
-  [-246, 5, -196],
-  [-296, 3, -178],
-  [-318, 2, -120],
-  [-300, 1, -62],
-  [-244, 0, -26],
-  [-180, 0, -8],
-  [-110, 0, 2],
-  [-52, 0, 4],
-];
+// Circuit control points now live in src/game/maps/registry.ts (MAP_LIBRARY)
+// — the registry is the single source of truth for every map.

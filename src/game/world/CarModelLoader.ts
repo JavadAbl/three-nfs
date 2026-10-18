@@ -6,6 +6,7 @@
 //   3. paint materials detected (/carpaint/i or /_details$/) for per-player tint
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 
 export interface ModelWheel {
   /** pivot: rotate .rotation[axis] for spin, .rotation.y for steering (front) */
@@ -53,6 +54,12 @@ const MERGED_AXLE_LENGTH = 1.2;
 const ATTACH_RADIUS = 0.55;
 
 const loader = new GLTFLoader();
+// Draco-compressed GLBs (decoder is fetched once from /draco/ and cached;
+// uncompressed GLBs are unaffected)
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath("/draco/");
+dracoLoader.preload();
+loader.setDRACOLoader(dracoLoader);
 const templates = new Map<string, Template>();
 const inflight = new Map<string, Promise<Template>>();
 
@@ -68,6 +75,8 @@ const CAR_DEFS: CarDef[] = [
   { id: "gtr", name: "NISSAN GT-R R35", modelUrl: "/models/nissan-gtr-r35.glb", spec: "NISMO · 600 HP" },
   { id: "audi", name: "AUDI TT RS", modelUrl: "/models/audi-tt-rs.glb", spec: "QUATTRO · 400 HP" },
   { id: "viper", name: "DODGE VIPER SRT", modelUrl: "/models/staging/dodge-viper-srt.glb", spec: "V10 · 645 HP" },
+  // TEMP A/B entry (uncommitted): Draco-compressed copy for load-speed comparison
+  { id: "viperOpt", name: "VIPER SRT · DRACO", modelUrl: "/models/staging/dodge-viper-srt-opt.glb", spec: "V10 · 645 HP · 0.9 MB" },
   { id: "classic", name: "STREET MUSCLE", modelUrl: null, spec: "V8 · PROCEDURAL" },
 ];
 

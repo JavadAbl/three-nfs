@@ -6,6 +6,8 @@ export interface NetPlayer {
   id: string;
   name: string;
   color: string;
+  /** garage car this driver races (registry id, resolved client-side) */
+  carId: string;
   ready: boolean;
 }
 
@@ -23,11 +25,13 @@ export class NetClient {
   isHost = false;
   players: NetPlayer[] = [];
 
-  // callbacks wired by the Game
+  // callbacks wired by the Game / lobby
   onPlayers: ((p: NetPlayer[]) => void) | null = null;
   onConnected: ((connected: boolean) => void) | null = null;
   onRemoteStates: ((states: Record<string, CarSnapshot>) => void) | null = null;
-  onRaceStart: ((laps: number) => void) | null = null;
+  onRaceStart: ((laps: number, mapId: string) => void) | null = null;
+  /** room's circuit changed (host pick) or catch-up on join */
+  onRoomMap: ((mapId: string) => void) | null = null;
   onFinishBroadcast: ((entry: NetFinishEntry) => void) | null = null;
   onDisconnected: (() => void) | null = null;
   onError: ((msg: string) => void) | null = null;
@@ -55,8 +59,11 @@ export class NetClient {
       this.players = players;
       this.onPlayers?.(players);
     });
-    this.socket.on("race:started", ({ laps }: { laps: number }) => {
-      this.onRaceStart?.(laps);
+    this.socket.on("race:started", ({ laps, mapId }: { laps: number; mapId?: string }) => {
+      this.onRaceStart?.(laps, mapId ?? "");
+    });
+    this.socket.on("room:map", ({ mapId }: { mapId?: string }) => {
+      this.onRoomMap?.(mapId ?? "");
     });
     this.socket.on("states", (states: Record<string, CarSnapshot>) => {
       this.onRemoteStates?.(states);
@@ -69,9 +76,9 @@ export class NetClient {
     });
   }
 
-  createRoom(name: string, color: string) {
+  createRoom(name: string, color: string, carId: string, mapId: string) {
     return new Promise<string>((resolve, reject) => {
-      this.socket!.emit("room:create", { name, color }, (res: { ok: boolean; roomId?: string; message?: string }) => {
+      this.socket!.emit("room:create", { name, color, carId, mapId }, (res: { ok: boolean; roomId?: string; message?: string }) => {
         if (res.ok && res.roomId) {
           this.roomId = res.roomId;
           this.isHost = true;
@@ -81,11 +88,11 @@ export class NetClient {
     });
   }
 
-  joinRoom(roomId: string, name: string, color: string) {
+  joinRoom(roomId: string, name: string, color: string, carId: string) {
     return new Promise<void>((resolve, reject) => {
       this.socket!.emit(
         "room:join",
-        { roomId: roomId.trim().toUpperCase(), name, color },
+        { roomId: roomId.trim().toUpperCase(), name, color, carId },
         (res: { ok: boolean; message?: string }) => {
           if (res.ok) {
             this.roomId = roomId.trim().toUpperCase();
@@ -98,6 +105,16 @@ export class NetClient {
 
   updateColor(color: string) {
     this.socket?.emit("room:update", { color });
+  }
+
+  /** announce a car change made while sitting in a room */
+  updateCar(carId: string) {
+    this.socket?.emit("room:update", { carId });
+  }
+
+  /** host only — set the circuit the room will race */
+  setRoomMap(mapId: string) {
+    this.socket?.emit("room:setMap", { mapId });
   }
 
   startRace(laps: number) {

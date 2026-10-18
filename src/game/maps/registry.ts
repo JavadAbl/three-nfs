@@ -50,6 +50,25 @@ export interface EnvThemeSpec {
   neonColors: number[];
   starCount: number;
   neonCount: number;
+  /** optional shipping-container stacks near the corridor (harbor/industrial) */
+  containers?: ContainerSpec;
+  /** optional gantry cranes (harbor) */
+  cranes?: CraneSpec;
+}
+
+/** container-yard dressing — boxes stacked near the corridor (harbor/industrial) */
+export interface ContainerSpec {
+  count: number;
+  colors: number[];
+}
+
+/** harbour gantry cranes running parallel to the circuit */
+export interface CraneSpec {
+  count: number;
+  /** rail-to-beam height in metres */
+  height: number;
+  /** beam length in metres (runs parallel to the track) */
+  boom: number;
 }
 
 /** named environment themes — a map picks one via MapDef.envTheme */
@@ -73,6 +92,29 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [0xf59e0b, 0xff5e3a, 0xff2d78, 0x22d3a7],
     starCount: 900,
     neonCount: 10,
+  },
+  // container port: low wide warehouses, sodium lamps, hazier sky,
+  // container stacks + gantry cranes near the corridor
+  harbor: {
+    id: "harbor",
+    range: 430,
+    spacing: 46,
+    clearance: 30,
+    jitter: 8,
+    minHeight: 7,
+    heightSpan: 26,
+    minWidth: 20,
+    widthSpan: 26,
+    groundColor: 0x0b0d10,
+    buildingColors: [0x241d1a, 0x1a2026, 0x201a12],
+    windowWarm: "#ffb066",
+    windowCool: "#c8dce8",
+    windowAccent: "#ff8748",
+    neonColors: [0xff8c1a, 0xff3355, 0x2dd4bf, 0xffb020],
+    starCount: 420,
+    neonCount: 6,
+    containers: { count: 130, colors: [0xb4402f, 0x2e5f8a, 0x3f6b4f, 0x8a8f98, 0xb07a2a] },
+    cranes: { count: 7, height: 34, boom: 42 },
   },
 };
 
@@ -131,6 +173,47 @@ export const MAP_LIBRARY: MapDef[] = [
       [-180, 0, -8],
       [-110, 0, 2],
       [-52, 0, 4],
+    ],
+  },
+  {
+    id: "harbor",
+    name: "HARBOR DOCKS",
+    description: "Container port · long straights, tight hairpin",
+    envTheme: "harbor",
+    // port service roads are wide — room to trade paint on the straights
+    roadHalfWidth: 9,
+    samples: 720,
+    checkpoints: 16,
+    palette: {
+      asphalt: 0x14161b,
+      fog: 0x0a0d12,
+      sky: 0x05070c,
+      ground: 0x0b0d10,
+      // sodium-vapour yard lighting
+      lamp: 0xffb066,
+      finishPrimary: 0x38bdf8,
+    },
+    points: [
+      [0, 0, 0],
+      [110, 0, -3],
+      [205, 0, -18],
+      [252, 1, -70],
+      [256, 2, -138],
+      [218, 2, -190],
+      [130, 1, -214],
+      [40, 1, -226],
+      [-50, 0, -216],
+      [-110, 0, -244],
+      [-148, 0, -272],
+      [-186, 0, -244],
+      [-206, 1, -196],
+      [-238, 2, -130],
+      [-242, 2, -70],
+      [-224, 3, -14],
+      [-150, 3, -30],
+      [-92, 2, -14],
+      [-44, 1, -26],
+      [-18, 0, -10],
     ],
   },
 ];

@@ -6,7 +6,7 @@ import { CityEnvironment } from "../world/CityEnvironment";
 import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
 import { instantiateCar, hasCarModel, type CarModelInstance } from "../world/CarModelLoader";
-import { AI_POOL_IDS, carDef, resolveCarTuning } from "../cars/registry";
+import { AI_POOL_IDS, carDef, resolveCarId, resolveCarTuning } from "../cars/registry";
 import { DEFAULT_MAP_ID, mapDef, resolveEnvTheme, resolveMapPalette } from "../maps/registry";
 import { ParticlePool } from "../world/Particles";
 import { resolveCarCollisions } from "../world/Collisions";
@@ -271,7 +271,9 @@ export class Game {
         let rc = this.remotes.get(id);
         if (!rc) {
           const p = net.players.find((x) => x.id === id);
-          const carId = this.opts.carId ?? "gtr";
+          // remote drivers race THEIR car, not ours — resolve their registry id
+          // (unknown/missing ids fall back to the garage default)
+          const carId = resolveCarId(p?.carId);
           const model: CarModelInstance | undefined = hasCarModel(carId)
             ? instantiateCar(carId, p?.color ?? "#e2e8f0") ?? undefined
             : undefined;

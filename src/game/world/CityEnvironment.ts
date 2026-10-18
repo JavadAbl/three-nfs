@@ -13,6 +13,8 @@ export class CityEnvironment {
     this.group.add(this.makeGround());
     this.group.add(this.makeStars());
     this.buildBuildings(track);
+    if (theme.containers) this.buildContainers(track, theme.containers);
+    if (theme.cranes) this.buildCranes(track, theme.cranes);
   }
 
   private makeGround(): THREE.Mesh {
@@ -148,6 +150,109 @@ export class CityEnvironment {
       );
       pole.position.copy(p).setY(p.y + 3);
       this.group.add(pole);
+    }
+  }
+
+  /** shipping-container stacks clustered along the corridor (harbor/industrial) */
+  private buildContainers(track: Track, spec: { count: number; colors: number[] }) {
+    const samples = track.samples;
+    const hw = track.halfWidth;
+    // 20-ft container: 6.1 long × 2.44 wide × 2.6 tall
+    const geo = new THREE.BoxGeometry(6.1, 2.6, 2.44);
+    // some stacks are 2-high (occasionally 3) — one instance per box
+    let total = 0;
+    const stacks: { x: number; z: number; rot: number; n: number }[] = [];
+    for (let i = 0; i < spec.count; i++) {
+      const s = samples[Math.floor(Math.random() * samples.length)];
+      const side = Math.random() < 0.5 ? 1 : -1;
+      // rows start past the rail, sprawl outward toward the warehouses
+      const lateral = hw + 6 + Math.random() * 26;
+      const along = (Math.random() - 0.5) * 26;
+      const p = s.pos.clone().addScaledVector(s.normal, side * lateral).addScaledVector(s.tangent, along);
+      const r = Math.random();
+      const n = r < 0.45 ? 1 : r < 0.85 ? 2 : 3;
+      stacks.push({ x: p.x, z: p.z, rot: Math.atan2(s.tangent.x, s.tangent.z), n });
+      total += n;
+    }
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.82, metalness: 0.25 });
+    const inst = new THREE.InstancedMesh(geo, mat, total);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const col = new THREE.Color();
+    const up = new THREE.Vector3(0, 1, 0);
+    let idx = 0;
+    for (const st of stacks) {
+      const pick = spec.colors[Math.floor(Math.random() * spec.colors.length)];
+      col.setHex(pick);
+      // per-box brightness jitter so a stack of same-colour boxes still reads
+      const jitter = 0.82 + Math.random() * 0.3;
+      col.multiplyScalar(jitter);
+      q.setFromAxisAngle(up, st.rot);
+      for (let k = 0; k < st.n; k++) {
+        // second level sits slightly askew — yard workers aren't precise
+        const wobble = k > 0 ? (Math.random() - 0.5) * 0.6 : 0;
+        const qq = q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(up, wobble));
+        m.compose(new THREE.Vector3(st.x, -0.4 + 1.3 + k * 2.6, st.z), qq, new THREE.Vector3(1, 1, 1));
+        inst.setMatrixAt(idx, m);
+        inst.setColorAt(idx, col);
+        idx++;
+      }
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    this.group.add(inst);
+  }
+
+  /** harbour gantry cranes in a row parallel to the circuit */
+  private buildCranes(track: Track, spec: { count: number; height: number; boom: number }) {
+    const samples = track.samples;
+    const hw = track.halfWidth;
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc23c26, roughness: 0.55, metalness: 0.4 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1c1e24, roughness: 0.7 });
+    const warn = new THREE.MeshBasicMaterial({ color: 0xff2233 });
+    const legSpacing = spec.boom * 0.62;
+
+    for (let i = 0; i < spec.count; i++) {
+      // evenly spaced around the lap, alternating sides of the corridor
+      const s = samples[Math.floor(((i + 0.5) / spec.count) * samples.length)];
+      const side = i % 2 === 0 ? 1 : -1;
+      const base = s.pos.clone().addScaledVector(s.normal, side * (hw + 26));
+      const yaw = Math.atan2(s.tangent.x, s.tangent.z);
+      const crane = new THREE.Group();
+      crane.position.copy(base);
+      crane.rotation.y = yaw;
+
+      // two A-legs spanning the yard rows (along local x = track tangent)
+      for (const lx of [-legSpacing / 2, legSpacing / 2]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(2.2, spec.height, 2.2), steel);
+        leg.position.set(lx, spec.height / 2 - 0.4, 0);
+        crane.add(leg);
+        // diagonal brace
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(legSpacing / 2 + 1, 1.2, 1.2), steel);
+        brace.position.set(lx / 2, spec.height * 0.55, 0);
+        brace.rotation.y = Math.atan2(2, legSpacing / 2) * Math.sign(lx);
+        crane.add(brace);
+      }
+      // top beam running parallel to the track
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(spec.boom, 2.6, 2.6), steel);
+      beam.position.set(0, spec.height - 0.4, 0);
+      crane.add(beam);
+      // trolley + hanging spreader
+      const trolley = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.6, 3), dark);
+      trolley.position.set((Math.random() - 0.5) * spec.boom * 0.5, spec.height - 2.6, 0);
+      crane.add(trolley);
+      const cable = new THREE.Mesh(new THREE.BoxGeometry(0.3, 7, 0.3), dark);
+      cable.position.set(trolley.position.x, spec.height - 6.5, 0);
+      crane.add(cable);
+      const spreader = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.8, 2.6), dark);
+      spreader.position.set(trolley.position.x, spec.height - 10, 0);
+      crane.add(spreader);
+      // aircraft-warning light
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), warn);
+      light.position.set(0, spec.height + 1.4, 0);
+      crane.add(light);
+
+      this.group.add(crane);
     }
   }
 

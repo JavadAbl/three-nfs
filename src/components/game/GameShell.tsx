@@ -73,14 +73,21 @@ export function GameShell() {
   }, [net]);
 
   // ── build the Game instance (canvas is always mounted, so handler-time creation is safe) ──
+  // online races run the circuit the HOST picked — not the local menu selection
   const launchGame = useCallback(
-    (m: GameMode, laps: number) => {
+    (m: GameMode, laps: number, netMapId?: string) => {
       if (!canvasRef.current || launchingRef.current) return;
       launchingRef.current = true;
       disposeGame();
+      const raceMapId = m === "online" && netMapId ? netMapId : mapId;
       void (async () => {
-        // ensure the selected car + registry AI pool are in cache — instant if warm
-        await Promise.allSettled(preloadCarIds(carId).map((id) => loadCarModel(id)));
+        // ensure every car that can appear is cached: player + AI pool offline,
+        // player + whatever the lobby peers drive online
+        const ids =
+          m === "online"
+            ? [carId, ...lobbyPlayers.map((p) => p.carId).filter((id) => id && id !== carId)]
+            : preloadCarIds(carId);
+        await Promise.allSettled(ids.map((id) => loadCarModel(id)));
         launchingRef.current = false;
         if (!canvasRef.current) return; // unmounted while loading
         const game = new Game(
@@ -90,7 +97,7 @@ export function GameShell() {
             playerName: playerName.trim() || "DRIVER",
             carColor,
             carId,
-            mapId,
+            mapId: raceMapId,
             laps,
             net: m === "online" ? netRef.current : null,
           },
@@ -116,7 +123,7 @@ export function GameShell() {
                   mode: m,
                   carColor,
                   carId,
-                  mapId,
+                  mapId: raceMapId,
                 }),
               }).catch(() => {});
             }
@@ -134,7 +141,7 @@ export function GameShell() {
       setRaceSession({ mode: m, laps });
       })();
     },
-    [disposeGame, playerName, carColor, carId, mapId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
+    [disposeGame, playerName, carColor, carId, mapId, lobbyPlayers, muted, setHud, setCountdown, flashLap, setResults, setScreen]
   );
 
   // ── pause / resume sync ──
@@ -207,11 +214,11 @@ export function GameShell() {
   }, [setLobby]);
 
   const handleRaceStarting = useCallback(
-    (laps: number) => {
-      // server says GO — build the game with net wiring
-      setLobby({ laps });
+    (laps: number, mapId: string) => {
+      // server says GO — build the game with net wiring on the host's circuit
+      setLobby({ laps, mapId });
       setScreen("countdown");
-      launchGame("online", laps);
+      launchGame("online", laps, mapId || undefined);
     },
     [setLobby, setScreen, launchGame]
   );

@@ -99,6 +99,15 @@ export function carDef(id: string): CarDef | undefined {
   return CAR_LIBRARY.find((c) => c.id === id);
 }
 
+/** fallback car when a persisted/foreign id no longer resolves */
+export const DEFAULT_CAR_ID = "gtr";
+
+/** map any id (localStorage, network peers, stale payloads) onto a real car */
+export function resolveCarId(raw: string | null | undefined): string {
+  const id = raw ?? "";
+  return carDef(id)?.id ?? DEFAULT_CAR_ID;
+}
+
 /** fully-resolved tuning for a car id (defaults merged with the entry's deltas) */
 export function resolveCarTuning(id: string | undefined): CarTuning {
   return { ...DEFAULT_CAR_TUNING, ...carDef(id ?? "")?.tuning };

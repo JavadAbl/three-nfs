@@ -8,6 +8,8 @@ interface RoomPlayer {
   id: string;
   name: string;
   color: string;
+  /** garage id of the car this driver races (opaque to the server) */
+  carId: string;
 }
 
 interface Room {
@@ -15,6 +17,8 @@ interface Room {
   hostId: string;
   players: Map<string, RoomPlayer>;
   racing: boolean;
+  /** circuit the host picked (opaque to the server, broadcast at race start) */
+  mapId: string;
   lastStateAt: Map<string, number>; // rate limiting
   finishes: { id: string; name: string; totalTimeMs: number; bestLapMs: number }[];
 }
@@ -49,48 +53,66 @@ function roomOrNull(roomId: string): Room | null {
   return rooms.get(String(roomId || "").toUpperCase()) ?? null;
 }
 
+function sanitize(raw: unknown, max = 24): string {
+  return String(raw ?? "").slice(0, max);
+}
+
 io.on("connection", (socket) => {
   let joinedRoom: Room | null = null;
 
-  socket.on("room:create", ({ name, color }, cb) => {
+  socket.on("room:create", ({ name, color, carId, mapId }, cb) => {
     try {
       const room: Room = {
         id: newRoomId(),
         hostId: socket.id,
         players: new Map(),
         racing: false,
+        mapId: sanitize(mapId),
         lastStateAt: new Map(),
         finishes: [],
       };
       rooms.set(room.id, room);
-      room.players.set(socket.id, { id: socket.id, name: String(name).slice(0, 16), color: String(color) });
+      room.players.set(socket.id, { id: socket.id, name: String(name).slice(0, 16), color: String(color), carId: sanitize(carId) });
       socket.join(room.id);
       joinedRoom = room;
       cb?.({ ok: true, roomId: room.id });
       emitPlayers(room);
+      io.to(room.id).emit("room:map", { mapId: room.mapId });
       log(`room ${room.id} created by ${name}`);
     } catch (e) {
       cb?.({ ok: false, message: "create failed" });
     }
   });
 
-  socket.on("room:join", ({ roomId, name, color }, cb) => {
+  socket.on("room:join", ({ roomId, name, color, carId }, cb) => {
     const room = roomOrNull(roomId);
     if (!room) return cb?.({ ok: false, message: "Room not found" });
     if (room.players.size >= 8) return cb?.({ ok: false, message: "Room is full (8)" });
-    room.players.set(socket.id, { id: socket.id, name: String(name).slice(0, 16), color: String(color) });
+    room.players.set(socket.id, { id: socket.id, name: String(name).slice(0, 16), color: String(color), carId: sanitize(carId) });
     socket.join(room.id);
     joinedRoom = room;
     cb?.({ ok: true });
     emitPlayers(room);
+    // catch the joiner up on the host's circuit pick
+    socket.emit("room:map", { mapId: room.mapId });
     log(`${name} joined ${room.id}`);
   });
 
-  socket.on("room:update", ({ color }) => {
+  socket.on("room:update", ({ color, carId }) => {
     if (!joinedRoom) return;
     const p = joinedRoom.players.get(socket.id);
-    if (p && typeof color === "string") p.color = color.slice(0, 9);
+    if (!p) return;
+    if (typeof color === "string") p.color = color.slice(0, 9);
+    if (carId !== undefined) p.carId = sanitize(carId);
     emitPlayers(joinedRoom);
+  });
+
+  // host picks the circuit for the room
+  socket.on("room:setMap", ({ mapId }) => {
+    if (!joinedRoom) return;
+    if (joinedRoom.hostId !== socket.id) return; // host only
+    joinedRoom.mapId = sanitize(mapId);
+    io.to(joinedRoom.id).emit("room:map", { mapId: joinedRoom.mapId });
   });
 
   socket.on("race:start", ({ laps }) => {
@@ -99,8 +121,8 @@ io.on("connection", (socket) => {
     const clamped = [2, 3, 5].includes(Number(laps)) ? Number(laps) : 3;
     joinedRoom.racing = true;
     joinedRoom.finishes = [];
-    io.to(joinedRoom.id).emit("race:started", { laps: clamped });
-    log(`race started in ${joinedRoom.id} (${clamped} laps, ${joinedRoom.players.size} players)`);
+    io.to(joinedRoom.id).emit("race:started", { laps: clamped, mapId: joinedRoom.mapId });
+    log(`race started in ${joinedRoom.id} (${clamped} laps, map ${joinedRoom.mapId || "?"}, ${joinedRoom.players.size} players)`);
   });
 
   // 20Hz position relay with light rate-limiting

@@ -28,6 +28,8 @@ interface GameStore {
     connected: boolean;
     players: NetPlayer[];
     laps: number;
+    /** circuit the host picked for the room (registry id) */
+    mapId: string;
   };
 
   setScreen: (s: Screen) => void;
@@ -118,7 +120,7 @@ export const useGameStore = create<GameStore>((set) => {
     countdown: null,
     lapFlash: null,
     results: [],
-    lobby: { roomId: "", isHost: false, connected: false, players: [], laps: 3 },
+    lobby: { roomId: "", isHost: false, connected: false, players: [], laps: 3, mapId: "" },
 
     setScreen: (s) => set({ screen: s }),
     setMode: (m) => set({ mode: m }),
@@ -164,7 +166,7 @@ export const useGameStore = create<GameStore>((set) => {
         countdown: null,
         lapFlash: null,
         results: [],
-        lobby: { roomId: "", isHost: false, connected: false, players: [], laps: 3 },
+        lobby: { roomId: "", isHost: false, connected: false, players: [], laps: 3, mapId: "" },
       }),
   };
 });

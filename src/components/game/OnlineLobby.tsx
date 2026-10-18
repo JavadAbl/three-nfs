@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGameStore } from "@/stores/gameStore";
 import { NetClient } from "@/game/net/NetClient";
 import { CAR_COLORS } from "@/game/constants";
-import { ArrowLeft, Crown, LogOut, Play, Users, Wifi, WifiOff } from "lucide-react";
+import { MAP_LIBRARY, mapDef, resolveMapId } from "@/game/maps/registry";
+import { ArrowLeft, Crown, LogOut, MapPin, Play, Users, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export function OnlineLobby({
@@ -23,10 +24,10 @@ export function OnlineLobby({
   ensureNet: () => NetClient | null;
   netRef: React.MutableRefObject<NetClient | null>;
   onBack: () => void;
-  onRaceStarting: (laps: number) => void;
+  onRaceStarting: (laps: number, mapId: string) => void;
   onLeaveRoom: () => void;
 }) {
-  const { playerName, setPlayerName, carColor, setCarColor, lobby, setLobby } = useGameStore();
+  const { playerName, setPlayerName, carColor, setCarColor, carId, mapId, setMapId, lobby, setLobby } = useGameStore();
   const { toast } = useToast();
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,10 +41,16 @@ export function OnlineLobby({
       setLobby({ players });
     };
     net.onConnected = (connected) => setLobby({ connected });
-    net.onRaceStart = (laps) => {
+    net.onRoomMap = (roomMapId) => {
+      // the host's pick is authoritative — keep the menu selection in sync too
+      const resolved = resolveMapId(roomMapId || null);
+      setLobby({ mapId: resolved });
+      setMapId(resolved);
+    };
+    net.onRaceStart = (laps, mapId) => {
       if (startedRef.current) return;
       startedRef.current = true;
-      onRaceStarting(laps);
+      onRaceStarting(laps, mapId);
     };
     net.onError = (msg) => toast({ title: "Online error", description: msg, variant: "destructive" });
     net.onDisconnected = () => {
@@ -57,7 +64,12 @@ export function OnlineLobby({
       // detach callbacks so a new NetClient can wire fresh ones
       if (netRef.current === net) return; // still active — keep handlers
     };
-  }, [net, netRef, setLobby, toast, onRaceStarting]);
+  }, [net, netRef, setLobby, setMapId, toast, onRaceStarting]);
+
+  // car changed in the garage while sitting in a room → announce it
+  useEffect(() => {
+    if (inRoom && net?.connected) net.updateCar(carId);
+  }, [carId, inRoom, net]);
 
   const ensureConnected = (): NetClient | null => ensureNet();
 
@@ -68,8 +80,8 @@ export function OnlineLobby({
       const n = ensureConnected();
       if (!n) throw new Error("Could not start connection");
       await waitForSocket(n);
-      const roomId = await n.createRoom(playerName.trim(), carColor);
-      setLobby({ roomId, isHost: true, players: [{ id: n.socket!.id, name: playerName.trim(), color: carColor, ready: true }] });
+      const roomId = await n.createRoom(playerName.trim(), carColor, carId, mapId);
+      setLobby({ roomId, isHost: true, players: [{ id: n.socket!.id, name: playerName.trim(), color: carColor, carId, ready: true }] });
       toast({ title: "Room created", description: `Share code ${roomId} with your crew.` });
     } catch (e) {
       toast({ title: "Failed to create room", description: String((e as Error).message), variant: "destructive" });
@@ -86,7 +98,7 @@ export function OnlineLobby({
       const n = ensureConnected();
       if (!n) throw new Error("Could not start connection");
       await waitForSocket(n);
-      await n.joinRoom(joinCode, playerName.trim(), carColor);
+      await n.joinRoom(joinCode, playerName.trim(), carColor, carId);
       setLobby({ roomId: joinCode.trim().toUpperCase(), isHost: false });
     } catch (e) {
       toast({ title: "Could not join", description: String((e as Error).message), variant: "destructive" });
@@ -97,6 +109,13 @@ export function OnlineLobby({
 
   const handleStart = () => {
     (net ?? netRef.current)?.startRace(lobby.laps);
+  };
+
+  // host-only: switch the room's circuit
+  const handlePickMap = (id: string) => {
+    setMapId(id);
+    setLobby({ mapId: id });
+    (net ?? netRef.current)?.setRoomMap(id);
   };
 
   const handleLeave = () => {
@@ -182,6 +201,11 @@ export function OnlineLobby({
                   <Users className="size-3.5 text-amber-500" />
                   {lobby.players.length} DRIVER{lobby.players.length === 1 ? "" : "S"} IN LOBBY
                 </div>
+                <div className="flex items-center gap-2 text-xs text-zinc-400 font-semibold tracking-wider">
+                  <MapPin className="size-3.5 text-sky-400" />
+                  TRACK:
+                  <span className="text-zinc-100">{mapDef(lobby.mapId)?.name ?? "DOWNTOWN NEON"}</span>
+                </div>
                 <div className="space-y-1.5">
                   {lobby.players.map((p) => (
                     <div key={p.id} className="flex items-center gap-3 bg-zinc-900/70 rounded-md px-3 py-2.5">
@@ -196,7 +220,7 @@ export function OnlineLobby({
 
                 {lobby.isHost ? (
                   <div className="space-y-3 pt-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Crown className="size-3.5 text-amber-500" />
                       <span className="text-xs text-zinc-400 tracking-wider font-semibold">HOST CONTROLS</span>
                       <span className="ml-auto flex gap-1">
@@ -210,6 +234,18 @@ export function OnlineLobby({
                           </button>
                         ))}
                       </span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {MAP_LIBRARY.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => handlePickMap(m.id)}
+                          className={`lap-pick flex-1 !px-2 !text-[10px] ${lobby.mapId === m.id ? "lap-pick-active" : ""}`}
+                          title={m.description}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
                     </div>
                     <Button
                       onClick={handleStart}

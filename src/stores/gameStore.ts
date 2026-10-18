@@ -46,8 +46,11 @@ const LS_NAME = "three-nfs:name";
 const LS_COLOR = "three-nfs:color";
 const LS_CAR = "three-nfs:car";
 
-/** retired car ids → their replacement (GTS was dropped in favour of the SRT) */
-const LEGACY_CAR_IDS: Record<string, string> = { viper2: "viper" };
+/** retired car ids → their replacement (SRT-10 is the SRT's successor) */
+const LEGACY_CAR_IDS: Record<string, string> = {
+  viper: "viper08",
+  viper2: "viper08",
+};
 
 /** map a persisted id onto a car that still exists in the garage */
 function resolvePersistedCar(raw: string | null): string {

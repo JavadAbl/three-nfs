@@ -81,7 +81,8 @@ export function GameShell() {
           loadCarModel(carId),
           loadCarModel("gtr"),
           loadCarModel("audi"),
-          loadCarModel("viper"),
+          loadCarModel("viper08"),
+          loadCarModel("viper16"),
         ]);
         launchingRef.current = false;
         if (!canvasRef.current) return; // unmounted while loading

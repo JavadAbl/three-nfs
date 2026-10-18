@@ -18,6 +18,8 @@ export interface CarSnapshot {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+const _rel = new THREE.Vector3();
+const _clamped = new THREE.Vector3();
 
 export class Car {
   controls: CarControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
@@ -48,6 +50,11 @@ export class Car {
   // visuals
   group = new THREE.Group();
   private bodyGroup = new THREE.Group();
+  /** collision footprint (metres): half width / half length of the body box */
+  collHalfW = 1.05;
+  collHalfL = 2.35;
+  /** guardrail impact strength this frame (m/s) — consumed by Game for FX */
+  railHit = 0;
   private wheels: THREE.Group[] = [];
   private modelWheels: ModelWheel[] = [];
   private model?: CarModelInstance;
@@ -89,6 +96,8 @@ export class Car {
 
     const d = m.dims;
     const w2 = d.width / 2;
+    this.collHalfW = THREE.MathUtils.clamp(d.width / 2, 0.85, 1.5);
+    this.collHalfL = THREE.MathUtils.clamp(d.length / 2, 2.0, 3.0);
 
     // lights
     const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
@@ -218,6 +227,8 @@ export class Car {
 
   // ─── procedural fallback path (original stacked-box muscle car) ─────────
   private buildProceduralVisual() {
+    this.collHalfW = 1.05; // body 2.05 wide, wheels at ±0.95
+    this.collHalfL = 2.35; // 4.6 long + bumpers
     const paint = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(this.color),
       metalness: 0.85,
@@ -494,19 +505,37 @@ export class Car {
     this.pos.addScaledVector(this.vel, dt);
     this.speed = vf;
 
-    // ── wall clamp (guardrails) ──
-    const wall = track.halfWidth + 3.6;
-    if (Math.abs(loc.lateral) > wall) {
-      const sign = Math.sign(loc.lateral);
-      const s = track.sampleAt(loc.index);
-      const clamped = s.pos.clone().addScaledVector(s.normal, sign * wall);
-      this.pos.x = clamped.x;
-      this.pos.z = clamped.z;
-      // reflect lateral velocity, damp forward speed
+    // ── guardrail collision — clamp the car BODY edge to the rail mesh ──
+    // The rail visual stands at track.railLateral; the old clamp wall sat
+    // 2.2m beyond it, which let cars drive straight through the guardrail.
+    const s = track.sampleAt(loc.index);
+    _rel.copy(this.pos).sub(s.pos);
+    const lateralNow = _rel.dot(s.normal); // post-integration, frame-local
+    const maxLateral = track.railLateral - this.collHalfW;
+    this.railHit = 0;
+    if (Math.abs(lateralNow) > maxLateral) {
+      const sign = Math.sign(lateralNow);
+      // keep along-track progress so rail-scraping at speed doesn't snap back
+      const along = _rel.dot(s.tangent);
+      _clamped
+        .copy(s.pos)
+        .addScaledVector(s.tangent, along)
+        .addScaledVector(s.normal, sign * maxLateral);
+      this.pos.x = _clamped.x;
+      this.pos.z = _clamped.z;
+      // reflect outward velocity component, scrub energy off along the rail
       const vlat = this.vel.dot(s.normal);
-      if (Math.sign(vlat) === sign) {
-        this.vel.addScaledVector(s.normal, -vlat * 1.6); // bounce
-        this.vel.multiplyScalar(0.78);
+      if (Math.sign(vlat) === sign && Math.abs(vlat) > 0.05) {
+        this.vel.addScaledVector(s.normal, -vlat * 1.45); // bounce back inward
+        // hard hits scrub a lot of speed; shallow grinds bleed gently
+        this.vel.multiplyScalar(Math.abs(vlat) > 3 ? 0.82 : 0.97);
+        this.railHit = Math.min(Math.abs(vlat), 18);
+        // scrape dust at the contact point
+        if (Math.abs(vlat) > 3 && Math.random() < 0.75) {
+          const contact = this.pos.clone().addScaledVector(s.normal, sign * this.collHalfW);
+          contact.y += 0.35;
+          this.smokeRequest = { pos: contact, strength: 0.6 };
+        }
       }
     }
 
@@ -543,7 +572,7 @@ export class Car {
 
   nitroActive = false;
 
-  private syncVisual(dt: number) {
+  syncVisual(dt: number) {
     this.group.position.copy(this.pos);
     this.group.rotation.y = this.heading;
     // pitch from slope + body squat under accel/brake, roll from lateral slip

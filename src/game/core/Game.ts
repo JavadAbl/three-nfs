@@ -7,6 +7,7 @@ import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
 import { instantiateCar, hasCarModel, carDef, type CarModelInstance } from "../world/CarModelLoader";
 import { ParticlePool } from "../world/Particles";
+import { resolveCarCollisions } from "../world/Collisions";
 import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
 import { InputManager } from "./Input";
@@ -103,6 +104,9 @@ export class Game {
 
   private cb: GameCallbacks;
   private opts: GameOptions;
+  /** decaying camera-shake amplitude (0..1) fed by collisions / rail hits */
+  private impactShake = 0;
+  private railSoundCd = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -225,9 +229,9 @@ export class Game {
   }
 
   private gridSlot(i: number, total: number) {
-    // grid behind the start line, two-wide
+    // grid behind the start line, two-wide — 6m rows keep bumpers apart
     const N = this.track.sampleCount;
-    const back = 6 + Math.floor(i / 2) * 4;
+    const back = 6 + Math.floor(i / 2) * 6;
     const idx = (N - back) % N;
     const s = this.track.sampleAt(idx);
     const lateral = i % 2 === 0 ? -3.4 : 3.4;
@@ -416,6 +420,9 @@ export class Game {
       for (const ai of this.ais) ai.update(dt, this.track, controlsEnabled);
       for (const rc of this.remotes.values()) rc.update(dt);
 
+      // ── car-vs-car collision ──
+      this.resolveCollisions(dt);
+
       // remote cars contribute to standings
       if (this.raceManager) this.raceManager.update(dt, this.phase === "racing");
 
@@ -431,6 +438,13 @@ export class Game {
 
     // ── camera & lights ──
     this.cameraRig.update(this.paused ? 0.0001 : dt, this.player);
+    if (this.impactShake > 0.01) {
+      const k = this.impactShake;
+      this.camera.position.x += (Math.random() - 0.5) * k * 0.5;
+      this.camera.position.y += (Math.random() - 0.5) * k * 0.35;
+      this.camera.position.z += (Math.random() - 0.5) * k * 0.5;
+      this.impactShake = Math.max(0, this.impactShake - 3.5 * dt);
+    }
     this.moon.position.set(this.player.pos.x + 120, 220, this.player.pos.z + 80);
     this.moon.target.position.copy(this.player.pos);
 
@@ -458,6 +472,32 @@ export class Game {
 
     this.renderer.render(this.scene, this.camera);
   };
+
+  /** car-vs-car collision resolution + impact feedback (FX/sound/shake) */
+  private resolveCollisions(dt: number) {
+    const contacts = resolveCarCollisions(this.allCars);
+    for (const c of contacts) {
+      // cars moved after their update() — refresh transforms for this frame
+      c.a.syncVisual(1e-4);
+      c.b.syncVisual(1e-4);
+      this.particles.emit(c.point, 1);
+      if (c.a === this.player || c.b === this.player) {
+        const strength = THREE.MathUtils.clamp(c.impact / 9, 0.2, 1);
+        this.impactShake = Math.max(this.impactShake, strength);
+        if (!this.audio.muted)
+          this.audio.blip(55 + Math.random() * 45, 0.18, "sawtooth", 0.08 + 0.3 * strength);
+      }
+    }
+    // guardrail scrape feedback for the player (rate-limited thud)
+    this.railSoundCd = Math.max(0, this.railSoundCd - dt);
+    if (this.player.railHit > 3.5 && this.railSoundCd === 0) {
+      const strength = THREE.MathUtils.clamp(this.player.railHit / 12, 0.2, 1);
+      this.impactShake = Math.max(this.impactShake, strength * 0.7);
+      if (!this.audio.muted)
+        this.audio.blip(70 + Math.random() * 50, 0.2, "sawtooth", 0.06 + 0.28 * strength);
+      this.railSoundCd = 0.22;
+    }
+  }
 
   private emitHud() {
     const standing = this.raceManager?.standingFor(this.player);
@@ -540,6 +580,7 @@ export class Game {
       for (const ai of this.ais) ai.drive(dt, this.track, playerProg, racing);
       this.player.update(dt, this.track, racing);
       for (const ai of this.ais) ai.update(dt, this.track, racing);
+      this.resolveCollisions(dt);
       this.raceManager?.update(dt, racing);
     }
     this.emitHud();

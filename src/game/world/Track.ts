@@ -25,6 +25,8 @@ export class Track {
   readonly sampleCount: number;
   readonly length: number;
   readonly halfWidth = GAME_CONFIG.ROAD_HALF_WIDTH;
+  /** lateral metres (from centre line) where the guardrail mesh stands — physics matches the visual */
+  readonly railLateral = GAME_CONFIG.ROAD_HALF_WIDTH + 1.4;
   readonly checkpointCount = GAME_CONFIG.CHECKPOINTS;
   /** sample indices that mark each checkpoint gate */
   checkpointIndices: number[] = [];
@@ -128,7 +130,7 @@ export class Track {
 
   private buildRails() {
     const N = this.sampleCount;
-    const hw = this.halfWidth + 1.4;
+    const hw = this.railLateral;
     const railH = 1.05;
     for (const side of [-1, 1]) {
       const positions: number[] = [];

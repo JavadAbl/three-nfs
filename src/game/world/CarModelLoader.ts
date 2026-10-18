@@ -312,6 +312,24 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     }
   });
 
+  // ── night-light boost ──
+  // Rips/exporters often bake light meshes with a faint gray emissive
+  // (e.g. SRT10 "Lights_315" @ 0.35) while other cars ship full-bright
+  // light mats. Lift the dim ones so every car's lights visibly glow at
+  // night like its rivals; already-bright materials are left untouched.
+  wrapper.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      const sm = m as THREE.MeshStandardMaterial;
+      if (!sm || !sm.emissive) continue;
+      if (!/light|tail|lamp|emiss|glow/i.test(sm.name ?? "")) continue;
+      const s = sm.emissive.r + sm.emissive.g + sm.emissive.b;
+      if (s >= 0.05 && s < 1.5) sm.emissive.multiplyScalar(2.2);
+    }
+  });
+
   // shadows for the whole car
   wrapper.traverse((o) => {
     const mesh = o as THREE.Mesh;

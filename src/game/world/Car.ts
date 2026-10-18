@@ -105,9 +105,35 @@ export class Car {
       tail.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.02);
       this.bodyGroup.add(tail);
     }
+    // red bloom sprites at the tail lights — rivals ship baked emissive
+    // tails (GT-R "taillight" @ 1.0); models without them looked dark
+    // from the chase cam, so every model car gets the same night glow
+    const glowTex = radialGlowTexture();
+    const tailGlowMat = new THREE.MeshBasicMaterial({
+      map: glowTex,
+      color: 0xff2a1a,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.owned.push(tailGlowMat, glowTex);
+    for (const sx of [1, -1]) {
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
+      glow.rotation.y = Math.PI; // face rearward
+      glow.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.07);
+      glow.renderOrder = 3;
+      this.bodyGroup.add(glow);
+    }
     this.brakeLights = new THREE.Mesh(
       new THREE.BoxGeometry(d.width * 0.8, 0.09, 0.06),
-      new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.3 })
+      new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
     );
     this.owned.push(this.brakeLights.material as THREE.Material);
     this.brakeLights.position.set(0, d.topY * 0.62, d.rearZ + 0.03);
@@ -132,7 +158,6 @@ export class Car {
 
     // underglow — polygonOffset + clearance keeps it from z-fighting the
     // road when the body pitches/rolls over crests (looked like noise)
-    const glowTex = radialGlowTexture();
     const glowMat = new THREE.MeshBasicMaterial({
       map: glowTex,
       color: new THREE.Color(this.color),
@@ -248,9 +273,34 @@ export class Car {
     tailR.position.x = -0.6;
     this.brakeLights = new THREE.Mesh(
       new THREE.BoxGeometry(1.7, 0.1, 0.06),
-      new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.35 })
+      new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
     );
     this.brakeLights.position.set(0, 0.72, -2.64);
+
+    // tail bloom sprites (see model path — matches emissive rivals)
+    const glowTex = radialGlowTexture();
+    const tailGlowMat = new THREE.MeshBasicMaterial({
+      map: glowTex,
+      color: 0xff2a1a,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.owned.push(tailGlowMat, glowTex);
+    for (const x of [0.6, -0.6]) {
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
+      glow.rotation.y = Math.PI;
+      glow.position.set(x, 0.62, -2.68);
+      glow.renderOrder = 3;
+      this.bodyGroup.add(glow);
+    }
 
     // exhaust flames (nitro)
     const flameMat = new THREE.MeshBasicMaterial({
@@ -269,7 +319,6 @@ export class Car {
     }
 
     // underglow (NFS night vibe) — offset material avoids road z-fighting
-    const glowTex = radialGlowTexture();
     const underglow = new THREE.Mesh(
       new THREE.PlaneGeometry(4.2, 6.0),
       new THREE.MeshBasicMaterial({

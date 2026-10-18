@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CAR_COLORS } from "@/game/constants";
-import { CAR_LIBRARY } from "@/game/world/CarModelLoader";
+import { CAR_LIBRARY } from "@/game/cars/registry";
 import { fmtTime } from "@/game/core/Game";
 import { useGameStore } from "@/stores/gameStore";
 import { Trophy, Wifi, Timer, Gauge, User, CarFront } from "lucide-react";

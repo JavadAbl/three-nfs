@@ -5,7 +5,8 @@ import { Track } from "../world/Track";
 import { CityEnvironment } from "../world/CityEnvironment";
 import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
-import { instantiateCar, hasCarModel, carDef, type CarModelInstance } from "../world/CarModelLoader";
+import { instantiateCar, hasCarModel, type CarModelInstance } from "../world/CarModelLoader";
+import { AI_POOL_IDS, carDef, resolveCarTuning } from "../cars/registry";
 import { ParticlePool } from "../world/Particles";
 import { resolveCarCollisions } from "../world/Collisions";
 import { RaceManager } from "../race/RaceManager";
@@ -48,7 +49,7 @@ export interface GameOptions {
   mode: GameMode;
   playerName: string;
   carColor: string;
-  /** selected car id from CAR_LIBRARY ("gtr" | "audi" | "viper08" | "viper16" | "classic") */
+  /** selected car id from the registry (src/game/cars/registry.ts) */
   carId?: string;
   laps?: number;
   net?: NetClient | null;
@@ -198,8 +199,8 @@ export class Game {
     // player starts at the back of the grid (NFS style)
     const playerGrid = total - 1;
     const carId = this.opts.carId ?? "classic";
-    // AI rivals rotate through the other models for variety
-    const aiPool = ["gtr", "audi", "viper08", "viper16", "classic"].filter((c) => c !== carId);
+    // AI rivals rotate through the registry's AI pool for variety
+    const aiPool = AI_POOL_IDS.filter((c) => c !== carId);
     for (let i = 0; i < total; i++) {
       let car: Car;
       if (i === playerGrid) {
@@ -210,11 +211,23 @@ export class Game {
               "falling back to the procedural car. Check the file exists / re-select the car.",
           );
         }
-        car = this.player = new Car("player", this.opts.carColor, this.opts.playerName, model);
+        car = this.player = new Car(
+          "player",
+          this.opts.carColor,
+          this.opts.playerName,
+          model,
+          resolveCarTuning(carId)
+        );
       } else {
         const aiId = aiPool[i % aiPool.length];
         const model = hasCarModel(aiId) ? instantiateCar(aiId, AI_COLORS[i % AI_COLORS.length]) ?? undefined : undefined;
-        const ai = new AICar(AI_COLORS[i % AI_COLORS.length], AI_NAMES[i % AI_NAMES.length], i, model);
+        const ai = new AICar(
+          AI_COLORS[i % AI_COLORS.length],
+          AI_NAMES[i % AI_NAMES.length],
+          i,
+          model,
+          resolveCarTuning(aiId)
+        );
         this.ais.push(ai);
         car = ai;
       }

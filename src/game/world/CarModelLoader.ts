@@ -7,6 +7,9 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+// the car catalog (ids, model urls, tuning) lives in cars/registry — this
+// file is purely the load → normalize → rig pipeline
+import { CAR_LIBRARY, carDef } from "../cars/registry";
 
 export interface ModelWheel {
   /** pivot: rotate .rotation[axis] for spin, .rotation.y for steering (front) */
@@ -63,28 +66,6 @@ loader.setDRACOLoader(dracoLoader);
 const templates = new Map<string, Template>();
 const inflight = new Map<string, Promise<Template>>();
 
-export interface CarDef {
-  id: string;
-  name: string;
-  modelUrl: string | null;
-  spec: string;
-}
-
-/** registry mirrored in constants.ts — kept here to avoid a circular import */
-const CAR_DEFS: CarDef[] = [
-  { id: "gtr", name: "NISSAN GT-R R35", modelUrl: "/models/nissan-gtr-r35.glb", spec: "NISMO · 600 HP" },
-  { id: "audi", name: "AUDI TT RS", modelUrl: "/models/audi-tt-rs.glb", spec: "QUATTRO · 400 HP" },
-  { id: "viper08", name: "VIPER SRT10 '08", modelUrl: "/models/viper-srt10-2008.glb", spec: "V10 · 600 HP" },
-  { id: "viper16", name: "VIPER ACR '16", modelUrl: "/models/viper-acr-2016.glb", spec: "V10 · 645 HP · ACR" },
-  { id: "classic", name: "STREET MUSCLE", modelUrl: null, spec: "V8 · PROCEDURAL" },
-];
-
-export const CAR_LIBRARY = CAR_DEFS;
-
-export function carDef(id: string): CarDef | undefined {
-  return CAR_DEFS.find((c) => c.id === id);
-}
-
 /** load (and cache) a car template — resolves null for procedural (no-model) cars */
 export function loadCarModel(id: string): Promise<Template | null> {
   const def = carDef(id);
@@ -112,7 +93,7 @@ export function loadCarModel(id: string): Promise<Template | null> {
 
 /** warm the cache for every model car (called on menu mount) */
 export function preloadAllCarModels(): Promise<PromiseSettledResult<Template | null>[]> {
-  return Promise.allSettled(CAR_DEFS.map((c) => loadCarModel(c.id)));
+  return Promise.allSettled(CAR_LIBRARY.map((c) => loadCarModel(c.id)));
 }
 
 /** true when the template is already in cache */

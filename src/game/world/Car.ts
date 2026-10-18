@@ -1,6 +1,6 @@
 // ─── Car: arcade physics + procedural low-poly visual OR GLB model ───────
 import * as THREE from "three";
-import { CAR_TUNING } from "../constants";
+import { DEFAULT_CAR_TUNING, type CarTuning } from "../cars/registry";
 import type { Track, TrackLocation } from "./Track";
 import type { CarControls } from "../core/Input";
 import { type CarModelInstance, type ModelWheel } from "./CarModelLoader";
@@ -31,7 +31,9 @@ export class Car {
   vel = new THREE.Vector3();
   /** forward speed m/s */
   speed = 0;
-  nitro = CAR_TUNING.nitroCapacity;
+  /** per-car physics profile (resolved from the registry at spawn) */
+  tuning: CarTuning = DEFAULT_CAR_TUNING;
+  nitro = DEFAULT_CAR_TUNING.nitroCapacity;
   kind: CarKind;
   color: string;
   name: string;
@@ -72,11 +74,21 @@ export class Car {
   /** smoke emission request consumed by the particle pool owner */
   smokeRequest: { pos: THREE.Vector3; strength: number } | null = null;
 
-  constructor(kind: CarKind, color: string, name = "", model?: CarModelInstance) {
+  constructor(
+    kind: CarKind,
+    color: string,
+    name = "",
+    model?: CarModelInstance,
+    tuning?: CarTuning
+  ) {
     this.kind = kind;
     this.color = color;
     this.name = name;
     this.model = model;
+    if (tuning) {
+      this.tuning = tuning;
+      this.nitro = tuning.nitroCapacity;
+    }
     this.buildVisual();
   }
 
@@ -440,7 +452,7 @@ export class Car {
   finishTime = 0;
 
   update(dt: number, track: Track, controlsEnabled: boolean) {
-    const T = CAR_TUNING;
+    const T = this.tuning;
     const c = this.controls;
 
     // locate on track (hint = last index for O(1) search)
@@ -571,6 +583,11 @@ export class Car {
   }
 
   nitroActive = false;
+
+  /** collision weight (relative, 1 = baseline) — from the car's tuning */
+  get mass(): number {
+    return this.tuning.mass;
+  }
 
   syncVisual(dt: number) {
     this.group.position.copy(this.pos);

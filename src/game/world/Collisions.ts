@@ -1,9 +1,10 @@
 // ─── Car-vs-car collision: oriented-box SAT + arcade impulse response ───────
 // Cars are rotated rectangles in the XZ plane (heading + collHalfL/W).
 // Resolution = positional separation along the minimum translation vector
-// plus an equal-mass impulse exchange, a tangential scrub and a small yaw
-// kick on offset hits so contacts feel physical. Remote cars are skipped:
-// their transforms are network-authoritative and act as ghosts.
+// plus a mass-weighted impulse exchange (per-car tuning mass), a tangential
+// scrub and a small yaw kick on offset hits so contacts feel physical.
+// Remote cars are skipped: their transforms are network-authoritative and
+// act as ghosts.
 import * as THREE from "three";
 import type { Car } from "./Car";
 
@@ -90,42 +91,49 @@ function resolvePair(a: Car, b: Car): CarContact | null {
     nz = -nz;
   }
 
-  // ── positional separation (half each, capped) ──
-  const sep = Math.min(bestOverlap + SLOP, MAX_SEPARATION) * 0.5;
-  a.pos.x -= nx * sep;
-  a.pos.z -= nz * sep;
-  b.pos.x += nx * sep;
-  b.pos.z += nz * sep;
+  // ── positional separation (mass-weighted shares, capped) ──
+  // heavier car budges less: share = oppositeMass / totalMass
+  const mA = a.mass;
+  const mB = b.mass;
+  const total = Math.min(bestOverlap + SLOP, MAX_SEPARATION);
+  const wA = mB / (mA + mB);
+  const wB = mA / (mA + mB);
+  a.pos.x -= nx * total * wA;
+  a.pos.z -= nz * total * wA;
+  b.pos.x += nx * total * wB;
+  b.pos.z += nz * total * wB;
 
   // contact point = middle of the overlap interval along the MTV axis
   const centre = (bestD - bestRB + bestRA) * 0.5;
   _point.set(a.pos.x + nx * centre, Math.max(a.pos.y, b.pos.y) + 0.45, a.pos.z + nz * centre);
 
-  // ── impulse along the normal (equal masses) ──
+  // ── impulse along the normal (mass-weighted) ──
   let impact = 0;
   const relN = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
   if (relN < -0.4) {
-    const j = -(1 + RESTITUTION) * relN * 0.5;
+    // J = -(1+e)·vRel / (1/mA + 1/mB); Δv = J/m applied ±along the normal
+    const j = -(1 + RESTITUTION) * relN / (1 / mA + 1 / mB);
     impact = -relN;
-    a.vel.x -= nx * j;
-    a.vel.z -= nz * j;
-    b.vel.x += nx * j;
-    b.vel.z += nz * j;
+    a.vel.x -= (nx * j) / mA;
+    a.vel.z -= (nz * j) / mA;
+    b.vel.x += (nx * j) / mB;
+    b.vel.z += (nz * j) / mB;
 
-    // tangential scrub — metal-on-metal drag
+    // tangential scrub — metal-on-metal drag (same mass weighting)
     const tx = -nz, tz = nx;
     const relT = (b.vel.x - a.vel.x) * tx + (b.vel.z - a.vel.z) * tz;
-    const scrub = relT * TANGENT_SCRUB * 0.5;
-    a.vel.x += tx * scrub;
-    a.vel.z += tz * scrub;
-    b.vel.x -= tx * scrub;
-    b.vel.z -= tz * scrub;
+    const scrub = relT * TANGENT_SCRUB;
+    a.vel.x += (tx * scrub) * wA;
+    a.vel.z += (tz * scrub) * wA;
+    b.vel.x -= (tx * scrub) * wB;
+    b.vel.z -= (tz * scrub) * wB;
 
     // offset hits spin the cars slightly: τ.y = r.z·F.x − r.x·F.z
+    // (yaw kick also damped by mass — inertia scales with it)
     const rax = _point.x - a.pos.x, raz = _point.z - a.pos.z;
     const rbx = _point.x - b.pos.x, rbz = _point.z - b.pos.z;
-    const ta = raz * (-nx * j) - rax * (-nz * j);
-    const tb = rbz * (nx * j) - rbx * (nz * j);
+    const ta = (raz * (-nx * j) - rax * (-nz * j)) / mA;
+    const tb = (rbz * (nx * j) - rbx * (nz * j)) / mB;
     a.heading += THREE.MathUtils.clamp(ta * YAW_GAIN, -YAW_MAX, YAW_MAX);
     b.heading += THREE.MathUtils.clamp(tb * YAW_GAIN, -YAW_MAX, YAW_MAX);
   }

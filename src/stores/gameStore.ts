@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type { HudState, GameMode, RaceResultEntry } from "@/game/core/Game";
 import type { NetPlayer } from "@/game/net/NetClient";
-import { CAR_LIBRARY } from "@/game/world/CarModelLoader";
+import { CAR_LIBRARY } from "@/game/cars/registry";
 
 export type Screen = "menu" | "lobby" | "countdown" | "racing" | "paused" | "results";
 

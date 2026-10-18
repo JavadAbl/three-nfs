@@ -1,17 +1,24 @@
 // ─── AI driver: follows the racing line with curvature-aware speed ──────────
 import * as THREE from "three";
-import { AI_TUNING, CAR_TUNING } from "../constants";
+import { AI_TUNING } from "../constants";
 import type { Track } from "./Track";
 import { Car } from "./Car";
 import type { CarModelInstance } from "./CarModelLoader";
+import type { CarTuning } from "../cars/registry";
 
 export class AICar extends Car {
   private skill: number;
   private lateralOffset: number;
   stuckTimer = 0;
 
-  constructor(color: string, name: string, index: number, model?: CarModelInstance) {
-    super("ai", color, name, model);
+  constructor(
+    color: string,
+    name: string,
+    index: number,
+    model?: CarModelInstance,
+    tuning?: CarTuning
+  ) {
+    super("ai", color, name, model, tuning);
     const [lo, hi] = AI_TUNING.skillRange;
     this.skill = THREE.MathUtils.lerp(lo, hi, (index % 5) / 4);
     this.lateralOffset = [-2.2, 2.2, -1.1, 1.6, 3.0][index % 5];
@@ -49,7 +56,7 @@ export class AICar extends Car {
       maxCurv = Math.max(maxCurv, track.curvatureAt(idx + ahead, 6));
     }
     const cornerLimit = Math.sqrt(0.9 * 9.81 / Math.max(maxCurv, 1e-4)); // µ≈0.9
-    const skillTop = CAR_TUNING.maxSpeed * (0.62 + this.skill * 0.4);
+    const skillTop = this.tuning.maxSpeed * (0.62 + this.skill * 0.4);
 
     // rubber-banding relative to the player
     const delta = playerProgress - this.progress;
@@ -62,7 +69,7 @@ export class AICar extends Car {
     const targetSpeed = THREE.MathUtils.clamp(
       Math.min(cornerLimit * (0.8 + this.skill * 0.3), skillTop) * rubber,
       8,
-      CAR_TUNING.maxSpeed * 1.05
+      this.tuning.maxSpeed * 1.05
     );
 
     if (this.speed < targetSpeed - 1) {

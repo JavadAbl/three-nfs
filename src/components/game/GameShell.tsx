@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Game, type GameMode } from "@/game/core/Game";
 import { NetClient } from "@/game/net/NetClient";
 import { loadCarModel } from "@/game/world/CarModelLoader";
+import { preloadCarIds } from "@/game/cars/registry";
 import { useGameStore } from "@/stores/gameStore";
 import { HUD } from "@/components/game/HUD";
 import { MainMenu } from "@/components/game/MainMenu";
@@ -46,11 +47,11 @@ export function GameShell() {
   const [raceSession, setRaceSession] = useState<StartRequest | null>(null);
   const launchingRef = useRef(false);
 
-  // warm the model cache while the user is in the menus
+  // warm the selected car's model while the user is in the menus (the full
+  // AI pool is loaded at launch) — derived from the registry, never listed
   useEffect(() => {
-    void loadCarModel("gtr").catch(() => {});
-    void loadCarModel("audi").catch(() => {});
-  }, []);
+    void loadCarModel(carId).catch(() => {});
+  }, [carId]);
 
   const disposeGame = useCallback(() => {
     gameRef.current?.quit();
@@ -76,14 +77,8 @@ export function GameShell() {
       launchingRef.current = true;
       disposeGame();
       void (async () => {
-        // ensure the selected (and rival) car models are in cache — instant if warm
-        await Promise.allSettled([
-          loadCarModel(carId),
-          loadCarModel("gtr"),
-          loadCarModel("audi"),
-          loadCarModel("viper08"),
-          loadCarModel("viper16"),
-        ]);
+        // ensure the selected car + registry AI pool are in cache — instant if warm
+        await Promise.allSettled(preloadCarIds(carId).map((id) => loadCarModel(id)));
         launchingRef.current = false;
         if (!canvasRef.current) return; // unmounted while loading
         const game = new Game(

@@ -14,6 +14,8 @@ export const GAME_CONFIG = {
   AI_COUNT: 3,
 } as const;
 
+// Baseline physics shared by every car — per-car deltas live in
+// src/game/cars/registry.ts (CarDef.tuning) and merge over these values.
 export const CAR_TUNING = {
   /** Max engine acceleration m/s² */
   enginePower: 14.5,

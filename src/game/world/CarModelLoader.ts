@@ -75,6 +75,8 @@ const CAR_DEFS: CarDef[] = [
   { id: "gtr", name: "NISSAN GT-R R35", modelUrl: "/models/nissan-gtr-r35.glb", spec: "NISMO · 600 HP" },
   { id: "audi", name: "AUDI TT RS", modelUrl: "/models/audi-tt-rs.glb", spec: "QUATTRO · 400 HP" },
   { id: "viper", name: "DODGE VIPER SRT", modelUrl: "/models/dodge-viper-srt.glb", spec: "V10 · 645 HP" },
+  { id: "viper08", name: "VIPER SRT10 '08", modelUrl: "/models/viper-srt10-2008.glb", spec: "V10 · 600 HP" },
+  { id: "viper16", name: "VIPER ACR '16", modelUrl: "/models/viper-acr-2016.glb", spec: "V10 · 645 HP · ACR" },
   { id: "classic", name: "STREET MUSCLE", modelUrl: null, spec: "V8 · PROCEDURAL" },
 ];
 

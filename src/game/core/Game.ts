@@ -5,7 +5,7 @@ import { Track } from "../world/Track";
 import { CityEnvironment } from "../world/CityEnvironment";
 import { Car, RemoteCar, type CarSnapshot } from "../world/Car";
 import { AICar } from "../world/AICar";
-import { instantiateCar, hasCarModel, type CarModelInstance } from "../world/CarModelLoader";
+import { instantiateCar, hasCarModel, registerKTX2Renderer, type CarModelInstance } from "../world/CarModelLoader";
 import { AI_POOL_IDS, carDef, resolveCarId, resolveCarTuning } from "../cars/registry";
 import { DEFAULT_MAP_ID, mapDef, resolveEnvTheme, resolveMapPalette } from "../maps/registry";
 import { ParticlePool } from "../world/Particles";
@@ -130,6 +130,7 @@ export class Game {
 
     // ── renderer ──
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    registerKTX2Renderer(this.renderer); // refresh KTX2 GPU-format detection
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;

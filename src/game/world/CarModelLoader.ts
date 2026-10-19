@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 // the car catalog (ids, model urls, tuning) lives in cars/registry — this
 // file is purely the load → normalize → rig pipeline
 import { CAR_LIBRARY, carDef } from "../cars/registry";
@@ -63,6 +64,37 @@ const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath("/draco/");
 dracoLoader.preload();
 loader.setDRACOLoader(dracoLoader);
+// KTX2 GPU-compressed textures (KHR_texture_basisu): decode straight to the
+// GPU's native format (BC7/ASTC/ETC2) — stays compressed in VRAM, ~6-8x less
+// than WebP which unpacks to raw RGBA. Transcoder cached from /ktx2/.
+const ktx2Loader = new KTX2Loader();
+ktx2Loader.setTranscoderPath("/ktx2/");
+loader.setKTX2Loader(ktx2Loader);
+
+// KTX2Loader needs to know the GPU's supported formats BEFORE the first
+// KTX2 GLB is parsed — but models preload on the menu screen, before any
+// renderer exists. Probe once with a throwaway 1x1 context; the detected
+// formats persist on the loader (real renderers re-register later).
+let ktx2Probed = false;
+function ensureKTX2Support(): void {
+  if (ktx2Probed) return;
+  ktx2Probed = true;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const probe = new THREE.WebGLRenderer({ canvas });
+    ktx2Loader.detectSupport(probe);
+    probe.dispose();
+    probe.forceContextLoss();
+  } catch (e) {
+    console.warn("[CarModelLoader] KTX2 GPU-texture probe failed:", e);
+  }
+}
+
+/** re-run format detection with a live renderer (garage preview / race) */
+export function registerKTX2Renderer(renderer: THREE.WebGLRenderer): void {
+  ktx2Loader.detectSupport(renderer);
+}
 const templates = new Map<string, Template>();
 const inflight = new Map<string, Promise<Template>>();
 
@@ -75,6 +107,7 @@ export function loadCarModel(id: string): Promise<Template | null> {
   if (cached) return Promise.resolve(cached);
   const pending = inflight.get(id);
   if (pending) return pending;
+  ensureKTX2Support(); // probe GPU formats before the first KTX2 GLB parse
   const p = loader
     .loadAsync(def.modelUrl)
     .then((gltf) => {

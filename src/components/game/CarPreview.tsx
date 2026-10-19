@@ -5,7 +5,7 @@
 // the race skin, so what you see is what you drive.
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { loadCarModel, instantiateCar, applyPaint } from "@/game/world/CarModelLoader";
+import { loadCarModel, instantiateCar, applyPaint, registerKTX2Renderer } from "@/game/world/CarModelLoader";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "@/game/world/ProceduralMuscle";
 import { carEntry } from "@/game/cars/registry";
 
@@ -35,6 +35,7 @@ export function CarPreview({ carId, color, className }: { carId: string; color: 
     if (!host) return;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    registerKTX2Renderer(renderer); // refresh KTX2 GPU-format detection
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;

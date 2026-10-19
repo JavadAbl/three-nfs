@@ -4,6 +4,12 @@ import { GAME_CONFIG } from "../constants";
 import type { MapDef } from "../maps/registry";
 import { resolveMapPalette } from "../maps/registry";
 
+/** Tint multiplied over the scanned albedo (ambientCG Asphalt_001, CC0).
+ *  Night mood comes from the scene lighting, not albedo — the tint only has
+ *  to stop the raw scan (avg ~29% grey) from glowing vs the hand-tuned
+ *  palettes. ~65% keeps grain visible under headlight beams. */
+const ASPHALT_TEX_TINT = 0xa6a6ae;
+
 export interface TrackSample {
   pos: THREE.Vector3;
   tangent: THREE.Vector3; // unit
@@ -79,6 +85,7 @@ export class Track {
     this.buildRails();
     this.buildStartGate();
     this.buildStreetLights();
+    this.buildLightPools();
   }
 
   // ─── geometry construction ──────────────────────────────────────────────
@@ -92,8 +99,11 @@ export class Track {
     const indices: number[] = [];
     // store per-vertex lateral sign so the shader-free approach works with vertex colors
     const colors: number[] = [];
+    // same layout but with the scanned-albedo tint (used once real textures land)
+    const texColors: number[] = [];
 
     const base = new THREE.Color(this.P.asphalt);
+    const texBase = new THREE.Color(ASPHALT_TEX_TINT);
     const edge = new THREE.Color(this.P.roadEdge);
     const line = new THREE.Color(this.P.roadLine);
 
@@ -109,9 +119,14 @@ export class Track {
         uvs.push(t, v * (this.length / 10));
         // default asphalt
         let col = base;
-        if (Math.abs(Math.abs(x) - 0.94) < 0.02) col = edge; // edge lines
-        else if (Math.abs(x) < 0.035 && (i % 4 < 2)) col = line; // dashed centre
+        let colT = texBase;
+        if (Math.abs(Math.abs(x) - 0.94) < 0.02) {
+          col = colT = edge; // edge lines
+        } else if (Math.abs(x) < 0.035 && i % 4 < 2) {
+          col = colT = line; // dashed centre
+        }
         colors.push(col.r, col.g, col.b);
+        texColors.push(colT.r, colT.g, colT.b);
       }
     }
     const rowW = 9;
@@ -141,6 +156,55 @@ export class Track {
     mesh.receiveShadow = true;
     mesh.name = "road";
     this.group.add(mesh);
+
+    // async upgrade: scanned PBR asphalt (no-op if the files are absent)
+    this.applyPbrAsphalt(geo, mat, texColors);
+  }
+
+  /** Swap the procedural canvas surface for the scanned PBR asphalt set
+   *  (ambientCG Asphalt_001, CC0). Tries /textures/asphalt/ first (accepted
+   *  assets), then /textures/staging/asphalt/ (pending acceptance); if the
+   *  color map is nowhere to be found the procedural surface simply stays. */
+  private applyPbrAsphalt(
+    geo: THREE.BufferGeometry,
+    mat: THREE.MeshStandardMaterial,
+    texColors: number[],
+  ): void {
+    const loader = new THREE.TextureLoader();
+    const load = (name: string, ok: (t: THREE.Texture) => void): void => {
+      const paths = [`/textures/asphalt/${name}`, `/textures/staging/asphalt/${name}`];
+      const attempt = (i: number): void => {
+        if (i >= paths.length) return; // silent: procedural fallback stays
+        loader.load(paths[i], ok, undefined, () => attempt(i + 1));
+      };
+      attempt(0);
+    };
+    const tile = (t: THREE.Texture): THREE.Texture => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 8; // road is seen at grazing angles from every camera
+      // dense tiling: the mesh UVs tile every ~10 m; x3 again so the scan's
+      // aggregate grain survives on-screen minification (arcade cam distances)
+      // without the repetition becoming visible as a grid
+      t.repeat.set(3, 3);
+      return t;
+    };
+    load("asphalt-2k-color.jpg", (t) => {
+      mat.map = tile(t);
+      t.colorSpace = THREE.SRGBColorSpace;
+      // scan is its own albedo: lift the flat-palette vertex tint to ASPHALT_TEX_TINT
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(texColors, 3));
+      mat.needsUpdate = true;
+    });
+    load("asphalt-2k-normal.jpg", (t) => {
+      mat.normalMap = tile(t);
+      mat.normalScale = new THREE.Vector2(1.1, 1.1);
+      mat.needsUpdate = true;
+    });
+    load("asphalt-2k-rough.jpg", (t) => {
+      mat.roughnessMap = tile(t);
+      mat.roughness = 0.8; // map carries the variation; <1 for the wet-street sheen
+      mat.needsUpdate = true;
+    });
   }
 
   private buildRails() {
@@ -239,6 +303,64 @@ export class Track {
       glow.position.copy(lamp.position).setY(lamp.position.y - 0.35);
       this.group.add(glow);
     }
+  }
+
+  /** Additive light pools under each streetlight. The lamps themselves are
+   *  emissive-only (zero real lights — the forward renderer stays cheap), so
+   *  the road gets its NFS-style pools from these decals instead: bright
+   *  rings where the scanned asphalt grain + normal map can actually be
+   *  seen at night. One InstancedMesh, 1 draw call, fog-aware. */
+  private buildLightPools() {
+    const N = this.sampleCount;
+    const spacing = Math.floor(N / 46); // must match buildStreetLights
+
+    // radial gradient: hot core under the lamp, soft falloff onto the road
+    const size = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    const r = (this.P.lamp >> 16) & 255;
+    const g = (this.P.lamp >> 8) & 255;
+    const b = this.P.lamp & 255;
+    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, `rgba(${r},${g},${b},0.42)`);
+    grad.addColorStop(0.35, `rgba(${r},${g},${b},0.18)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const geo = new THREE.PlaneGeometry(1, 1);
+    const count = Math.ceil(N / spacing);
+    const pools = new THREE.InstancedMesh(geo, mat, count);
+    const dummy = new THREE.Object3D();
+    const up = new THREE.Vector3();
+    let k = 0;
+    for (let i = 0; i < N && k < count; i += spacing, k++) {
+      const s = this.samples[i];
+      const side = (i / spacing) % 2 === 0 ? 1 : -1; // same parity as the lamps
+      // surface normal: lateral x direction of travel
+      up.copy(s.normal).cross(s.tangent).normalize();
+      dummy.position
+        .copy(s.pos)
+        .addScaledVector(s.normal, side * (this.halfWidth - 2.5))
+        .addScaledVector(up, 0.1);
+      dummy.lookAt(dummy.position.clone().add(up)); // +Z faces the sky
+      dummy.scale.set(14, 14, 1);
+      dummy.updateMatrix();
+      pools.setMatrixAt(k, dummy.matrix);
+    }
+    pools.instanceMatrix.needsUpdate = true;
+    pools.renderOrder = 2; // after road + rails, additive on top
+    pools.name = "lightPools";
+    this.group.add(pools);
   }
 
   // ─── queries ─────────────────────────────────────────────────────────────

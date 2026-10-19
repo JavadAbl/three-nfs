@@ -23,6 +23,22 @@ bun install                    # restore node_modules if wiped
   origin/main) and re-run the dev server / services only after the tree matches
   the remote.
 
+## 1b. Platform checkpoint sweeper (observed 2026-10-19)
+
+The sandbox periodically auto-commits local state with UUID messages (e.g.
+`c0dd2eac-7407…`), force-adding junk (.next/ caches, db/, dev.log) and
+REWRITING .gitignore to a 2-line stub. These commits are local-only — but:
+
+- **Before ANY push**, run `git log --oneline origin/main..HEAD`.
+  If UUID-message (or otherwise non-human) commits are on top, drop them first:
+  `git reset --mixed origin/main` (working files survive), `git restore .gitignore`,
+  then re-stage only intended changes.
+- **Push soon after real work** — the remote is the only protection against both
+  sandbox restarts and sweeper pollution.
+- If the remote itself ever gets polluted (sweeper commits pushed), clean the
+  history with a revert/rewrite commit ASAP, keeping the remote the source of
+  truth.
+
 ## 2. Asset acceptance workflow (existing user rule, kept)
 
 New models/assets are NOT committed until the user accepts them. Candidates go

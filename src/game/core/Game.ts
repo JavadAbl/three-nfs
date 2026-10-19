@@ -186,6 +186,10 @@ export class Game {
       if (a === "reset") this.player.resetToTrack(this.track);
       if (a === "pause") this.togglePause();
     };
+    // NFS-Carbon mouse free-look: hold right mouse, orbit, auto-recenter
+    this.input.onLookToggle = (pressed) =>
+      pressed ? this.cameraRig.holdLook() : this.cameraRig.releaseLook();
+    this.input.onLookDelta = (dx, dy) => this.cameraRig.addLook(dx, dy);
 
     // ── online wiring ──
     if (this.net) this.wireNet();

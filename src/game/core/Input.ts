@@ -15,6 +15,11 @@ export class InputManager {
   private target: CarControls | null = null;
   /** extra one-shot actions consumed by the game */
   onAction: ((action: "camera" | "mute" | "reset" | "pause") => void) | null = null;
+  /** mouse free-look (NFS Carbon style): deltas while RIGHT button held */
+  onLookDelta: ((dx: number, dy: number) => void) | null = null;
+  onLookToggle: ((pressed: boolean) => void) | null = null;
+
+  private lookHeld = false;
 
   private boundKeyDown = (e: KeyboardEvent) => {
     if (e.repeat) return;
@@ -33,7 +38,33 @@ export class InputManager {
   };
 
   private boundKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);
-  private boundBlur = () => this.keys.clear();
+  private boundBlur = () => {
+    this.keys.clear();
+    if (this.lookHeld) {
+      this.lookHeld = false;
+      this.onLookToggle?.(false);
+    }
+  };
+  private boundMouseDown = (e: MouseEvent) => {
+    if (e.button === 2) {
+      this.lookHeld = true;
+      this.onLookToggle?.(true);
+    }
+  };
+  private boundMouseUp = (e: MouseEvent) => {
+    if (e.button === 2 && this.lookHeld) {
+      this.lookHeld = false;
+      this.onLookToggle?.(false);
+    }
+  };
+  private boundMouseMove = (e: MouseEvent) => {
+    if (this.lookHeld && (e.movementX || e.movementY)) {
+      this.onLookDelta?.(e.movementX, e.movementY);
+    }
+  };
+  private boundCtx = (e: MouseEvent) => {
+    if (this.lookHeld) e.preventDefault(); // suppress context menu while looking
+  };
   private boundTouchEnd = () =>
     (this.touch = { left: false, right: false, gas: false, brake: false, nitro: false, hb: false });
 
@@ -41,6 +72,10 @@ export class InputManager {
     window.addEventListener("keydown", this.boundKeyDown, { passive: false });
     window.addEventListener("keyup", this.boundKeyUp);
     window.addEventListener("blur", this.boundBlur);
+    window.addEventListener("mousedown", this.boundMouseDown);
+    window.addEventListener("mouseup", this.boundMouseUp);
+    window.addEventListener("mousemove", this.boundMouseMove);
+    window.addEventListener("contextmenu", this.boundCtx);
     window.addEventListener("touchend", this.boundTouchEnd);
     window.addEventListener("touchcancel", this.boundTouchEnd);
   }
@@ -49,9 +84,17 @@ export class InputManager {
     window.removeEventListener("keydown", this.boundKeyDown);
     window.removeEventListener("keyup", this.boundKeyUp);
     window.removeEventListener("blur", this.boundBlur);
+    window.removeEventListener("mousedown", this.boundMouseDown);
+    window.removeEventListener("mouseup", this.boundMouseUp);
+    window.removeEventListener("mousemove", this.boundMouseMove);
+    window.removeEventListener("contextmenu", this.boundCtx);
     window.removeEventListener("touchend", this.boundTouchEnd);
     window.removeEventListener("touchcancel", this.boundTouchEnd);
     this.keys.clear();
+    if (this.lookHeld) {
+      this.lookHeld = false;
+      this.onLookToggle?.(false);
+    }
   }
 
   /** Reference to the controls struct the player car reads each frame */

@@ -56,6 +56,18 @@ export class Car {
   /** collision footprint (metres): half width / half length of the body box */
   collHalfW = 1.05;
   collHalfL = 2.35;
+  /**
+   * visual body metrics (metres, model frame: +Z = front, y up from ground)
+   * used by the camera rig to anchor cockpit views — GLB bounds on model
+   * cars, hand-tuned defaults for the procedural muscle car
+   */
+  camDims: { frontZ: number; rearZ: number; topY: number; length: number; width: number } = {
+    frontZ: 2.58,
+    rearZ: -2.02,
+    topY: 1.25,
+    length: 4.6,
+    width: 2.05,
+  };
   /** guardrail impact strength this frame (m/s) — consumed by Game for FX */
   railHit = 0;
   private wheels: THREE.Group[] = [];
@@ -108,6 +120,7 @@ export class Car {
     this.bodyGroup.add(m.root);
 
     const d = m.dims;
+    this.camDims = { frontZ: d.frontZ, rearZ: d.rearZ, topY: d.topY, length: d.length, width: d.width };
     const w2 = d.width / 2;
     this.collHalfW = THREE.MathUtils.clamp(d.width / 2, 0.85, 1.5);
     this.collHalfL = THREE.MathUtils.clamp(d.length / 2, 2.0, 3.0);

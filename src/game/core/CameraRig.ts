@@ -10,11 +10,14 @@ import type { Car } from "../world/Car";
 
 export type CameraMode = "chase" | "far" | "hood" | "bumper";
 
-const MODES: Record<CameraMode, { dist: number; height: number; look: number; fov: number }> = {
-  chase: { dist: 9.2, height: 3.6, look: 7, fov: 74 },
-  far: { dist: 14.5, height: 6.2, look: 9, fov: 66 },
-  hood: { dist: -0.2, height: 1.35, look: 16, fov: 82 },
-  bumper: { dist: -0.55, height: 0.62, look: 18, fov: 90 },
+const MODES: Record<CameraMode, { dist?: number; height?: number; look: number; fov: number }> = {
+  chase: { dist: 7.2, height: 3.2, look: 7, fov: 74 },
+  far: { dist: 11, height: 5.2, look: 9, fov: 66 },
+  // cockpit modes anchor to the car's real body bounds (car.camDims) —
+  // fixed offsets can't work across a fleet: -0.55m ahead of center sat
+  // inside the engine bay of every GLB car (the "bumper in the engine" bug)
+  hood: { look: 16, fov: 82 },
+  bumper: { look: 18, fov: 90 },
 };
 
 export const MODE_LABEL: Record<CameraMode, string> = {
@@ -42,11 +45,15 @@ export const DEFAULT_TUNING: CameraTuning = { distMul: 1, heightAdd: 0, fovAdd: 
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+function isCockpitMode(m: CameraMode) {
+  return m === "hood" || m === "bumper";
+}
+
 export class CameraRig {
   mode: CameraMode = "chase";
   tuning: CameraTuning = { ...DEFAULT_TUNING };
 
-  private current = { dist: 9.2, height: 3.6, look: 7, fov: 74 };
+  private current = { dist: 7.2, height: 3.2, look: 7, fov: 74 };
   // smoothed camera/look offsets relative to the car. Tracking in car space
   // (instead of lerping the world position) means the camera translates 1:1
   // with the car — speed can never build a v/λ lag that reads as the camera
@@ -99,15 +106,35 @@ export class CameraRig {
     const cfg = MODES[this.mode];
     const tun = this.tuning;
 
-    // desired preset values: mode base + user tuning
-    const wantDist = cfg.dist * tun.distMul;
-    const wantHeight = cfg.height + tun.heightAdd;
+    // desired preset values: mode base + user tuning. Cockpit anchors come
+    // from the car's body bounds so the camera clears the actual mesh:
+    //   hood   — a touch ahead of the cowl, just above the body line
+    //   bumper — a hand's width past the nose, at headlight height
+    let baseDist = cfg.dist ?? 0;
+    let baseHeight = cfg.height ?? 0;
+    if (isCockpitMode(this.mode)) {
+      const d = car.camDims;
+      if (this.mode === "hood") {
+        baseDist = -d.length * 0.05;
+        baseHeight = Math.max(1.35, d.topY + 0.03);
+      } else {
+        // +0.55 clears the underglow plane (length+0.9 → ~0.45m nose overhang)
+        baseDist = -(d.frontZ + 0.55);
+        baseHeight = Math.max(0.55, d.topY * 0.42 + 0.08);
+      }
+    }
+    const wantDist = baseDist * tun.distMul;
+    const wantHeight = baseHeight + tun.heightAdd;
     const wantFov = cfg.fov + tun.fovAdd;
-    // smooth transitions between modes / tuning changes
-    this.current.dist = THREE.MathUtils.lerp(this.current.dist, wantDist, 1 - Math.exp(-3.5 * dt));
-    this.current.height = THREE.MathUtils.lerp(this.current.height, wantHeight, 1 - Math.exp(-3.5 * dt));
-    this.current.look = THREE.MathUtils.lerp(this.current.look, cfg.look, 1 - Math.exp(-3.5 * dt));
-    this.current.fov = THREE.MathUtils.lerp(this.current.fov, wantFov, 1 - Math.exp(-3.5 * dt));
+    // smooth transitions between modes / tuning changes. Big jumps (mode
+    // switches — esp. crossing the car body between chase and cockpit
+    // anchors) converge ~3.4x faster so the camera CUTS instead of slowly
+    // sweeping through the mesh; small tweaks (sliders) stay buttery.
+    const rate = (p: number, want: number) => (Math.abs(want - p) > 2 ? 12 : 3.5);
+    this.current.dist = THREE.MathUtils.lerp(this.current.dist, wantDist, 1 - Math.exp(-rate(this.current.dist, wantDist) * dt));
+    this.current.height = THREE.MathUtils.lerp(this.current.height, wantHeight, 1 - Math.exp(-rate(this.current.height, wantHeight) * dt));
+    this.current.look = THREE.MathUtils.lerp(this.current.look, cfg.look, 1 - Math.exp(-rate(this.current.look, cfg.look) * dt));
+    this.current.fov = THREE.MathUtils.lerp(this.current.fov, wantFov, 1 - Math.exp(-rate(this.current.fov, wantFov) * dt));
 
     // free-look spring: track mouse target while held, recenter on release
     const lookT = 1 - Math.exp(-14 * dt);

@@ -2,7 +2,7 @@
 // - C cycles: chase → far → hood → bumper (chase modes orbit-carbon style)
 // - hold RIGHT MOUSE + move → free-look orbit around the car (chase modes)
 //   or look around from the seat (hood/bumper); auto-recenters on release
-// - camera drops & pulls back with speed (Carbon speed drama)
+// - camera drops & pulls back with speed (Carbon speed drama, drama-knob scalable)
 // - user tuning (dist/height/FOV/sensitivity) applied on top of any mode,
 //   driven by the HUD panel (F7), persisted to localStorage by the shell
 import * as THREE from "three";
@@ -34,9 +34,11 @@ export interface CameraTuning {
   fovAdd: number;
   /** mouse-look sensitivity, 0.4..2 */
   sens: number;
+  /** speed-drama intensity 0..1: chase pull-back/drop + speed-FOV widening */
+  drama: number;
 }
 
-export const DEFAULT_TUNING: CameraTuning = { distMul: 1, heightAdd: 0, fovAdd: 0, sens: 1 };
+export const DEFAULT_TUNING: CameraTuning = { distMul: 1, heightAdd: 0, fovAdd: 0, sens: 1, drama: 1 };
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -45,6 +47,12 @@ export class CameraRig {
   tuning: CameraTuning = { ...DEFAULT_TUNING };
 
   private current = { dist: 9.2, height: 3.6, look: 7, fov: 74 };
+  // smoothed camera/look offsets relative to the car. Tracking in car space
+  // (instead of lerping the world position) means the camera translates 1:1
+  // with the car — speed can never build a v/λ lag that reads as the camera
+  // sliding backward while you accelerate.
+  private camOff = new THREE.Vector3();
+  private lookOff = new THREE.Vector3();
   private camPos = new THREE.Vector3();
   private lookAt = new THREE.Vector3();
   private init = false;
@@ -110,12 +118,14 @@ export class CameraRig {
     const speedT = THREE.MathUtils.clamp(Math.abs(car.speed) / 70, 0, 1);
     const isCockpit = this.mode === "hood" || this.mode === "bumper";
 
-    // Carbon speed drama: chase cams pull back a touch and drop lower
+    // Carbon speed drama: chase cams pull back a touch and drop lower;
+    // the drama knob scales the whole effect (0 = framing locked to preset)
+    const drama = THREE.MathUtils.clamp(this.tuning.drama ?? 1, 0, 1);
     let dist = this.current.dist;
     let height = this.current.height;
     if (this.mode === "chase" || this.mode === "far") {
-      dist += speedT * 1.4;
-      height -= speedT * 0.55;
+      dist += speedT * 1.4 * drama;
+      height -= speedT * 0.55 * drama;
     }
 
     // horizontal offset behind (or ahead for cockpit cams) the car
@@ -138,24 +148,31 @@ export class CameraRig {
       .addScaledVector(lookFwd, this.current.look * 0.4 + (isCockpit ? 2 : 0));
     wantLookAt.y += isCockpit ? this.lookPitch * 14 : this.lookPitch * 6;
 
+    // track the car in its own frame: smooth the OFFSET, never the world
+    // position — lerping a world-space anchor behind a moving car leaves a
+    // velocity-proportional lag (the "camera slides back on launch" effect)
+    const desiredOff = anchor.clone().sub(car.pos);
+    const desiredLookOff = wantLookAt.clone().sub(car.pos);
     if (!this.init) {
-      this.camPos.copy(anchor);
-      this.lookAt.copy(wantLookAt);
+      this.camOff.copy(desiredOff);
+      this.lookOff.copy(desiredLookOff);
       this.init = true;
     } else {
-      // faster catch-up at speed keeps the car framed
+      // faster catch-up at speed keeps the car framed through mode changes
       const t = 1 - Math.exp(-(5.5 + speedT * 4) * dt);
-      this.camPos.lerp(anchor, t);
-      this.lookAt.lerp(wantLookAt, 1 - Math.exp(-9 * dt));
+      this.camOff.lerp(desiredOff, t);
+      this.lookOff.lerp(desiredLookOff, 1 - Math.exp(-9 * dt));
     }
+    this.camPos.copy(car.pos).add(this.camOff);
+    this.lookAt.copy(car.pos).add(this.lookOff);
 
     // keep camera above the road surface
     this.camPos.y = Math.max(this.camPos.y, car.pos.y + (isCockpit ? 0.45 : 1.2));
 
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.lookAt);
-    // speed feel: widen FOV with velocity, extra kick on nitro
-    const fovTarget = this.current.fov + speedT * 14 + (car.nitroActive ? 6 : 0);
+    // speed feel: widen FOV with velocity, extra kick on nitro (drama-scaled)
+    const fovTarget = this.current.fov + (speedT * 14 + (car.nitroActive ? 6 : 0)) * drama;
     this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, fovTarget, 1 - Math.exp(-4 * dt));
     this.camera.updateProjectionMatrix();
   }

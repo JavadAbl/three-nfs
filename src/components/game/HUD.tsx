@@ -273,6 +273,7 @@ function CameraControls({
               { label: "HEIGHT", key: "heightAdd", min: -2, max: 2, step: 0.1, fmt: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}m` },
               { key: "fovAdd", label: "FOV", min: -12, max: 12, step: 1, fmt: (v: number) => `${v > 0 ? "+" : ""}${v}°` },
               { key: "sens", label: "LOOK SENS.", min: 0.4, max: 2, step: 0.1, fmt: (v: number) => `×${v.toFixed(1)}` },
+              { key: "drama", label: "SPEED DRAMA", min: 0, max: 1, step: 0.05, fmt: (v: number) => `${Math.round(v * 100)}%` },
             ] as const
           ).map((s) => (
             <label key={s.key} className="block">

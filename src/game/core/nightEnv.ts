@@ -17,14 +17,18 @@ export function makeNightEnvironment(): THREE.Scene {
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // vertical gradient: zenith deep night blue -> horizon warm city haze
+  // vertical gradient: zenith deep night blue -> horizon warm city haze.
+  // Base luminance is deliberately lifted vs a pitch sky: this env replaces
+  // the old bright RoomEnvironment as the scene's IBL diffuse fill too, so a
+  // too-dark dome starves every material of ambient and the start-grid road
+  // reads blank-black until the headlights take over.
   const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, "#05070f"); // zenith
-  sky.addColorStop(0.4, "#0a1020"); // upper sky
-  sky.addColorStop(0.49, "#221c33"); // haze band rising
-  sky.addColorStop(0.53, "#33283d"); // horizon: sodium-orange city glow
-  sky.addColorStop(0.56, "#0a0a10"); // just below horizon
-  sky.addColorStop(1, "#050507"); // nadir (no light from below)
+  sky.addColorStop(0, "#0a0f1e"); // zenith
+  sky.addColorStop(0.4, "#131c34"); // upper sky
+  sky.addColorStop(0.49, "#2b2440"); // haze band rising
+  sky.addColorStop(0.53, "#3d2f47"); // horizon: sodium-orange city glow
+  sky.addColorStop(0.56, "#101018"); // just below horizon
+  sky.addColorStop(1, "#08080c"); // nadir (no light from below)
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
 

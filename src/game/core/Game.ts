@@ -152,7 +152,7 @@ export class Game {
     this.scene.environment = env.texture;
     // dark night env (not the old bright studio room) — a touch more global IBL
     // so glossy surfaces actually reflect the city glow; matte ones barely move
-    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 0.3;
+    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 0.36;
     pmrem.dispose();
     nightEnv.traverse((o) => {
       const m = o as THREE.Mesh;

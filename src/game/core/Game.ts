@@ -17,6 +17,7 @@ import { EngineAudio } from "../audio/EngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
 import { makeNightEnvironment } from "./nightEnv";
 import { SpeedBlur } from "./SpeedBlur";
+import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 
 export type GameMode = "quick" | "trial" | "online";
 
@@ -167,6 +168,32 @@ export class Game {
       if (m.geometry) m.geometry.dispose();
       if (m.material) (m.material as THREE.Material).dispose();
     });
+
+    // ── A/B experiment (?env=hdri): swap procedural IBL for a real night HDRI ──
+    // Staging-only, default path unchanged. ?envf=<basename.exr> picks the file
+    // (no slashes allowed), ?envi=<num> overrides environmentIntensity for tuning.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("env") === "hdri") {
+      const raw = params.get("envf") ?? "night002_2k.exr";
+      const file = raw.includes("/") || raw.includes("..") ? "night002_2k.exr" : raw;
+      const enviRaw = parseFloat(params.get("envi") ?? "");
+      new EXRLoader().load(
+        `/staging/${file}`,
+        (tex) => {
+          tex.mapping = THREE.EquirectangularReflectionMapping;
+          const pmrem2 = new THREE.PMREMGenerator(this.renderer);
+          const envHDRI = pmrem2.fromEquirectangular(tex);
+          this.scene.environment = envHDRI.texture;
+          const inten = Number.isFinite(enviRaw) && enviRaw > 0 ? enviRaw : 0.36;
+          (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = inten;
+          pmrem2.dispose();
+          tex.dispose();
+          console.info(`[env] HDRI swap ok: ${file} intensity=${inten}`);
+        },
+        undefined,
+        (err) => console.warn("[env] HDRI load failed:", err),
+      );
+    }
 
     this.scene.add(new THREE.AmbientLight(0x2a2430, 1.4));
     const hemi = new THREE.HemisphereLight(0x30364a, 0x0a0a0c, 0.55);

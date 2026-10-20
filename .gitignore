@@ -54,6 +54,7 @@ upload/
 public/models/staging/
 public/audio/staging/
 public/textures/staging/
+public/staging/
 
 # agent verification artifacts (local only)
 tool-results/

@@ -21,6 +21,8 @@ export function buildMuscleBody(color: string): MuscleBody {
     roughness: 0.32,
     clearcoat: 1,
     clearcoatRoughness: 0.12,
+    // night paint must reflect the neon city env or the body reads black
+    envMapIntensity: 1.8,
   });
   const dark = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.55, metalness: 0.4 });
   const glass = new THREE.MeshPhysicalMaterial({
@@ -29,6 +31,7 @@ export function buildMuscleBody(color: string): MuscleBody {
     roughness: 0.08,
     transparent: true,
     opacity: 0.85,
+    envMapIntensity: 1.3,
   });
 
   const root = new THREE.Group();

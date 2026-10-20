@@ -153,7 +153,11 @@ export function instantiateCar(id: string, paintColor?: string): CarModelInstanc
       if (!c) {
         c = m.clone();
         cloneMap.set(m, c);
-        paintMaterials.push(c as THREE.MeshStandardMaterial);
+        const sm = c as THREE.MeshStandardMaterial;
+        // night env boost — glossy paint must pick up the neon city IBL to
+        // stay readable at night (GLB default 1.0 is tuned for day renders)
+        sm.envMapIntensity = Math.max(sm.envMapIntensity ?? 1, 1.8);
+        paintMaterials.push(sm);
       }
       return c;
     });

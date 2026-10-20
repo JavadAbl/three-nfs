@@ -192,12 +192,13 @@ export class Car {
     }
 
     // underglow — polygonOffset + clearance keeps it from z-fighting the
-    // road when the body pitches/rolls over crests (looked like noise)
+    // road when the body pitches/rolls over crests (looked like noise);
+    // neon-clamped so even black paint throws a visible glow
     const glowMat = new THREE.MeshBasicMaterial({
       map: glowTex,
-      color: new THREE.Color(this.color),
+      color: neonGlowColor(this.color),
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.7,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       polygonOffset: true,
@@ -235,6 +236,18 @@ export class Car {
         else this.headBeamR = beam;
       }
     } else {
+      // real single-beam headlight for rivals — their stretch of road now
+      // visibly lights up (they used to be dark silhouettes with a faint
+      // fake cone); short target + low decay concentrates a warm pool 5-15m
+      // ahead where the chase cam actually sees it; no shadow pass to keep
+      // the per-light cost minimal
+      const beam = new THREE.SpotLight(0xfff0c8, 110, 55, 0.5, 0.6, 1.2);
+      beam.position.set(0, d.topY * 0.5, d.frontZ - 0.05);
+      const target = new THREE.Object3D();
+      target.position.set(0, 0, d.frontZ + 16);
+      this.bodyGroup.add(target, beam);
+      beam.target = target;
+
       const coneMat = new THREE.MeshBasicMaterial({
         color: 0xfff0c0,
         transparent: true,
@@ -248,6 +261,33 @@ export class Car {
       cone.position.set(0, 0.5, d.frontZ + 9.5);
       this.bodyGroup.add(cone);
       if (this.kind === "remote") this.addLabel(d.topY);
+    }
+
+    // warm city-bounce fill above every car — the streetlights are emissive
+    // decals, so without this NOTHING lights car bodies at night; a small
+    // sodium-tinted point light makes the paint read like the car is
+    // driving through lit zones
+    const fill = new THREE.PointLight(0xffe2b8, 6, 11, 1.8);
+    fill.position.set(0, d.topY + 0.55, -0.2);
+    this.bodyGroup.add(fill);
+
+    // headlight bloom sprites (mirrors the tail glow) so lamps flare from
+    // head-on / chase views even where the emissive boxes are sub-pixel
+    const headGlowTex = radialGlowTexture();
+    const headGlowMat = new THREE.MeshBasicMaterial({
+      map: headGlowTex,
+      color: 0xfff3d0,
+      transparent: true,
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.owned.push(headGlowMat, headGlowTex);
+    for (const sx of [1, -1]) {
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), headGlowMat);
+      glow.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ + 0.07);
+      glow.renderOrder = 3;
+      this.bodyGroup.add(glow);
     }
   }
 
@@ -320,14 +360,15 @@ export class Car {
       this.bodyGroup.add(flame);
     }
 
-    // underglow (NFS night vibe) — offset material avoids road z-fighting
+    // underglow (NFS night vibe) — offset material avoids road z-fighting;
+    // neon-clamped so dark paints still glow (see model path)
     const underglow = new THREE.Mesh(
       new THREE.PlaneGeometry(4.2, 6.0),
       new THREE.MeshBasicMaterial({
         map: glowTex,
-        color: new THREE.Color(this.color),
+        color: neonGlowColor(this.color),
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.7,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         polygonOffset: true,
@@ -670,6 +711,20 @@ export class RemoteCar {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+/**
+ * underglow neon color — additive blending means a dark paint (black, navy)
+ * throws an invisible glow; clamp dark paints toward neon cyan so every
+ * car reads as "lit" from the chase cam NFS-style
+ */
+function neonGlowColor(paint: string): THREE.Color {
+  const c = new THREE.Color(paint);
+  const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  // 0.16: only true blacks/charcoal/navy get the cyan shift — bright
+  // saturated paints (racing red, lime) keep their own glow colour
+  if (lum < 0.16) c.lerp(new THREE.Color(0x2bd9ff), 0.8);
+  return c;
+}
+
 function radialGlowTexture(): THREE.Texture {
   const size = 128;
   const canvas = document.createElement("canvas");

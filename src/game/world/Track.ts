@@ -7,8 +7,14 @@ import { resolveMapPalette } from "../maps/registry";
 /** Tint multiplied over the scanned albedo (ambientCG Asphalt_001, CC0).
  *  Night mood comes from the scene lighting, not albedo — the tint only has
  *  to stop the raw scan (avg ~29% grey) from glowing vs the hand-tuned
- *  palettes. ~65% keeps grain visible under headlight beams. */
-const ASPHALT_TEX_TINT = 0xa6a6ae;
+ *  palettes. 0x4a4a4a is the VLM-verified night value: readable dark grey
+ *  grain unlit, alive under the headlight cones (0xa6a6ae read washed-out). */
+const ASPHALT_TEX_TINT = 0x4a4a4a;
+
+/** self-illumination of the tarmac so grain stays visible at night —
+ *  calibrated head-to-head via VLM (1.4 flat glow / 0.55 still milky / 0.22
+ *  reads as moonlit asphalt with natural headlight pools on top) */
+const ASPHALT_EMISSIVE = 0.22;
 
 export interface TrackSample {
   pos: THREE.Vector3;
@@ -82,6 +88,7 @@ export class Track {
     }
 
     this.buildRoad();
+    this.buildMarkings();
     this.buildRails();
     this.buildStartGate();
     this.buildStreetLights();
@@ -104,8 +111,6 @@ export class Track {
 
     const base = new THREE.Color(this.P.asphalt);
     const texBase = new THREE.Color(ASPHALT_TEX_TINT);
-    const edge = new THREE.Color(this.P.roadEdge);
-    const line = new THREE.Color(this.P.roadLine);
 
     for (let i = 0; i <= N; i++) {
       const s = this.samples[i % N];
@@ -117,16 +122,10 @@ export class Track {
         positions.push(p.x, p.y, p.z);
         normals.push(0, 1, 0);
         uvs.push(t, v * (this.length / 10));
-        // default asphalt
-        let col = base;
-        let colT = texBase;
-        if (Math.abs(Math.abs(x) - 0.94) < 0.02) {
-          col = colT = edge; // edge lines
-        } else if (Math.abs(x) < 0.035 && i % 4 < 2) {
-          col = colT = line; // dashed centre
-        }
-        colors.push(col.r, col.g, col.b);
-        texColors.push(colT.r, colT.g, colT.b);
+        // flat asphalt everywhere — lane/edge markings moved to their own
+        // crisp unlit strips (buildMarkings); they used to drown in the tint
+        colors.push(base.r, base.g, base.b);
+        texColors.push(texBase.r, texBase.g, texBase.b);
       }
     }
     const rowW = 9;
@@ -151,6 +150,11 @@ export class Track {
       map: roadTex,
       roughness: 0.92,
       metalness: 0.02,
+      // CRITICAL: the road strip's triangle winding is back-facing from
+      // above (same hazard buildRails works around) — without DoubleSide the
+      // whole road is face-culled and the city ground plane shows through.
+      // This is the "invisible road" root cause; do not remove.
+      side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
@@ -182,10 +186,10 @@ export class Track {
     const tile = (t: THREE.Texture): THREE.Texture => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.anisotropy = 8; // road is seen at grazing angles from every camera
-      // dense tiling: the mesh UVs tile every ~10 m; x3 again so the scan's
-      // aggregate grain survives on-screen minification (arcade cam distances)
-      // without the repetition becoming visible as a grid
-      t.repeat.set(3, 3);
+      // dense tiling: the mesh UVs tile every ~10 m along v and once across
+      // the width; 6x4 makes one grain patch ~2.3 m x 2.5 m on a 16 m road —
+      // VLM-verified: distinct aggregate at speed, no visible repeat grid
+      t.repeat.set(6, 4);
       return t;
     };
     load("asphalt-2k-color.jpg", (t) => {
@@ -193,11 +197,18 @@ export class Track {
       t.colorSpace = THREE.SRGBColorSpace;
       // scan is its own albedo: lift the flat-palette vertex tint to ASPHALT_TEX_TINT
       geo.setAttribute("color", new THREE.Float32BufferAttribute(texColors, 3));
+      // night-readability floor: the street lamps are emissive geometry with
+      // zero real lights, and ACES + dim ambient would crush a purely lit
+      // texture to black — so the tarmac self-glows with its own grain,
+      // subtly, while the headlight cones paint clearly brighter pools on top
+      mat.emissive = new THREE.Color(0xffffff);
+      mat.emissiveMap = t;
+      mat.emissiveIntensity = ASPHALT_EMISSIVE;
       mat.needsUpdate = true;
     });
     load("asphalt-2k-normal.jpg", (t) => {
       mat.normalMap = tile(t);
-      mat.normalScale = new THREE.Vector2(1.1, 1.1);
+      mat.normalScale = new THREE.Vector2(1.2, 1.2);
       mat.needsUpdate = true;
     });
     load("asphalt-2k-rough.jpg", (t) => {
@@ -303,6 +314,65 @@ export class Track {
       glow.position.copy(lamp.position).setY(lamp.position.y - 0.35);
       this.group.add(glow);
     }
+  }
+
+  /** Crisp lane markings as unlit strips hovering 3 cm above the tarmac.
+   *  The old vertex-colour lines drowned in the scanned albedo tint, so the
+   *  centre dashes and edge lines get their own geometry: unlit with a
+   *  slightly HDR (>1) colour so they read as retroreflective paint under
+   *  ACES the way NFS night stages do. Fog-aware, polygonOffset against
+   *  z-fighting, three cheap draw calls. */
+  private buildMarkings() {
+    const N = this.sampleCount;
+    const hw = this.halfWidth;
+
+    // strip helper: quad ribbon between two lateral offsets, gated per sample
+    const ribbon = (
+      la: number,
+      lb: number,
+      active: (i: number) => boolean,
+      color: number,
+    ): void => {
+      const pos: number[] = [];
+      const idx: number[] = [];
+      let v = 0;
+      let run = -1; // start of the current active run
+      for (let i = 0; i <= N; i++) {
+        const k = i % N;
+        if (!active(k)) {
+          run = -1;
+          continue;
+        }
+        const s = this.samples[k];
+        pos.push(
+          s.pos.x + s.normal.x * la, s.pos.y + 0.03, s.pos.z + s.normal.z * la,
+          s.pos.x + s.normal.x * lb, s.pos.y + 0.03, s.pos.z + s.normal.z * lb,
+        );
+        if (run >= 0) idx.push(run, v, run + 1, v, v + 1, run + 1);
+        run = v;
+        v += 2;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.setIndex(idx);
+      const mat = new THREE.MeshBasicMaterial({
+        // >1 colour = HDR pop under tone mapping (glowing road paint at night)
+        color: new THREE.Color(color).multiplyScalar(1.7),
+        side: THREE.DoubleSide, // winding not guaranteed above — same rail fix
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = 1; // road -> markings -> light pools
+      this.group.add(mesh);
+    };
+
+    // solid edge lines at |lateral| = 0.94 * hw (where the vertex lines were)
+    ribbon(-0.94 * hw - 0.08, -0.94 * hw + 0.08, () => true, this.P.roadEdge);
+    ribbon(0.94 * hw - 0.08, 0.94 * hw + 0.08, () => true, this.P.roadEdge);
+    // dashed centre line: 3 m paint / 5 m gap, clear of the finish checker
+    ribbon(-0.09, 0.09, (i) => i > 3 && i < N - 3 && this.samples[i].dist % 8 < 3, this.P.roadLine);
   }
 
   /** Additive light pools under each streetlight. The lamps themselves are

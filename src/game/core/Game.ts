@@ -15,7 +15,7 @@ import { CameraRig, type CameraMode } from "./CameraRig";
 import { InputManager } from "./Input";
 import { EngineAudio } from "../audio/EngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { makeNightEnvironment } from "./nightEnv";
 
 export type GameMode = "quick" | "trial" | "online";
 
@@ -147,10 +147,18 @@ export class Game {
     this.scene.fog = new THREE.FogExp2(P.fog, 0.0105);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const env = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    const nightEnv = makeNightEnvironment();
+    const env = pmrem.fromScene(nightEnv, 0.08);
     this.scene.environment = env.texture;
-    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 0.22;
+    // dark night env (not the old bright studio room) — a touch more global IBL
+    // so glossy surfaces actually reflect the city glow; matte ones barely move
+    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 0.3;
     pmrem.dispose();
+    nightEnv.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) (m.material as THREE.Material).dispose();
+    });
 
     this.scene.add(new THREE.AmbientLight(0x2a2430, 1.4));
     const hemi = new THREE.HemisphereLight(0x30364a, 0x0a0a0c, 0.55);

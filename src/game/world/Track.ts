@@ -222,6 +222,10 @@ export class Track {
       mat.emissive = new THREE.Color(0xffffff);
       mat.emissiveMap = t;
       mat.emissiveIntensity = ASPHALT_EMISSIVE;
+      // wet-street sheen: the road leans into the night IBL harder than the
+      // global 0.3 — it is the one large glossy surface in the scene and the
+      // sodium-haze blobs in the env are what a damp street would reflect
+      mat.envMapIntensity = 0.85;
       mat.needsUpdate = true;
     });
     load("asphalt-2k-normal.jpg", (t) => {
@@ -231,7 +235,10 @@ export class Track {
     });
     load("asphalt-2k-rough.jpg", (t) => {
       mat.roughnessMap = tile(t, 6, 4, -0.22);
-      mat.roughness = 0.8; // map carries the variation; <1 for the wet-street sheen
+      // wet-look: the scalar multiplies the map, so smooth-repaired patches
+      // (dark in the map) go properly reflective while rough aggregate stays
+      // semi-gloss — damp street, not rain-slicked puddle
+      mat.roughness = 0.45;
       mat.needsUpdate = true;
     });
   }

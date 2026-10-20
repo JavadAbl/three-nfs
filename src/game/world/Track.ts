@@ -16,6 +16,12 @@ const ASPHALT_TEX_TINT = 0x4a4a4a;
  *  reads as moonlit asphalt with natural headlight pools on top) */
 const ASPHALT_EMISSIVE = 0.22;
 
+/** Texture revision — bump when swapping the scanned asphalt set: browsers
+ *  cache the old JPGs under the same URL and serve stale bytes (this exact
+ *  trap made a texture swap look like a no-op in testing). ?v= forces the
+ *  refetch for every user, not just dev. */
+const ASPHALT_REV = 3;
+
 export interface TrackSample {
   pos: THREE.Vector3;
   tangent: THREE.Vector3; // unit
@@ -166,9 +172,9 @@ export class Track {
   }
 
   /** Swap the procedural canvas surface for the scanned PBR asphalt set
-   *  (ambientCG Asphalt_001, CC0). Tries /textures/asphalt/ first (accepted
-   *  assets), then /textures/staging/asphalt/ (pending acceptance); if the
-   *  color map is nowhere to be found the procedural surface simply stays. */
+   *  (ambientCG — CC0). Tries /textures/asphalt/ first (accepted assets),
+   *  then /textures/staging/asphalt/ (pending acceptance); if the color map
+   *  is nowhere to be found the procedural surface simply stays. */
   private applyPbrAsphalt(
     geo: THREE.BufferGeometry,
     mat: THREE.MeshStandardMaterial,
@@ -176,24 +182,36 @@ export class Track {
   ): void {
     const loader = new THREE.TextureLoader();
     const load = (name: string, ok: (t: THREE.Texture) => void): void => {
-      const paths = [`/textures/asphalt/${name}`, `/textures/staging/asphalt/${name}`];
+      const paths =
+        [`/textures/asphalt/${name}`, `/textures/staging/asphalt/${name}`].map((p) => `${p}?v=${ASPHALT_REV}`);
       const attempt = (i: number): void => {
         if (i >= paths.length) return; // silent: procedural fallback stays
         loader.load(paths[i], ok, undefined, () => attempt(i + 1));
       };
       attempt(0);
     };
-    const tile = (t: THREE.Texture): THREE.Texture => {
+    const tile = (t: THREE.Texture, repU: number, repV: number, rot = 0): THREE.Texture => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.anisotropy = 8; // road is seen at grazing angles from every camera
-      // dense tiling: the mesh UVs tile every ~10 m along v and once across
-      // the width; 6x4 makes one grain patch ~2.3 m x 2.5 m on a 16 m road —
-      // VLM-verified: distinct aggregate at speed, no visible repeat grid
-      t.repeat.set(6, 4);
+      t.repeat.set(repU, repV);
+      // rotated sampling on some layers — the anti-wallpaper trick: with
+      // large distinctive features (cracks, patches) an identical grid on
+      // every map makes the repetition obvious, so the normal/roughness
+      // layers are scaled + rotated off the albedo grid and the periodicity
+      // never lines up across passes (v repeats stay integral: the UV v
+      // wraps at the start/finish seam and a fractional phase would show)
+      if (rot) {
+        t.center.set(0.5, 0.5);
+        t.rotation = rot;
+      }
       return t;
     };
+    // albedo + emissive share one texture object, so both follow repeat (3,2)
+    // -> one damage patch ≈ 5 m across: the mottled repair blotches are the
+    // point of this set, so let them breathe; contrast is pre-boosted in the
+    // committed JPEG (std 25->47) so they survive the night tint + ACES
     load("asphalt-2k-color.jpg", (t) => {
-      mat.map = tile(t);
+      mat.map = tile(t, 3, 2);
       t.colorSpace = THREE.SRGBColorSpace;
       // scan is its own albedo: lift the flat-palette vertex tint to ASPHALT_TEX_TINT
       geo.setAttribute("color", new THREE.Float32BufferAttribute(texColors, 3));
@@ -207,12 +225,12 @@ export class Track {
       mat.needsUpdate = true;
     });
     load("asphalt-2k-normal.jpg", (t) => {
-      mat.normalMap = tile(t);
+      mat.normalMap = tile(t, 8, 5, 0.35);
       mat.normalScale = new THREE.Vector2(1.2, 1.2);
       mat.needsUpdate = true;
     });
     load("asphalt-2k-rough.jpg", (t) => {
-      mat.roughnessMap = tile(t);
+      mat.roughnessMap = tile(t, 6, 4, -0.22);
       mat.roughness = 0.8; // map carries the variation; <1 for the wet-street sheen
       mat.needsUpdate = true;
     });

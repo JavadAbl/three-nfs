@@ -67,7 +67,6 @@ export const PALETTE = {
   buildingC: 0x17140f,
   windowWarm: "#ffcf8a",
   windowCool: "#b9d4e8",
-  lamp: 0xffc873,
   finishPrimary: 0xf59e0b,
 } as const;
 

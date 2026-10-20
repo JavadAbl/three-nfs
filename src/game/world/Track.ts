@@ -100,7 +100,6 @@ export class Track {
     this.buildMarkings();
     this.buildRails();
     this.buildStartGate();
-    this.buildLightPools();
   }
 
   // ─── geometry construction ──────────────────────────────────────────────
@@ -373,64 +372,6 @@ export class Track {
     ribbon(0.94 * hw - 0.08, 0.94 * hw + 0.08, () => true, this.P.roadEdge);
     // dashed centre line: 3 m paint / 5 m gap, clear of the finish checker
     ribbon(-0.09, 0.09, (i) => i > 3 && i < N - 3 && this.samples[i].dist % 8 < 3, this.P.roadLine);
-  }
-
-  /** Additive light pools down the road. The street towers were removed for
-   *  perf (138 non-instanced draw calls + transparent glow overdraw on
-   *  iGPUs), so these decals alone carry the sodium-lamp look: bright rings
-   *  where the scanned asphalt grain + normal map can actually be seen at
-   *  night. One InstancedMesh, 1 draw call, fog-aware. */
-  private buildLightPools() {
-    const N = this.sampleCount;
-    const spacing = Math.floor(N / 46); // 46 pools a lap — the towers are gone (perf), pools stay
-
-    // radial gradient: hot core under the lamp, soft falloff onto the road
-    const size = 128;
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = size;
-    const ctx = canvas.getContext("2d")!;
-    const r = (this.P.lamp >> 16) & 255;
-    const g = (this.P.lamp >> 8) & 255;
-    const b = this.P.lamp & 255;
-    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size / 2);
-    grad.addColorStop(0, `rgba(${r},${g},${b},0.42)`);
-    grad.addColorStop(0.35, `rgba(${r},${g},${b},0.18)`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, size, size);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const geo = new THREE.PlaneGeometry(1, 1);
-    const count = Math.ceil(N / spacing);
-    const pools = new THREE.InstancedMesh(geo, mat, count);
-    const dummy = new THREE.Object3D();
-    const up = new THREE.Vector3();
-    let k = 0;
-    for (let i = 0; i < N && k < count; i += spacing, k++) {
-      const s = this.samples[i];
-      const side = (i / spacing) % 2 === 0 ? 1 : -1; // same parity as the lamps
-      // surface normal: lateral x direction of travel
-      up.copy(s.normal).cross(s.tangent).normalize();
-      dummy.position
-        .copy(s.pos)
-        .addScaledVector(s.normal, side * (this.halfWidth - 2.5))
-        .addScaledVector(up, 0.1);
-      dummy.lookAt(dummy.position.clone().add(up)); // +Z faces the sky
-      dummy.scale.set(14, 14, 1);
-      dummy.updateMatrix();
-      pools.setMatrixAt(k, dummy.matrix);
-    }
-    pools.instanceMatrix.needsUpdate = true;
-    pools.renderOrder = 2; // after road + rails, additive on top
-    pools.name = "lightPools";
-    this.group.add(pools);
   }
 
   // ─── queries ─────────────────────────────────────────────────────────────

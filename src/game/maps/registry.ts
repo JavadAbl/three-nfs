@@ -18,7 +18,6 @@ export interface MapPalette {
   buildingC: number;
   windowWarm: string;
   windowCool: string;
-  lamp: number;
   finishPrimary: number;
 }
 
@@ -189,8 +188,6 @@ export const MAP_LIBRARY: MapDef[] = [
       fog: 0x0a0d12,
       sky: 0x05070c,
       ground: 0x0b0d10,
-      // sodium-vapour yard lighting
-      lamp: 0xffb066,
       finishPrimary: 0x38bdf8,
     },
     points: [

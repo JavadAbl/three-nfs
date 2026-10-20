@@ -36,6 +36,10 @@ export interface HudState {
   driftTotal: number;
   wrongWay: boolean;
   cameraMode: CameraMode;
+  /** rolling frames-per-second (0.5 s window) — 0 until the first window closes */
+  fps: number;
+  /** rolling mean raw frame time in ms */
+  frameMs: number;
 }
 
 export interface RaceResultEntry {
@@ -110,6 +114,15 @@ export class Game {
   private speedFX!: SpeedBlur;
   /** smoothed blur strength — eased, never snapped, incl. nitro slam */
   private speedBlurLevel = 0;
+  // fps meter — 0.5 s rolling window over RAW frame deltas (the physics
+  // clamp on dt must not fake the number, and rAF-throttled headless
+  // browsers report honestly)
+  private fpsAcc = 0;
+  private fpsFrames = 0;
+  private fps = 0;
+  private frameMs = 0;
+  // blur chain engages only when it has visible work (hysteresis seam)
+  private blurActive = false;
   net: NetClient | null;
   results: RaceResultEntry[] = [];
   private finishOrder = 0;
@@ -127,6 +140,11 @@ export class Game {
   ) {
     this.opts = opts;
     this.mode = opts.mode;
+    // debug/verification handle — lets the console (and headless test runs)
+    // drive the sim: __game.debugTick() bypasses rAF throttling entirely
+    if (typeof window !== "undefined") {
+      (window as { __game?: Game }).__game = this;
+    }
     // resolve the map first — geometry, look and laps all come from it
     const map = mapDef(opts.mapId) ?? mapDef(DEFAULT_MAP_ID)!;
     this.mapId = map.id;
@@ -432,6 +450,9 @@ export class Game {
 
   quit() {
     this.disposed = true;
+    if (typeof window !== "undefined" && (window as { __game?: Game }).__game === this) {
+      delete (window as { __game?: Game }).__game;
+    }
     cancelAnimationFrame(this.raf);
     window.removeEventListener("resize", this.onResize);
     this.input.detach();
@@ -481,7 +502,20 @@ export class Game {
   private loop = () => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
-    const dt = Math.min(this.clock.getDelta(), 1 / 30);
+    const rawDt = this.clock.getDelta();
+    const dt = Math.min(rawDt, 1 / 30);
+
+    // ── fps meter: raw deltas, 0.5 s window ──
+    this.fpsAcc += rawDt;
+    this.fpsFrames++;
+    if (this.fpsAcc >= 0.5) {
+      this.frameMs = (this.fpsAcc / this.fpsFrames) * 1000;
+      // fractional — a slow frame (e.g. software GL) must not round to 0 and
+      // hide the readout; the chip formats for display
+      this.fps = this.fpsFrames / this.fpsAcc;
+      this.fpsAcc = 0;
+      this.fpsFrames = 0;
+    }
 
     this.advanceCountdown(dt);
 
@@ -547,7 +581,7 @@ export class Game {
 
     // ── speed blur: ramps in with speed, slams to max on nitro ──
     this.updateSpeedFX(dt);
-    this.speedFX.render();
+    this.renderFrame();
   };
 
   /**
@@ -566,6 +600,23 @@ export class Game {
     const rate = this.player.nitroActive ? 10 : 2.6;
     this.speedBlurLevel = THREE.MathUtils.lerp(this.speedBlurLevel, target, 1 - Math.exp(-rate * dt));
     this.speedFX.setStrength(this.speedBlurLevel);
+  }
+
+  /**
+   * Render direct to canvas while the blur has nothing to do, through the
+   * composer when it does. The blur chain renders the scene into a full-res
+   * HalfFloat MSAA×4 target plus two fullscreen passes — pure overhead at
+   * strength 0 (standing, braking, slow corners) and the single biggest
+   * frame cost since it landed. OutputPass applies the renderer's own
+   * ACES + sRGB, so the two paths are visually identical at the
+   * imperceptible 0.002–0.004 seam where they switch.
+   */
+  private renderFrame() {
+    const s = this.speedFX.strength;
+    if (!this.blurActive && s > 0.004) this.blurActive = true;
+    else if (this.blurActive && s <= 0.002) this.blurActive = false;
+    if (this.blurActive) this.speedFX.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 
   /** car-vs-car collision resolution + impact feedback (FX/sound/shake) */
@@ -612,6 +663,8 @@ export class Game {
       driftTotal: this.player.driftScore + Math.round(this.player.driftChain),
       wrongWay: standing?.wrongWay ?? false,
       cameraMode: this.cameraRig.mode,
+      fps: this.fps,
+      frameMs: Math.round(this.frameMs * 10) / 10,
     });
   }
 
@@ -680,7 +733,7 @@ export class Game {
     }
     this.emitHud();
     this.updateSpeedFX(dt);
-    this.speedFX.render();
+    this.renderFrame();
     const standing = this.raceManager?.standingFor(this.player);
     return {
       phase: this.phase,

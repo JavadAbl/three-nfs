@@ -44,6 +44,7 @@ export function HUD({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
             BEST {fmtTime(hud.bestLapMs)}
           </div>
         )}
+        <FpsMeter fps={hud.fps} frameMs={hud.frameMs} />
       </div>
 
       {/* ── camera: current mode chip + ⚙ settings (top-right) ── */}
@@ -160,6 +161,48 @@ export function HUD({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── FPS readout (F9): shows what the render chain really costs ────────────
+const FPS_KEY = "three-nfs:fps";
+
+function FpsMeter({ fps, frameMs }: { fps: number; frameMs: number }) {
+  const [show, setShow] = useState(true);
+
+  // F9 toggles; default on, choice persists (on = "0" in storage = hidden)
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(FPS_KEY) === "0") setShow(false);
+    } catch {
+      /* storage blocked — keep default */
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "F9") {
+        e.preventDefault();
+        setShow((v) => {
+          try {
+            localStorage.setItem(FPS_KEY, v ? "0" : "1");
+          } catch {
+            /* storage blocked — non-fatal */
+          }
+          return !v;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!show || fps <= 0) return null;
+  const shown = fps >= 10 ? String(Math.round(fps)) : fps.toFixed(1);
+  const color = fps >= 55 ? "text-emerald-400" : fps >= 30 ? "text-amber-400" : "text-red-500";
+  return (
+    <div className="hud-chip font-mono text-[10px] tabular-nums flex items-center gap-1.5">
+      <span className="text-zinc-500 tracking-[0.2em]">FPS</span>
+      <span className={cn("font-bold", color)}>{shown}</span>
+      <span className="text-zinc-500">{frameMs.toFixed(1)} ms</span>
     </div>
   );
 }

@@ -96,6 +96,8 @@ const emptyHud: HudState = {
   driftTotal: 0,
   wrongWay: false,
   cameraMode: "chase",
+  fps: 0,
+  frameMs: 0,
 };
 
 export const useGameStore = create<GameStore>((set) => {

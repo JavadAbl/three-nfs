@@ -1,9 +1,16 @@
 // ─── SpeedBlur: speed-reactive radial blur (post-processing chain) ──────────
 // NFS-style "the world smears as you go fast": the scene renders into an HDR
-// MSAA target, a radial (zoom) blur pass smears the frame PERIPHERY toward
-// the edges — the center stays sharp so the road/racing line ahead is
-// always readable — and OutputPass applies ACES + sRGB at the very end
-// (tone mapping must NOT happen before the blur or streaks clip).
+// MSAA target, then OutputPass applies ACES + sRGB, and the radial (zoom)
+// blur pass smears the frame PERIPHERY toward the edges LAST — the center
+// stays sharp so the road/racing line ahead is always readable.
+//
+// ORDERING IS LOAD-BEARING (bug fix): the blur used to run BEFORE
+// OutputPass, averaging raw HDR samples and tonemapping after — ACES is
+// concave, so ACES(mean) > mean(ACES) (Jensen) and every engaged frame read
+// ~4-7 luma brighter, building windows washing out the whole scene. Now the
+// blur runs on display-encoded values after OutputPass — the FXAA-style
+// pattern three's docs sanction — at the cost of clipped streaks on the
+// very brightest sources (acceptable: they saturate, not glow).
 // Strength is fed per-frame by Game from player speed + nitro state.
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -41,12 +48,12 @@ const RadialBlurShader = {
       vec4 sum = vec4(0.0);
       // taps spread along the radial line through this pixel, scaled by
       // edge distance — the classic zoom/radial smear toward the borders
-      for (int i = 0; i < 14; i++) {
-        float t = float(i) / 13.0 - 0.5;
+      for (int i = 0; i < 10; i++) {
+        float t = float(i) / 9.0 - 0.5;
         vec2 uv = vUv - dir * (t * uStrength * 0.5 * dist * mask);
         sum += texture2D(tDiffuse, uv);
       }
-      gl_FragColor = sum / 14.0;
+      gl_FragColor = sum / 10.0;
     }
   `,
 };
@@ -64,20 +71,23 @@ export class SpeedBlur {
   ) {
     // HDR + MSAA target: keeps the ACES band in OutputPass clean and the
     // geometry edges anti-aliased (the canvas's own AA does nothing for
-    // offscreen targets)
+    // offscreen targets). MSAA 2x, not 4x: half the resolve cost on iGPUs
+    // and the periphery is smeared by the blur anyway — only the sharp
+    // center window really benefits from AA.
     const pr = renderer.getPixelRatio();
     const rt = new THREE.WebGLRenderTarget(
       Math.max(1, Math.floor(width * pr)),
       Math.max(1, Math.floor(height * pr)),
-      { samples: 4, type: THREE.HalfFloatType },
+      { samples: 2, type: THREE.HalfFloatType },
     );
     this.composer = new EffectComposer(renderer, rt);
     this.composer.setPixelRatio(pr);
     this.composer.setSize(width, height);
     this.composer.addPass(new RenderPass(scene, camera));
+    // tone-map + sRGB BEFORE the blur — see header comment (Jensen lift)
+    this.composer.addPass(new OutputPass());
     this.blurPass = new ShaderPass(RadialBlurShader);
     this.composer.addPass(this.blurPass);
-    this.composer.addPass(new OutputPass());
   }
 
   setStrength(v: number) {

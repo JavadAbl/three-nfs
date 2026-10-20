@@ -603,18 +603,20 @@ export class Game {
   }
 
   /**
-   * Render direct to canvas while the blur has nothing to do, through the
-   * composer when it does. The blur chain renders the scene into a full-res
-   * HalfFloat MSAA×4 target plus two fullscreen passes — pure overhead at
-   * strength 0 (standing, braking, slow corners) and the single biggest
-   * frame cost since it landed. OutputPass applies the renderer's own
-   * ACES + sRGB, so the two paths are visually identical at the
-   * imperceptible 0.002–0.004 seam where they switch.
+   * Render direct to canvas while the blur has nothing VISIBLE to do, through
+   * the composer when it does. The engage seam (s > 0.05 ≈ 150+ km/h) sits
+   * where the smear first becomes perceptible — below it the composer would
+   * burn a full-res HalfFloat MSAA target + 3 passes for an invisible
+   * ~2% edge smear, which on iGPUs read as the "frame dropped a few seconds
+   * after launch" report. Wide hysteresis (engage 0.05 / release 0.02) so a
+   * speed hovering at the seam can't flap between paths frame to frame.
+   * OutputPass owns ACES + sRGB and runs before the blur, so the two paths
+   * are pixel-identical at the seam.
    */
   private renderFrame() {
     const s = this.speedFX.strength;
-    if (!this.blurActive && s > 0.004) this.blurActive = true;
-    else if (this.blurActive && s <= 0.002) this.blurActive = false;
+    if (!this.blurActive && s > 0.05) this.blurActive = true;
+    else if (this.blurActive && s <= 0.02) this.blurActive = false;
     if (this.blurActive) this.speedFX.render();
     else this.renderer.render(this.scene, this.camera);
   }

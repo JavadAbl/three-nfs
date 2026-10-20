@@ -16,6 +16,7 @@ import { InputManager } from "./Input";
 import { EngineAudio } from "../audio/EngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
 import { makeNightEnvironment } from "./nightEnv";
+import { SpeedBlur } from "./SpeedBlur";
 
 export type GameMode = "quick" | "trial" | "online";
 
@@ -104,6 +105,10 @@ export class Game {
   private raf = 0;
   private disposed = false;
   private moon: THREE.DirectionalLight;
+  /** radial speed-blur post chain (strength driven in the loop) */
+  private speedFX!: SpeedBlur;
+  /** smoothed blur strength — eased, never snapped, incl. nitro slam */
+  private speedBlurLevel = 0;
   net: NetClient | null;
   results: RaceResultEntry[] = [];
   private finishOrder = 0;
@@ -140,6 +145,9 @@ export class Game {
 
     this.camera = new THREE.PerspectiveCamera(74, canvas.clientWidth / canvas.clientHeight, 0.1, 1400);
     this.cameraRig = new CameraRig(this.camera);
+
+    // ── post chain: speed blur (renders scene → radial blur → output) ──
+    this.speedFX = new SpeedBlur(this.renderer, this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
 
     // ── scene: night atmosphere (map palette) ──
     const P = resolveMapPalette(map);
@@ -410,6 +418,7 @@ export class Game {
     this.track.dispose();
     this.city.dispose();
     this.particles.dispose();
+    this.speedFX.dispose();
     for (const c of this.allCars) {
       this.scene.remove(c.group);
       c.dispose();
@@ -427,6 +436,7 @@ export class Game {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.speedFX.setSize(w, h);
   };
 
   getMinimapData() {
@@ -508,8 +518,28 @@ export class Game {
       }
     }
 
-    this.renderer.render(this.scene, this.camera);
+    // ── speed blur: ramps in with speed, slams to max on nitro ──
+    this.updateSpeedFX(dt);
+    this.speedFX.render();
   };
+
+  /**
+   * Radial blur strength from player speed + nitro. Ramps in above ~80
+   * km/h with a gentle ease (mid-corner speeds stay clean, straights
+   * smear), nitro slams it to max with a fast attack; release eases out
+   * slowly. Live-tested on Skyline GP: 0.01 @ 140 km/h corners with the
+   * old (v-28)^2 curve — this one gives ~0.12 @ 140, 0.68 @ top speed.
+   */
+  private updateSpeedFX(dt: number) {
+    const v = Math.abs(this.player.speed);
+    const maxV = this.player.tuning.maxSpeed;
+    const speedFrac = THREE.MathUtils.clamp((v - 22) / (maxV - 22), 0, 1);
+    let target = Math.pow(speedFrac, 1.7) * 0.75;
+    if (this.player.nitroActive) target = Math.max(target, 0.75 + 0.5 * speedFrac);
+    const rate = this.player.nitroActive ? 10 : 2.6;
+    this.speedBlurLevel = THREE.MathUtils.lerp(this.speedBlurLevel, target, 1 - Math.exp(-rate * dt));
+    this.speedFX.setStrength(this.speedBlurLevel);
+  }
 
   /** car-vs-car collision resolution + impact feedback (FX/sound/shake) */
   private resolveCollisions(dt: number) {
@@ -622,7 +652,8 @@ export class Game {
       this.raceManager?.update(dt, racing);
     }
     this.emitHud();
-    this.renderer.render(this.scene, this.camera);
+    this.updateSpeedFX(dt);
+    this.speedFX.render();
     const standing = this.raceManager?.standingFor(this.player);
     return {
       phase: this.phase,

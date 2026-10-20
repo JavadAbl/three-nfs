@@ -26,6 +26,7 @@ race-service.log
 .zscripts/
 download/
 worklog.md
+.dev.pid
 
 # misc
 .DS_Store

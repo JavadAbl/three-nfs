@@ -100,7 +100,6 @@ export class Track {
     this.buildMarkings();
     this.buildRails();
     this.buildStartGate();
-    this.buildStreetLights();
     this.buildLightPools();
   }
 
@@ -218,10 +217,11 @@ export class Track {
       t.colorSpace = THREE.SRGBColorSpace;
       // scan is its own albedo: lift the flat-palette vertex tint to ASPHALT_TEX_TINT
       geo.setAttribute("color", new THREE.Float32BufferAttribute(texColors, 3));
-      // night-readability floor: the street lamps are emissive geometry with
-      // zero real lights, and ACES + dim ambient would crush a purely lit
-      // texture to black — so the tarmac self-glows with its own grain,
-      // subtly, while the headlight cones paint clearly brighter pools on top
+      // night-readability floor: nothing on the road casts real light (the
+      // street towers were removed for perf; the pools are additive decals),
+      // and ACES + dim ambient would crush a purely lit texture to black —
+      // so the tarmac self-glows with its own grain, subtly, while the
+      // headlight cones paint clearly brighter pools on top
       mat.emissive = new THREE.Color(0xffffff);
       mat.emissiveMap = t;
       mat.emissiveIntensity = ASPHALT_EMISSIVE;
@@ -316,34 +316,6 @@ export class Track {
     this.group.add(group);
   }
 
-  private buildStreetLights() {
-    const N = this.sampleCount;
-    const spacing = Math.floor(N / 46);
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x191920, roughness: 0.6, metalness: 0.6 });
-    const lampMat = new THREE.MeshBasicMaterial({ color: this.P.lamp });
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: this.P.lamp,
-      transparent: true,
-      opacity: 0.32,
-      depthWrite: false,
-    });
-    for (let i = 0; i < N; i += spacing) {
-      const s = this.samples[i];
-      const side = (i / spacing) % 2 === 0 ? 1 : -1;
-      const base = s.pos.clone().addScaledVector(s.normal, side * (this.halfWidth + 2.6));
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 6.5, 6), poleMat);
-      pole.position.copy(base).setY(base.y + 3.25);
-      this.group.add(pole);
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.16, 0.5), lampMat);
-      lamp.position.copy(base).addScaledVector(s.normal, -side * 0.8).setY(base.y + 6.5);
-      lamp.rotation.y = Math.atan2(s.tangent.x, s.tangent.z);
-      this.group.add(lamp);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(1.15, 8, 8), glowMat);
-      glow.position.copy(lamp.position).setY(lamp.position.y - 0.35);
-      this.group.add(glow);
-    }
-  }
-
   /** Crisp lane markings as unlit strips hovering 3 cm above the tarmac.
    *  The old vertex-colour lines drowned in the scanned albedo tint, so the
    *  centre dashes and edge lines get their own geometry: unlit with a
@@ -403,14 +375,14 @@ export class Track {
     ribbon(-0.09, 0.09, (i) => i > 3 && i < N - 3 && this.samples[i].dist % 8 < 3, this.P.roadLine);
   }
 
-  /** Additive light pools under each streetlight. The lamps themselves are
-   *  emissive-only (zero real lights — the forward renderer stays cheap), so
-   *  the road gets its NFS-style pools from these decals instead: bright
-   *  rings where the scanned asphalt grain + normal map can actually be
-   *  seen at night. One InstancedMesh, 1 draw call, fog-aware. */
+  /** Additive light pools down the road. The street towers were removed for
+   *  perf (138 non-instanced draw calls + transparent glow overdraw on
+   *  iGPUs), so these decals alone carry the sodium-lamp look: bright rings
+   *  where the scanned asphalt grain + normal map can actually be seen at
+   *  night. One InstancedMesh, 1 draw call, fog-aware. */
   private buildLightPools() {
     const N = this.sampleCount;
-    const spacing = Math.floor(N / 46); // must match buildStreetLights
+    const spacing = Math.floor(N / 46); // 46 pools a lap — the towers are gone (perf), pools stay
 
     // radial gradient: hot core under the lamp, soft falloff onto the road
     const size = 128;

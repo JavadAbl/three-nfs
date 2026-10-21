@@ -53,6 +53,8 @@ export interface EnvThemeSpec {
   containers?: ContainerSpec;
   /** optional gantry cranes (harbor) */
   cranes?: CraneSpec;
+  /** real-model city scatter tuning (defaults inlined at read site) */
+  modelCity?: ModelCitySpec;
 }
 
 /** container-yard dressing — boxes stacked near the corridor (harbor/industrial) */
@@ -68,6 +70,16 @@ export interface CraneSpec {
   height: number;
   /** beam length in metres (runs parallel to the track) */
   boom: number;
+}
+
+/** real-model city scatter tuning (CityModels upgrade) */
+export interface ModelCitySpec {
+  /** scatter grid spacing in metres (sparser than the old box grid) */
+  modelSpacing: number;
+  /** landmark hero count on the far fog ring (0 = none) */
+  heroCount: number;
+  /** tallest allowed filler in metres — keeps the harbor low-rise */
+  maxTowerHeight: number;
 }
 
 /** named environment themes — a map picks one via MapDef.envTheme */
@@ -91,6 +103,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [0xf59e0b, 0xff5e3a, 0xff2d78, 0x22d3a7],
     starCount: 900,
     neonCount: 10,
+    modelCity: { modelSpacing: 52, heroCount: 6, maxTowerHeight: 200 },
   },
   // container port: low wide warehouses, sodium lamps, hazier sky,
   // container stacks + gantry cranes near the corridor
@@ -112,6 +125,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [0xff8c1a, 0xff3355, 0x2dd4bf, 0xffb020],
     starCount: 420,
     neonCount: 6,
+    modelCity: { modelSpacing: 64, heroCount: 0, maxTowerHeight: 70 },
     containers: { count: 130, colors: [0xb4402f, 0x2e5f8a, 0x3f6b4f, 0x8a8f98, 0xb07a2a] },
     cranes: { count: 7, height: 34, boom: 42 },
   },

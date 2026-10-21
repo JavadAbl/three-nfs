@@ -2,10 +2,16 @@
 import * as THREE from "three";
 import type { Track } from "./Track";
 import { ENV_THEMES, type EnvThemeSpec } from "../maps/registry";
+import { loadCityModels, type BuildingProto } from "./CityModels";
 
 export class CityEnvironment {
   group = new THREE.Group();
   private readonly theme: EnvThemeSpec;
+  /** fallback box instanced meshes until the model sets load (then removed) */
+  private boxMeshes: THREE.InstancedMesh[] = [];
+  /** true once the real building models have replaced the boxes */
+  modelsUpgraded = false;
+  private disposed = false;
 
   /** builds the world furniture from a map's environment theme */
   constructor(track: Track, theme: EnvThemeSpec = ENV_THEMES.city) {
@@ -15,6 +21,28 @@ export class CityEnvironment {
     this.buildBuildings(track);
     if (theme.containers) this.buildContainers(track, theme.containers);
     if (theme.cranes) this.buildCranes(track, theme.cranes);
+    // async upgrade: real building models pop in over the fallback boxes
+    void this.upgradeToModels(track);
+  }
+
+  /** swap the procedural boxes for the extracted building sets */
+  private async upgradeToModels(track: Track) {
+    let protos: BuildingProto[];
+    try {
+      protos = await loadCityModels();
+    } catch {
+      return; // sets missing — boxes stay, city still looks fine
+    }
+    if (this.disposed || !protos.length) return;
+    this.buildModelCity(track, protos);
+    // tear down the fallback boxes
+    for (const inst of this.boxMeshes) {
+      this.group.remove(inst);
+      inst.geometry.dispose();
+      (inst.material as THREE.Material).dispose();
+    }
+    this.boxMeshes = [];
+    this.modelsUpgraded = true;
   }
 
   private makeGround(): THREE.Mesh {
@@ -120,6 +148,7 @@ export class CityEnvironment {
         inst.setColorAt(i, color);
       });
       inst.instanceMatrix.needsUpdate = true;
+      this.boxMeshes.push(inst);
       this.group.add(inst);
     }
 
@@ -150,6 +179,126 @@ export class CityEnvironment {
       );
       pole.position.copy(p).setY(p.y + 3);
       this.group.add(pole);
+    }
+  }
+
+  /**
+   * Scatter the real building models: prototypes banded by size, placed by
+   * distance-to-track (low near the corridor, towers far out), one
+   * InstancedMesh per (prototype × material-part). Landmark heroes go on a
+   * far ring as individual meshes — tall silhouettes in the fog with lit
+   * windows, the Carbon skyline read.
+   */
+  private buildModelCity(track: Track, protos: BuildingProto[]) {
+    const T = this.theme;
+    const MC = T.modelCity ?? { modelSpacing: 52, heroCount: 6, maxTowerHeight: 200 };
+    const samples = track.samples;
+    const heroCount = MC.heroCount;
+    const maxProtoH = MC.maxTowerHeight;
+
+    // candidate grid with per-candidate min distance to the corridor
+    const spacing = MC.modelSpacing;
+    const range = T.range;
+    const cands: { x: number; z: number; d: number }[] = [];
+    for (let x = -range; x <= range; x += spacing) {
+      for (let z = -range; z <= range; z += spacing) {
+        const jx = x + (Math.random() - 0.5) * spacing * 0.5;
+        const jz = z + (Math.random() - 0.5) * spacing * 0.5;
+        let min = Infinity;
+        for (let i = 0; i < samples.length; i += 3) {
+          const s = samples[i];
+          const d = Math.hypot(s.pos.x - jx, s.pos.z - jz);
+          if (d < min) min = d;
+        }
+        if (min > T.clearance + 8) cands.push({ x: jx, z: jz, d: min });
+      }
+    }
+
+    // prototype pools per distance band (theme caps how tall the city gets —
+    // the harbor keeps its mid band under the crane-line too, not just the far)
+    const midCap = Math.min(110, maxProtoH);
+    const nearPool = protos.filter((p) => p.height <= 32);
+    const midPool = protos.filter((p) => p.height > 32 && p.height <= midCap);
+    const farPool = protos.filter((p) => p.height > midCap && p.height <= maxProtoH);
+    if (!nearPool.length && !midPool.length) return;
+
+    const pickFor = (d: number): BuildingProto | null => {
+      const pool = d < 130 ? nearPool : d < 380 ? midPool || farPool : farPool || midPool;
+      if (!pool || !pool.length) return null;
+      return pool[Math.floor(Math.random() * pool.length)];
+    };
+
+    // assign candidates to prototypes
+    const placements = new Map<BuildingProto, { x: number; z: number; rot: number; scale: number }[]>();
+    for (const c of cands) {
+      const proto = pickFor(c.d);
+      if (!proto) continue;
+      let list = placements.get(proto);
+      if (!list) placements.set(proto, (list = []));
+      list.push({
+        x: c.x,
+        z: c.z,
+        // 4-way rotation reads as a real street grid at night
+        rot: Math.floor(Math.random() * 4) * (Math.PI / 2) + (Math.random() - 0.5) * 0.06,
+        scale: 0.85 + Math.random() * 0.4,
+      });
+    }
+
+    // one InstancedMesh per (prototype × material part)
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3();
+    const col = new THREE.Color();
+    for (const [proto, list] of placements) {
+      for (const part of proto.parts) {
+        const inst = new THREE.InstancedMesh(part.geometry, part.material, list.length);
+        inst.frustumCulled = false; // instances span the whole map
+        list.forEach((p, i) => {
+          pos.set(p.x, -0.4, p.z);
+          q.setFromAxisAngle(up, p.rot);
+          scl.setScalar(p.scale);
+          m.compose(pos, q, scl);
+          inst.setMatrixAt(i, m);
+          // subtle per-instance tint so repeated protos don't read as clones
+          const t = 0.8 + Math.random() * 0.35;
+          col.setRGB(t, t * (0.96 + Math.random() * 0.04), t * (0.92 + Math.random() * 0.08));
+          inst.setColorAt(i, col);
+        });
+        inst.instanceMatrix.needsUpdate = true;
+        if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+        this.group.add(inst);
+      }
+    }
+
+    // landmark heroes: tall silhouettes on a fog ring past the scatter band
+    const heroes = protos.filter((p) => p.height > 200 && p.height <= maxProtoH + 350).slice(0, heroCount);
+    for (let i = 0; i < heroes.length; i++) {
+      const angle = (i / heroes.length) * Math.PI * 2 + 0.35;
+      // probe outward until clear of the corridor
+      let radius = 400;
+      let ok = false;
+      for (; radius <= 620; radius += 40) {
+        const hx = Math.cos(angle) * radius;
+        const hz = Math.sin(angle) * radius;
+        let min = Infinity;
+        for (let s = 0; s < samples.length; s += 3) {
+          const d = Math.hypot(samples[s].pos.x - hx, samples[s].pos.z - hz);
+          if (d < min) min = d;
+        }
+        if (min > 170) { ok = true; break; }
+      }
+      if (!ok) continue;
+      const hero = heroes[i];
+      const holder = new THREE.Group();
+      holder.position.set(Math.cos(angle) * radius, -0.4, Math.sin(angle) * radius);
+      holder.rotation.y = Math.random() * Math.PI * 2;
+      for (const part of hero.parts) {
+        const mesh = new THREE.Mesh(part.geometry, part.material);
+        holder.add(mesh);
+      }
+      this.group.add(holder);
     }
   }
 
@@ -257,12 +406,15 @@ export class CityEnvironment {
   }
 
   dispose() {
+    this.disposed = true;
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.geometry) m.geometry.dispose();
+      // prototype geometries/materials are cached for the app lifetime —
+      // disposing them here would black out the next race's city
+      if (m.geometry && m.geometry.userData.shared !== true) m.geometry.dispose();
       const mat = m.material as THREE.Material | THREE.Material[];
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-      else if (mat) mat.dispose();
+      const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
+      for (const x of mats) if (x.userData.shared !== true) x.dispose();
     });
   }
 }

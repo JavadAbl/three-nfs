@@ -143,7 +143,7 @@ export class CityEnvironment {
         m.setPosition(c.x, -0.4, c.z);
         inst.setMatrixAt(i, m);
         // subtle per-instance tint
-        const t = 0.75 + Math.random() * 0.45;
+        const t = 0.95 + Math.random() * 0.35;
         color.setRGB(t, t * (0.95 + Math.random() * 0.05), t * (0.9 + Math.random() * 0.1));
         inst.setColorAt(i, color);
       });
@@ -262,7 +262,9 @@ export class CityEnvironment {
           m.compose(pos, q, scl);
           inst.setMatrixAt(i, m);
           // subtle per-instance tint so repeated protos don't read as clones
-          const t = 0.8 + Math.random() * 0.35;
+          // (floor raised: the old 0.8 floor stacked with the day-dim into
+          // near-black facades — "too dark")
+          const t = 1.0 + Math.random() * 0.3;
           col.setRGB(t, t * (0.96 + Math.random() * 0.04), t * (0.92 + Math.random() * 0.08));
           inst.setColorAt(i, col);
         });

@@ -59,7 +59,11 @@ export const PALETTE = {
   asphalt: 0x14151a,
   roadLine: 0xd8d8d8,
   roadEdge: 0xe8b23a,
-  fog: 0x0b0a0c,
+  // fog: lifted blue-violet haze + much lighter density — the old near-black
+  // 0.0105 fog capped city visibility at ~150m and swallowed the skyline
+  // (user: "too dark"); 0.0058 keeps the horizon molten but leaves facades
+  // readable across the gameplay band
+  fog: 0x332c4a,
   sky: 0x07070a,
   ground: 0x0a0a0b,
   buildingA: 0x15161c,

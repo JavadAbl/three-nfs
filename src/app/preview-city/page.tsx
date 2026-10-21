@@ -16,7 +16,7 @@ export default function CityPreview() {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.3;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x05070d);
@@ -25,8 +25,10 @@ export default function CityPreview() {
     const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1, 6000);
 
     // night IBL-ish stand-in matching the game's night rig intent
-    scene.add(new THREE.AmbientLight(0x30405a, 0.5));
-    const d = new THREE.DirectionalLight(0x8090c0, 0.35);
+    // (kept in sync with Game.ts after the "too dark" lift: ambient 2.4,
+    // moon 0.8, exposure 1.3)
+    scene.add(new THREE.AmbientLight(0x3d3852, 1.2));
+    const d = new THREE.DirectionalLight(0xbcd0e8, 0.6);
     d.position.set(-200, 500, 100);
     scene.add(d);
 

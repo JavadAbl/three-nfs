@@ -158,7 +158,9 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    // 1.15 read as an under-exposed void once real textured buildings moved
+    // in (VLM: 2/10, "near-black silhouettes") — lift the whole frame
+    this.renderer.toneMappingExposure = 1.45;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -171,7 +173,11 @@ export class Game {
     // ── scene: night atmosphere (map palette) ──
     const P = resolveMapPalette(map);
     this.scene.background = new THREE.Color(P.sky);
-    this.scene.fog = new THREE.FogExp2(P.fog, 0.0105);
+    // density 0.0105 -> 0.0048: the old fog capped city visibility at ~150m —
+    // facades across the whole gameplay band were 45-90% dissolved into haze.
+    // Fog COLOUR comes from the palette (lifted blue-violet): distance fades
+    // read as city-glow atmosphere instead of a void swallowing the skyline
+    this.scene.fog = new THREE.FogExp2(P.fog, 0.0048);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const nightEnv = makeNightEnvironment();
@@ -213,10 +219,21 @@ export class Game {
       );
     }
 
-    this.scene.add(new THREE.AmbientLight(0x2a2430, 1.4));
-    const hemi = new THREE.HemisphereLight(0x30364a, 0x0a0a0c, 0.55);
+    // night fill lifted across the board (user: buildings "too dark"):
+    // ambient is the omnidirectional facade light — the old 1.4 @ 0x2a2430
+    // left every non-moon-facing wall at ~0.03 linear, i.e. pure black.
+    // Warm hemisphere ground = sodium-lamp bounce off the streets.
+    this.scene.add(new THREE.AmbientLight(0x4a4468, 3.8));
+    const hemi = new THREE.HemisphereLight(0x3a4266, 0x1a1410, 1.0);
     this.scene.add(hemi);
-    this.moon = new THREE.DirectionalLight(0xbcd0e8, 0.55);
+    // warm sodium fill from the moon's opposite quadrant — without it every
+    // moon-away facade was ambient-only and read as a flat black slab while
+    // the lit side popped (VLM on iteration 2: right side "window grids, floor
+    // lines", left side "near-black"). No shadow casting — it's a city bounce.
+    const sodiumFill = new THREE.DirectionalLight(0x9a7a55, 0.55);
+    sodiumFill.position.set(-160, 150, -120);
+    this.scene.add(sodiumFill);
+    this.moon = new THREE.DirectionalLight(0xbcd0e8, 0.8);
     this.moon.position.set(120, 220, 80);
     this.moon.castShadow = true;
     this.moon.shadow.mapSize.set(2048, 2048);

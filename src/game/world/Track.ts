@@ -14,10 +14,11 @@ const ASPHALT_TEX_TINT = 0x4a4a4a;
 /** self-illumination of the tarmac so grain stays visible at night —
  *  calibrated head-to-head via VLM (1.4 flat glow / 0.55 still milky / 0.22
  *  reads as moonlit asphalt with natural headlight pools on top). Raised a
- *  notch to 0.26 after the night IBL swap: the old bright-studio environment
- *  used to supply part of the ambient fill that kept the start-grid road
- *  readable; the dark night env does not, so the tarmac's own floor covers it. */
-const ASPHALT_EMISSIVE = 0.26;
+ *  notch to 0.26 after the night IBL swap, then to 0.34 with the city
+ *  brightening pass: the buildings around the circuit got 2-3x brighter and
+ *  the old value made shadowed road stretches read as a black void between
+ *  lit facades (VLM: "road ahead falls into deep shadow"). */
+const ASPHALT_EMISSIVE = 0.34;
 
 /** Texture revision — bump when swapping the scanned asphalt set: browsers
  *  cache the old JPGs under the same URL and serve stale bytes (this exact

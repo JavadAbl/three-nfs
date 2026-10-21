@@ -38,6 +38,12 @@ let inflight: Promise<BuildingProto[]> | null = null;
 /** warm amber windows for luminance-gated glow (sodium/office mix) */
 const GLOW_COLOR = new THREE.Color(1.0, 0.72, 0.45);
 
+/** luminance floor for authored night-set facades — their albedo textures
+ *  are near-black BY DESIGN (only windows are bright), so no multiplier can
+ *  rescue them: lerp toward this night blue-grey until even the darkest wall
+ *  reads as a visible shape instead of a void (VLM: "crushed to black"). */
+const NIGHT_ALBEDO_FLOOR = new THREE.Color(0x5a6478);
+
 /**
  * Luminance-gated window glow: bright pixels of the albedo (lit windows in
  * the baked day textures) become emissive at night. Injected via
@@ -132,12 +138,21 @@ async function loadSet(loader: GLTFLoader, set: string): Promise<BuildingProto[]
       if (seen.has(mat)) return;
       seen.add(mat);
       if (daySets) {
-        // day-textured sets: mild night dim on the diffuse albedo …
-        mat.color.setRGB(0.62, 0.65, 0.72);
-        // … and luminance-gated window glow
-        applyWindowGlow(mat, set === "ny" ? 2.2 : 1.6);
+        // day-textured sets: only a slight cool cast on the diffuse albedo —
+        // the 0.62-dim turned real facades into pure silhouettes (user: "too
+        // dark"). Facade detail now survives; the night read comes from the
+        // scene lights, not from crushing the albedo.
+        mat.color.setRGB(0.95, 1.0, 1.08);
+        // … and luminance-gated window glow (bumped to keep the lit-windows
+        // contrast ratio against the brighter facades)
+        applyWindowGlow(mat, set === "ny" ? 2.8 : 2.1);
       } else if (mat.emissiveMap || (mat.emissive && mat.emissive.r + mat.emissive.g + mat.emissive.b > 0.01)) {
-        // authored night sets: push the glow through the fog
+        // authored night sets: floor the facade diffuse — their wall textures
+        // are near-black on purpose, so multiply alone left them as voids
+        // between the lit windows. Lerp toward a night blue-grey; the
+        // emissive path is untouched so windows keep dominating.
+        mat.color.multiplyScalar(1.3).lerp(NIGHT_ALBEDO_FLOOR, 0.6);
+        // … and push the glow through the fog
         mat.emissiveIntensity = Math.min(Math.max(mat.emissiveIntensity, 1) * 2.2, 3.2);
       }
       mat.needsUpdate = true;

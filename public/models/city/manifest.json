@@ -1,0 +1,2420 @@
+[
+  {
+    "id": "bldg_ny_00",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      31,
+      106.5,
+      31
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 1
+  },
+  {
+    "id": "bldg_ny_01",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      46.4,
+      87.3,
+      80.3
+    ],
+    "class": "midrise",
+    "tris": 56,
+    "node": 3
+  },
+  {
+    "id": "bldg_ny_02",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      34.5,
+      98.5,
+      53.6
+    ],
+    "class": "tower",
+    "tris": 28,
+    "node": 5
+  },
+  {
+    "id": "bldg_ny_03",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      39.3,
+      142.9,
+      79.2
+    ],
+    "class": "tower",
+    "tris": 36,
+    "node": 7
+  },
+  {
+    "id": "bldg_ny_04",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      37.5,
+      89,
+      104.6
+    ],
+    "class": "midrise",
+    "tris": 12,
+    "node": 9
+  },
+  {
+    "id": "bldg_ny_05",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      62.7,
+      146.8,
+      89.1
+    ],
+    "class": "tower",
+    "tris": 20,
+    "node": 11
+  },
+  {
+    "id": "bldg_ny_06",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      44.5,
+      255.8,
+      44.5
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 13
+  },
+  {
+    "id": "bldg_ny_07",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      45.7,
+      332.7,
+      46.7
+    ],
+    "class": "tower",
+    "tris": 18,
+    "node": 15
+  },
+  {
+    "id": "bldg_ny_08",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      49.8,
+      293.2,
+      49.8
+    ],
+    "class": "tower",
+    "tris": 44,
+    "node": 17
+  },
+  {
+    "id": "bldg_ny_09",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      62.6,
+      160,
+      62.6
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 19
+  },
+  {
+    "id": "bldg_ny_10",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      71.2,
+      224.8,
+      46.9
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 21
+  },
+  {
+    "id": "bldg_ny_11",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      45.7,
+      282.4,
+      49.9
+    ],
+    "class": "tower",
+    "tris": 26,
+    "node": 23
+  },
+  {
+    "id": "bldg_ny_12",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      58.5,
+      381,
+      58.5
+    ],
+    "class": "tower",
+    "tris": 1368,
+    "node": 25
+  },
+  {
+    "id": "bldg_ny_13",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      66.7,
+      239.3,
+      160
+    ],
+    "class": "tower",
+    "tris": 28,
+    "node": 27
+  },
+  {
+    "id": "bldg_ny_14",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      63.4,
+      370.1,
+      222.4
+    ],
+    "class": "tower",
+    "tris": 74,
+    "node": 29
+  },
+  {
+    "id": "bldg_ny_15",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      40.5,
+      52.3,
+      40.7
+    ],
+    "class": "midrise",
+    "tris": 2500,
+    "node": 31
+  },
+  {
+    "id": "bldg_ny_16",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      47.1,
+      340.1,
+      48.5
+    ],
+    "class": "tower",
+    "tris": 172,
+    "node": 33
+  },
+  {
+    "id": "bldg_ny_17",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      46,
+      286.1,
+      46
+    ],
+    "class": "tower",
+    "tris": 148,
+    "node": 35
+  },
+  {
+    "id": "bldg_ny_18",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      37.7,
+      297.3,
+      64.6
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 37
+  },
+  {
+    "id": "bldg_ny_19",
+    "source": "ny",
+    "credit": "New York Buildings by sumitmangela (CC-BY 4.0, sketchfab.com/3d-models/new-york-buildings-e7922fe0f7b14ed786f84529f9217dac)",
+    "size": [
+      71.7,
+      132.1,
+      149.4
+    ],
+    "class": "tower",
+    "tris": 34,
+    "node": 39
+  },
+  {
+    "id": "bldg_nht_00",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      59.5,
+      141.2,
+      59.5
+    ],
+    "class": "tower",
+    "tris": 80,
+    "node": 42
+  },
+  {
+    "id": "bldg_nht_01",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      52.4,
+      209.8,
+      37.9
+    ],
+    "class": "tower",
+    "tris": 304,
+    "node": 45
+  },
+  {
+    "id": "bldg_nht_02",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      39.1,
+      168,
+      39.1
+    ],
+    "class": "tower",
+    "tris": 28,
+    "node": 48
+  },
+  {
+    "id": "bldg_nht_03",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      51.4,
+      209.8,
+      34.2
+    ],
+    "class": "tower",
+    "tris": 304,
+    "node": 51
+  },
+  {
+    "id": "bldg_nht_04",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      39.9,
+      140.1,
+      39.9
+    ],
+    "class": "tower",
+    "tris": 16,
+    "node": 53
+  },
+  {
+    "id": "bldg_nht_05",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      30.7,
+      97.3,
+      30.7
+    ],
+    "class": "tower",
+    "tris": 44,
+    "node": 55
+  },
+  {
+    "id": "bldg_nht_06",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      30.2,
+      208.3,
+      30.2
+    ],
+    "class": "tower",
+    "tris": 16,
+    "node": 57
+  },
+  {
+    "id": "bldg_nht_07",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      45,
+      216.2,
+      45
+    ],
+    "class": "tower",
+    "tris": 80,
+    "node": 60
+  },
+  {
+    "id": "bldg_nht_08",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      52.4,
+      132.9,
+      52.4
+    ],
+    "class": "tower",
+    "tris": 28,
+    "node": 63
+  },
+  {
+    "id": "bldg_nht_09",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      34.2,
+      27.3,
+      9.3
+    ],
+    "class": "lowrise",
+    "tris": 20,
+    "node": 65
+  },
+  {
+    "id": "bldg_nht_10",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      24,
+      35.2,
+      18.4
+    ],
+    "class": "midrise",
+    "tris": 36,
+    "node": 67
+  },
+  {
+    "id": "bldg_nht_11",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      21.3,
+      42.7,
+      22.5
+    ],
+    "class": "midrise",
+    "tris": 20,
+    "node": 69
+  },
+  {
+    "id": "bldg_nht_12",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      15.2,
+      31.7,
+      17.1
+    ],
+    "class": "midrise",
+    "tris": 20,
+    "node": 71
+  },
+  {
+    "id": "bldg_nht_13",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      15.9,
+      27.6,
+      19.9
+    ],
+    "class": "lowrise",
+    "tris": 36,
+    "node": 73
+  },
+  {
+    "id": "bldg_nht_14",
+    "source": "nht",
+    "credit": "Low Poly Night City Building Skyline by 99.Miles (CC-BY 4.0, sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)",
+    "size": [
+      35,
+      23.2,
+      24.8
+    ],
+    "class": "lowrise",
+    "tris": 20,
+    "node": 75
+  },
+  {
+    "id": "bldg_lpc_00",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      8.1,
+      20.4,
+      8.1
+    ],
+    "class": "lowrise",
+    "tris": 232,
+    "node": 77
+  },
+  {
+    "id": "bldg_lpc_01",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      15,
+      46.7,
+      8
+    ],
+    "class": "midrise",
+    "tris": 292,
+    "node": 79
+  },
+  {
+    "id": "bldg_lpc_02",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      12.3,
+      40.7,
+      10.5
+    ],
+    "class": "midrise",
+    "tris": 384,
+    "node": 81
+  },
+  {
+    "id": "bldg_lpc_03",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      13.9,
+      53.2,
+      7.6
+    ],
+    "class": "midrise",
+    "tris": 424,
+    "node": 83
+  },
+  {
+    "id": "bldg_lpc_04",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      10.5,
+      33.9,
+      10.5
+    ],
+    "class": "midrise",
+    "tris": 176,
+    "node": 85
+  },
+  {
+    "id": "bldg_lpc_05",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      12.5,
+      27.1,
+      6.9
+    ],
+    "class": "lowrise",
+    "tris": 412,
+    "node": 87
+  },
+  {
+    "id": "bldg_lpc_06",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      14.2,
+      29.1,
+      7.6
+    ],
+    "class": "lowrise",
+    "tris": 540,
+    "node": 89
+  },
+  {
+    "id": "bldg_lpc_07",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      7.7,
+      12.8,
+      4.8
+    ],
+    "class": "lowrise",
+    "tris": 256,
+    "node": 91
+  },
+  {
+    "id": "bldg_lpc_08",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      11.1,
+      24.3,
+      7.1
+    ],
+    "class": "lowrise",
+    "tris": 238,
+    "node": 93
+  },
+  {
+    "id": "bldg_lpc_09",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      16.9,
+      86,
+      15.1
+    ],
+    "class": "midrise",
+    "tris": 916,
+    "node": 95
+  },
+  {
+    "id": "bldg_lpc_10",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      7.2,
+      6.6,
+      7.3
+    ],
+    "class": "lowrise",
+    "tris": 292,
+    "node": 97
+  },
+  {
+    "id": "bldg_lpc_11",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      12,
+      57.6,
+      12
+    ],
+    "class": "midrise",
+    "tris": 476,
+    "node": 99
+  },
+  {
+    "id": "bldg_lpc_12",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      7.5,
+      16,
+      11.2
+    ],
+    "class": "lowrise",
+    "tris": 484,
+    "node": 101
+  },
+  {
+    "id": "bldg_lpc_13",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      12.8,
+      45.6,
+      9.2
+    ],
+    "class": "midrise",
+    "tris": 444,
+    "node": 103
+  },
+  {
+    "id": "bldg_lpc_14",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      7.7,
+      12.8,
+      4.8
+    ],
+    "class": "lowrise",
+    "tris": 256,
+    "node": 105
+  },
+  {
+    "id": "bldg_lpc_15",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      8.2,
+      14.5,
+      9.3
+    ],
+    "class": "lowrise",
+    "tris": 248,
+    "node": 107
+  },
+  {
+    "id": "bldg_lpc_16",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      4.6,
+      12.1,
+      9.8
+    ],
+    "class": "lowrise",
+    "tris": 216,
+    "node": 109
+  },
+  {
+    "id": "bldg_lpc_17",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      6.1,
+      23.5,
+      10.4
+    ],
+    "class": "lowrise",
+    "tris": 174,
+    "node": 111
+  },
+  {
+    "id": "bldg_lpc_18",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      8.1,
+      20.4,
+      8.1
+    ],
+    "class": "lowrise",
+    "tris": 232,
+    "node": 113
+  },
+  {
+    "id": "bldg_lpc_19",
+    "source": "lpc",
+    "credit": "Low-poly City Buildings by smooth998 (CC-BY 4.0, sketchfab.com/3d-models/low-poly-city-buildings-e0209ac5bb684d2d85e5ade96c92d2ff)",
+    "size": [
+      9.3,
+      14.5,
+      8.2
+    ],
+    "class": "lowrise",
+    "tris": 248,
+    "node": 115
+  },
+  {
+    "id": "bldg_cc_00",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      79.2,
+      10.9,
+      10
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 117
+  },
+  {
+    "id": "bldg_cc_01",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      24.7,
+      10.9,
+      10
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 119
+  },
+  {
+    "id": "bldg_cc_02",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      37,
+      30.7,
+      37
+    ],
+    "class": "midrise",
+    "tris": 34,
+    "node": 121
+  },
+  {
+    "id": "bldg_cc_03",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      36.7,
+      51.6,
+      35.1
+    ],
+    "class": "midrise",
+    "tris": 184,
+    "node": 123
+  },
+  {
+    "id": "bldg_cc_04",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      60,
+      121.3,
+      60
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 125
+  },
+  {
+    "id": "bldg_cc_05",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      67.8,
+      10.6,
+      1.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 127
+  },
+  {
+    "id": "bldg_cc_06",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      26.5,
+      13.9,
+      6.2
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 129
+  },
+  {
+    "id": "bldg_cc_07",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      58.5,
+      19.3,
+      79.6
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 131
+  },
+  {
+    "id": "bldg_cc_08",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9.7,
+      7.1,
+      48.8
+    ],
+    "class": "lowrise",
+    "tris": 48,
+    "node": 133
+  },
+  {
+    "id": "bldg_cc_09",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      3.8,
+      11.7,
+      7.4
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 135
+  },
+  {
+    "id": "bldg_cc_10",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      10,
+      22
+    ],
+    "class": "lowrise",
+    "tris": 12,
+    "node": 137
+  },
+  {
+    "id": "bldg_cc_11",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      38.6,
+      12.7
+    ],
+    "class": "midrise",
+    "tris": 10,
+    "node": 139
+  },
+  {
+    "id": "bldg_cc_12",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      33.5,
+      11.5,
+      35.2
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 141
+  },
+  {
+    "id": "bldg_cc_13",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      45,
+      11.6,
+      42.1
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 143
+  },
+  {
+    "id": "bldg_cc_14",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.2,
+      9.1,
+      10.5
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 145
+  },
+  {
+    "id": "bldg_cc_15",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      42.6,
+      7.4,
+      8.5
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 147
+  },
+  {
+    "id": "bldg_cc_16",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9.9,
+      7.4,
+      8.5
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 149
+  },
+  {
+    "id": "bldg_cc_17",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22.6,
+      19.3,
+      30.9
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 151
+  },
+  {
+    "id": "bldg_cc_18",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      3.7,
+      11.7,
+      7.4
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 153
+  },
+  {
+    "id": "bldg_cc_19",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      21.8,
+      23.5,
+      37.6
+    ],
+    "class": "lowrise",
+    "tris": 18,
+    "node": 155
+  },
+  {
+    "id": "bldg_cc_20",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      18.5,
+      17.3,
+      21.9
+    ],
+    "class": "lowrise",
+    "tris": 12,
+    "node": 157
+  },
+  {
+    "id": "bldg_cc_21",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      18.5,
+      17.3,
+      21.9
+    ],
+    "class": "lowrise",
+    "tris": 12,
+    "node": 159
+  },
+  {
+    "id": "bldg_cc_22",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      67.8,
+      10.6,
+      1.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 161
+  },
+  {
+    "id": "bldg_cc_23",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      26.5,
+      13.9,
+      6.2
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 163
+  },
+  {
+    "id": "bldg_cc_24",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      36.3,
+      19.3,
+      44
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 165
+  },
+  {
+    "id": "bldg_cc_25",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      46.8,
+      15.8,
+      75.2
+    ],
+    "class": "lowrise",
+    "tris": 52,
+    "node": 167
+  },
+  {
+    "id": "bldg_cc_26",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      117.3,
+      153.8,
+      86.3
+    ],
+    "class": "tower",
+    "tris": 252,
+    "node": 172
+  },
+  {
+    "id": "bldg_cc_27",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      23.5,
+      19.3,
+      29.7
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 174
+  },
+  {
+    "id": "bldg_cc_28",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      42.6,
+      7.5,
+      8.6
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 176
+  },
+  {
+    "id": "bldg_cc_29",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      3.8,
+      11.7,
+      7.4
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 178
+  },
+  {
+    "id": "bldg_cc_30",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      71.7,
+      123.5,
+      86.3
+    ],
+    "class": "tower",
+    "tris": 66,
+    "node": 180
+  },
+  {
+    "id": "bldg_cc_31",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      23.5,
+      19.3,
+      29.7
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 182
+  },
+  {
+    "id": "bldg_cc_32",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      42.6,
+      7.5,
+      8.6
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 184
+  },
+  {
+    "id": "bldg_cc_33",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 187
+  },
+  {
+    "id": "bldg_cc_34",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 190
+  },
+  {
+    "id": "bldg_cc_35",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      67.5,
+      20.4,
+      37.6
+    ],
+    "class": "lowrise",
+    "tris": 5633,
+    "node": 193
+  },
+  {
+    "id": "bldg_cc_36",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      35,
+      32.7,
+      12.8
+    ],
+    "class": "midrise",
+    "tris": 200,
+    "node": 195
+  },
+  {
+    "id": "bldg_cc_37",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      35,
+      32.7,
+      12.8
+    ],
+    "class": "midrise",
+    "tris": 200,
+    "node": 197
+  },
+  {
+    "id": "bldg_cc_38",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      30.8,
+      9.3,
+      30.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 199
+  },
+  {
+    "id": "bldg_cc_39",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      100.9,
+      9.3,
+      41.9
+    ],
+    "class": "lowrise",
+    "tris": 20,
+    "node": 201
+  },
+  {
+    "id": "bldg_cc_40",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      30.8,
+      9.3,
+      30.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 203
+  },
+  {
+    "id": "bldg_cc_41",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      26.5,
+      34.5,
+      37.4
+    ],
+    "class": "midrise",
+    "tris": 38,
+    "node": 205
+  },
+  {
+    "id": "bldg_cc_42",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      30.8,
+      9.3,
+      30.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 207
+  },
+  {
+    "id": "bldg_cc_43",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      100.9,
+      9.3,
+      41.9
+    ],
+    "class": "lowrise",
+    "tris": 20,
+    "node": 209
+  },
+  {
+    "id": "bldg_cc_44",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      30.8,
+      9.3,
+      30.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 211
+  },
+  {
+    "id": "bldg_cc_45",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      26.5,
+      34.5,
+      37.4
+    ],
+    "class": "midrise",
+    "tris": 38,
+    "node": 213
+  },
+  {
+    "id": "bldg_cc_46",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      37,
+      30.7,
+      37
+    ],
+    "class": "midrise",
+    "tris": 34,
+    "node": 215
+  },
+  {
+    "id": "bldg_cc_47",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      60,
+      121.3,
+      60
+    ],
+    "class": "tower",
+    "tris": 12,
+    "node": 217
+  },
+  {
+    "id": "bldg_cc_48",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      60,
+      150,
+      120
+    ],
+    "class": "tower",
+    "tris": 14,
+    "node": 219
+  },
+  {
+    "id": "bldg_cc_49",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 222
+  },
+  {
+    "id": "bldg_cc_50",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 225
+  },
+  {
+    "id": "bldg_cc_51",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 228
+  },
+  {
+    "id": "bldg_cc_52",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 231
+  },
+  {
+    "id": "bldg_cc_53",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 234
+  },
+  {
+    "id": "bldg_cc_54",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 237
+  },
+  {
+    "id": "bldg_cc_55",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 240
+  },
+  {
+    "id": "bldg_cc_56",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 243
+  },
+  {
+    "id": "bldg_cc_57",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 246
+  },
+  {
+    "id": "bldg_cc_58",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 249
+  },
+  {
+    "id": "bldg_cc_59",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 252
+  },
+  {
+    "id": "bldg_cc_60",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 255
+  },
+  {
+    "id": "bldg_cc_61",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 258
+  },
+  {
+    "id": "bldg_cc_62",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 261
+  },
+  {
+    "id": "bldg_cc_63",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 264
+  },
+  {
+    "id": "bldg_cc_64",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      35.7,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 168,
+    "node": 268
+  },
+  {
+    "id": "bldg_cc_65",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 271
+  },
+  {
+    "id": "bldg_cc_66",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      110.9,
+      66
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 274
+  },
+  {
+    "id": "bldg_cc_67",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66,
+      110.9,
+      9
+    ],
+    "class": "tower",
+    "tris": 166,
+    "node": 277
+  },
+  {
+    "id": "bldg_cc_68",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      17.4,
+      37.8,
+      54.3
+    ],
+    "class": "midrise",
+    "tris": 26,
+    "node": 280
+  },
+  {
+    "id": "bldg_cc_69",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      5.9,
+      9.7,
+      6
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 282
+  },
+  {
+    "id": "bldg_cc_70",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      5.9,
+      9.7,
+      5.9
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 284
+  },
+  {
+    "id": "bldg_cc_71",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      5.9,
+      9.7,
+      5.9
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 286
+  },
+  {
+    "id": "bldg_cc_72",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      10.9,
+      10.7,
+      2
+    ],
+    "class": "lowrise",
+    "tris": 42,
+    "node": 288
+  },
+  {
+    "id": "bldg_cc_73",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      7.7,
+      7.5,
+      1.4
+    ],
+    "class": "lowrise",
+    "tris": 38,
+    "node": 290
+  },
+  {
+    "id": "bldg_cc_74",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      120,
+      57.1,
+      107
+    ],
+    "class": "midrise",
+    "tris": 46,
+    "node": 292
+  },
+  {
+    "id": "bldg_cc_75",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      32,
+      28.7,
+      39.3
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 294
+  },
+  {
+    "id": "bldg_cc_76",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9.9,
+      114.8,
+      38.3
+    ],
+    "class": "tower",
+    "tris": 32,
+    "node": 296
+  },
+  {
+    "id": "bldg_cc_77",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      61.6,
+      10.4,
+      22.3
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 298
+  },
+  {
+    "id": "bldg_cc_78",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      101.7,
+      66.1,
+      12.3
+    ],
+    "class": "midrise",
+    "tris": 26,
+    "node": 300
+  },
+  {
+    "id": "bldg_cc_79",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.6,
+      5.6,
+      101
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 302
+  },
+  {
+    "id": "bldg_cc_80",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      19.2,
+      123,
+      40.9
+    ],
+    "class": "tower",
+    "tris": 16,
+    "node": 304
+  },
+  {
+    "id": "bldg_cc_81",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66.8,
+      10.4,
+      37.9
+    ],
+    "class": "lowrise",
+    "tris": 20,
+    "node": 306
+  },
+  {
+    "id": "bldg_cc_82",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      70.1,
+      75.9,
+      83.1
+    ],
+    "class": "midrise",
+    "tris": 181,
+    "node": 308
+  },
+  {
+    "id": "bldg_cc_83",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      41.8,
+      36.7,
+      28.9
+    ],
+    "class": "midrise",
+    "tris": 12,
+    "node": 310
+  },
+  {
+    "id": "bldg_cc_84",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      34.7,
+      28.7,
+      36.3
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 312
+  },
+  {
+    "id": "bldg_cc_85",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      50.3,
+      123,
+      24.6
+    ],
+    "class": "tower",
+    "tris": 16,
+    "node": 314
+  },
+  {
+    "id": "bldg_cc_86",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      66.8,
+      10.4,
+      20.5
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 316
+  },
+  {
+    "id": "bldg_cc_87",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      43.5,
+      36.7,
+      27.3
+    ],
+    "class": "midrise",
+    "tris": 12,
+    "node": 318
+  },
+  {
+    "id": "bldg_cc_88",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9.9,
+      79.2,
+      29.8
+    ],
+    "class": "midrise",
+    "tris": 8,
+    "node": 321
+  },
+  {
+    "id": "bldg_cc_89",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22,
+      7,
+      33.6
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 323
+  },
+  {
+    "id": "bldg_cc_90",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      21.7,
+      27.3,
+      24.4
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 325
+  },
+  {
+    "id": "bldg_cc_91",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      30.8,
+      9.3,
+      30.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 327
+  },
+  {
+    "id": "bldg_cc_92",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      100.9,
+      9.3,
+      41.9
+    ],
+    "class": "lowrise",
+    "tris": 20,
+    "node": 329
+  },
+  {
+    "id": "bldg_cc_93",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      30.8,
+      9.3,
+      30.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 331
+  },
+  {
+    "id": "bldg_cc_94",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      26.5,
+      33.7,
+      37.4
+    ],
+    "class": "midrise",
+    "tris": 32,
+    "node": 333
+  },
+  {
+    "id": "bldg_cc_95",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      8.8,
+      7,
+      84
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 335
+  },
+  {
+    "id": "bldg_cc_96",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      8.8,
+      99.9,
+      13.3
+    ],
+    "class": "tower",
+    "tris": 10,
+    "node": 337
+  },
+  {
+    "id": "bldg_cc_97",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      8.8,
+      99.9,
+      13.3
+    ],
+    "class": "tower",
+    "tris": 10,
+    "node": 339
+  },
+  {
+    "id": "bldg_cc_98",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      16.1,
+      10.6,
+      7.7
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 341
+  },
+  {
+    "id": "bldg_cc_99",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      3,
+      13.9,
+      54.3
+    ],
+    "class": "lowrise",
+    "tris": 8,
+    "node": 343
+  },
+  {
+    "id": "bldg_cc_100",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      33.5,
+      19.3,
+      47.7
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 345
+  },
+  {
+    "id": "bldg_cc_101",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      37.3,
+      19.9,
+      55.6
+    ],
+    "class": "lowrise",
+    "tris": 64,
+    "node": 347
+  },
+  {
+    "id": "bldg_cc_102",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      84.9,
+      123.5,
+      72.9
+    ],
+    "class": "tower",
+    "tris": 66,
+    "node": 349
+  },
+  {
+    "id": "bldg_cc_103",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22.6,
+      19.3,
+      30.9
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 351
+  },
+  {
+    "id": "bldg_cc_104",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      41.3,
+      7.5,
+      9.9
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 353
+  },
+  {
+    "id": "bldg_cc_105",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.4,
+      11.7,
+      2.2
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 355
+  },
+  {
+    "id": "bldg_cc_106",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      84.9,
+      123.5,
+      72.9
+    ],
+    "class": "tower",
+    "tris": 66,
+    "node": 357
+  },
+  {
+    "id": "bldg_cc_107",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22.6,
+      19.3,
+      30.9
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 359
+  },
+  {
+    "id": "bldg_cc_108",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      41.3,
+      7.5,
+      9.9
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 361
+  },
+  {
+    "id": "bldg_cc_109",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      35,
+      32.7,
+      12.8
+    ],
+    "class": "midrise",
+    "tris": 200,
+    "node": 363
+  },
+  {
+    "id": "bldg_cc_110",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      35,
+      32.7,
+      12.8
+    ],
+    "class": "midrise",
+    "tris": 200,
+    "node": 365
+  },
+  {
+    "id": "bldg_cc_111",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      16.1,
+      10.6,
+      7.7
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 367
+  },
+  {
+    "id": "bldg_cc_112",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      8.5,
+      7.1,
+      50
+    ],
+    "class": "lowrise",
+    "tris": 48,
+    "node": 369
+  },
+  {
+    "id": "bldg_cc_113",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22.6,
+      19.3,
+      30.9
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 371
+  },
+  {
+    "id": "bldg_cc_114",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      41.3,
+      7.5,
+      9.9
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 373
+  },
+  {
+    "id": "bldg_cc_115",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.4,
+      11.7,
+      2.2
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 375
+  },
+  {
+    "id": "bldg_cc_116",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      84.9,
+      123.5,
+      72.9
+    ],
+    "class": "tower",
+    "tris": 66,
+    "node": 377
+  },
+  {
+    "id": "bldg_cc_117",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22.6,
+      19.3,
+      30.9
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 379
+  },
+  {
+    "id": "bldg_cc_118",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      41.3,
+      7.5,
+      9.9
+    ],
+    "class": "lowrise",
+    "tris": 32,
+    "node": 381
+  },
+  {
+    "id": "bldg_cc_119",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.8,
+      32.7,
+      35
+    ],
+    "class": "midrise",
+    "tris": 200,
+    "node": 383
+  },
+  {
+    "id": "bldg_cc_120",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.8,
+      32.7,
+      35
+    ],
+    "class": "midrise",
+    "tris": 200,
+    "node": 385
+  },
+  {
+    "id": "bldg_cc_121",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      109.8,
+      143,
+      85.5
+    ],
+    "class": "tower",
+    "tris": 24,
+    "node": 387
+  },
+  {
+    "id": "bldg_cc_122",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      67.8,
+      10.6,
+      1.8
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 389
+  },
+  {
+    "id": "bldg_cc_123",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      3.8,
+      11.7,
+      7.4
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 391
+  },
+  {
+    "id": "bldg_cc_124",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      10,
+      22
+    ],
+    "class": "lowrise",
+    "tris": 12,
+    "node": 393
+  },
+  {
+    "id": "bldg_cc_125",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9,
+      38.6,
+      12.7
+    ],
+    "class": "midrise",
+    "tris": 10,
+    "node": 395
+  },
+  {
+    "id": "bldg_cc_126",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      33.5,
+      11.5,
+      35.2
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 397
+  },
+  {
+    "id": "bldg_cc_127",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      45,
+      11.6,
+      42.1
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 399
+  },
+  {
+    "id": "bldg_cc_128",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      12.2,
+      9.1,
+      10.5
+    ],
+    "class": "lowrise",
+    "tris": 16,
+    "node": 401
+  },
+  {
+    "id": "bldg_cc_129",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      9.9,
+      79.2,
+      29.8
+    ],
+    "class": "midrise",
+    "tris": 8,
+    "node": 404
+  },
+  {
+    "id": "bldg_cc_130",
+    "source": "cc",
+    "credit": "CCity Building Set 1 by Neberkenezer (CC-BY 4.0, sketchfab.com/3d-models/ccity-building-set-1-a2d5c7bfcc2148fb8994864c43dfcc97)",
+    "size": [
+      22,
+      7,
+      33.6
+    ],
+    "class": "lowrise",
+    "tris": 10,
+    "node": 406
+  }
+]

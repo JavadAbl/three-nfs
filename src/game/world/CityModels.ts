@@ -1,18 +1,23 @@
 // ─── CityModels: building prototype library from merged set GLBs ──────────────
 // Loads the city building sets produced by scripts/extract_buildings.js
-// (one merged GLB per source: ny / night / lpcity / cc). Each set GLB has a
-// "cityset" root whose children are per-building wrapper nodes (name = slug,
-// matrix = bottom-center pivot + real-world metre scale). Every building is
-// baked into per-material merged geometries so the scatter system can instance
-// it with a couple of draw calls. Materials are shared within a source set
-// (GLTFLoader gives one instance per texture), so night sets authored with
-// emissive glow keep it, and day-textured sets get a luminance-gated window
-// glow shader so they read as night city, not noon office blocks.
+// (one merged GLB per source: ny / night / lpcity / cc; PNG/JPEG textures
+// converted to KTX2/ETC1S GPU textures by scripts/ktx_convert.js — 31.7MB →
+// 7.7MB downloads and ~6-8x less VRAM, decoded straight to the GPU's native
+// block format). Each set GLB has a "cityset" root whose children are
+// per-building wrapper nodes (name = slug, matrix = bottom-center pivot +
+// real-world metre scale). Every building is baked into per-material merged
+// geometries so the scatter system can instance it with a couple of draw
+// calls. Materials are shared within a source set (GLTFLoader gives one
+// instance per texture), so night sets authored with emissive glow keep it,
+// and day-textured sets get a luminance-gated window glow shader so they read
+// as night city, not noon office blocks.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { getGLTFLoader } from "./CarModelLoader";
 
-const SET_BASE = "/models/staging/city/";
+// committed, KTX2-compressed set GLBs (see public/models/city/CREDITS.md)
+const SET_BASE = "/models/city/";
 const SETS = ["ny", "night", "lpcity", "cc"] as const;
 
 export interface BuildingPart {
@@ -196,7 +201,9 @@ async function loadSet(loader: GLTFLoader, set: string): Promise<BuildingProto[]
 export function loadCityModels(): Promise<BuildingProto[]> {
   if (protos) return Promise.resolve(protos);
   if (inflight) return inflight;
-  const loader = new GLTFLoader();
+  // shared loader: DRACO decoders + KTX2 transcoder (city GLBs are
+  // KHR_texture_basisu) with GPU-format detection already wired
+  const loader = getGLTFLoader();
   inflight = Promise.all(SETS.map((s) => loadSet(loader, s).catch((e) => {
     console.warn("[CityModels] set " + s + " failed:", e);
     return [] as BuildingProto[];

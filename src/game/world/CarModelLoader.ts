@@ -95,6 +95,14 @@ function ensureKTX2Support(): void {
 export function registerKTX2Renderer(renderer: THREE.WebGLRenderer): void {
   ktx2Loader.detectSupport(renderer);
 }
+
+/** the shared configured loader (DRACO + KTX2 + GPU-format probe) — other
+ * model pipelines (city building sets) reuse this instead of bare
+ * GLTFLoaders, which would silently miss KHR_texture_basisu textures. */
+export function getGLTFLoader(): GLTFLoader {
+  ensureKTX2Support();
+  return loader;
+}
 const templates = new Map<string, Template>();
 const inflight = new Map<string, Promise<Template>>();
 

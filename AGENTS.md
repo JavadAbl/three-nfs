@@ -44,3 +44,31 @@ REWRITING .gitignore to a 2-line stub. These commits are local-only — but:
 New models/assets are NOT committed until the user accepts them. Candidates go
 to `public/models/staging/` etc. (gitignored) — the game loads them, git never
 sees them until acceptance.
+
+### 2b. ALWAYS compress accepted models BEFORE pushing (USER RULE — 2026-10-21)
+
+Never commit or push raw uncompressed model files. The acceptance flow is:
+
+**staging (raw, gitignored) → user accepts → compress → commit compressed → push.**
+
+- Pipeline: `scripts/ktx_convert.js` (gltf-transform + KTX-Software in
+  `scripts/ktx/`), KTX2/ETC1S per texture slot. Per-set quality knobs and the
+  night/emissive two-pass exception are documented in the script header —
+  read it, don't guess. Normals/metalRough may stay PNG (UASTC bloats, linear
+  data risk).
+- Raw originals stay in staging after compression (rollback + regeneration);
+  compressed output is the only thing that enters `public/models/city/`.
+- **Gate every accept-commit on all three checks:**
+  1. Size — a city-set GLB lands ~2MB (compressed), not ~15MB (raw). If the
+     committed file is MBs larger than its staging sibling's converted form,
+     stop and investigate before pushing.
+  2. `npx gltf-transform inspect <glb>` must list `KHR_texture_basisu` in
+     extensionsRequired — PNG-decoded textures mean compression was skipped.
+  3. Quick visual parity vs the staging original (numeric stats via
+     `scripts/ktx_parity.js` or a same-frame preview A/B). Emissive slots are
+     the artifact hotspot (window smearing at high emissiveIntensity).
+- Why: the 2966d09 incident pushed 60MB of stale raw GLBs; b7507c8 fixed the
+  city sets (31.7MB → 7.8MB downloads, ~6x less VRAM, faster first load).
+  Every future accept must clear the same bar — no exceptions, no "just this
+  once", regardless of which agent or session performs the acceptance.
+- This rule lives in this file on the remote so it survives sandbox restarts.

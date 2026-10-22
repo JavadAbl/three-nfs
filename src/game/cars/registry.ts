@@ -11,6 +11,9 @@ export interface CarTuning {
   enginePower: number;
   /** extra acceleration while nitro is engaged */
   nitroPower: number;
+  /** fraction of natural top speed (enginePower/drag) over which the nitro
+   *  boost fades to zero — nitro never raises top speed */
+  nitroFadeSpan: number;
   /** brake deceleration m/s² */
   brakeForce: number;
   /** reverse acceleration */

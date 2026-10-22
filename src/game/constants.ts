@@ -21,6 +21,10 @@ export const CAR_TUNING = {
   enginePower: 14.5,
   /** Extra acceleration while nitro is engaged */
   nitroPower: 16,
+  /** fraction of the car's natural top speed (enginePower/drag) over which
+   *  the nitro boost fades to zero — nitro is ACCELERATION ONLY and must
+   *  never raise top speed (user directive 2026-10-22) */
+  nitroFadeSpan: 0.3,
   /** Brake deceleration m/s² */
   brakeForce: 26,
   /** Reverse acceleration */

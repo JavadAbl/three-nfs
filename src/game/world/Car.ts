@@ -473,7 +473,17 @@ export class Car {
       const boosting = c.nitro && this.nitro > 0 && vf > 2;
       if (boosting) {
         this.nitro = Math.max(0, this.nitro - T.nitroDrain * dt);
-        vf += T.nitroPower * dt;
+        // Nitro is ACCELERATION ONLY — never a temporary top-speed raise
+        // (user directive: "nitro should not add temp top speed; nitro is all
+        // about acc"). The boost tapers linearly to zero at the car's natural
+        // top speed (full-throttle drag equilibrium, enginePower/drag), so
+        // holding nitro reaches the same ceiling the engine alone would —
+        // just much faster. Past that point the boost is gone and the
+        // engine/drag balance reasserts itself; off-road, the extra drag
+        // still caps well below this line.
+        const naturalTop = T.enginePower / T.drag;
+        const fade = THREE.MathUtils.clamp((naturalTop - vf) / (naturalTop * T.nitroFadeSpan), 0, 1);
+        vf += T.nitroPower * fade * dt;
       } else {
         this.nitro = Math.min(T.nitroCapacity, this.nitro + T.nitroRegen * dt);
       }
@@ -502,7 +512,11 @@ export class Car {
     const dragCoef = T.drag + (offRoad ? T.offRoadDrag : 0);
     vf -= vf * dragCoef * dt;
     if (c.handbrake) vf -= vf * 0.25 * dt;
-    vf = THREE.MathUtils.clamp(vf, -T.maxReverseSpeed, T.maxSpeed + (this.nitroActive ? 8 : 0));
+    // NOTE: this ceiling is speed-safety only and does NOT lift while nitro
+    // is held — nitro buys acceleration, not top speed (the boost above
+    // fades out at the car's natural enginePower/drag equilibrium, which
+    // sits far below this wall).
+    vf = THREE.MathUtils.clamp(vf, -T.maxReverseSpeed, T.maxSpeed);
 
     // ── lateral grip / drift ──
     const gripNow = c.handbrake ? T.driftGrip : T.grip * (1 - 0.25 * THREE.MathUtils.clamp(Math.abs(vf) / T.maxSpeed, 0, 1));

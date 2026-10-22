@@ -26,6 +26,16 @@ const ASPHALT_EMISSIVE = 0.34;
  *  refetch for every user, not just dev. */
 const ASPHALT_REV = 3;
 
+/** scanned-asphalt file names — the AssetPreloader warms exactly these so
+ * the race never downloads ~12MB of road textures mid-drive. */
+export const ASPHALT_FILES = ["asphalt-2k-color.jpg", "asphalt-2k-normal.jpg", "asphalt-2k-rough.jpg"] as const;
+
+/** URL candidates for a road texture — accepted dir first, staging fallback,
+ * both rev-queried so a texture swap never serves stale bytes. */
+export function asphaltCandidates(name: string): string[] {
+  return [`/textures/asphalt/${name}`, `/textures/staging/asphalt/${name}`].map((p) => `${p}?v=${ASPHALT_REV}`);
+}
+
 export interface TrackSample {
   pos: THREE.Vector3;
   tangent: THREE.Vector3; // unit
@@ -184,8 +194,7 @@ export class Track {
   ): void {
     const loader = new THREE.TextureLoader();
     const load = (name: string, ok: (t: THREE.Texture) => void): void => {
-      const paths =
-        [`/textures/asphalt/${name}`, `/textures/staging/asphalt/${name}`].map((p) => `${p}?v=${ASPHALT_REV}`);
+      const paths = asphaltCandidates(name);
       const attempt = (i: number): void => {
         if (i >= paths.length) return; // silent: procedural fallback stays
         loader.load(paths[i], ok, undefined, () => attempt(i + 1));

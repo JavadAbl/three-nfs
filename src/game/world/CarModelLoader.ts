@@ -106,8 +106,12 @@ export function getGLTFLoader(): GLTFLoader {
 const templates = new Map<string, Template>();
 const inflight = new Map<string, Promise<Template>>();
 
-/** load (and cache) a car template — resolves null for procedural (no-model) cars */
-export function loadCarModel(id: string): Promise<Template | null> {
+/** load (and cache) a car template — resolves null for procedural (no-model) cars.
+ * onProgress forwards the raw byte stream (loaded, total) for boot loading bars. */
+export function loadCarModel(
+  id: string,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<Template | null> {
   const def = carDef(id);
   if (!def) return Promise.reject(new Error(`unknown car "${id}"`));
   if (!def.modelUrl) return Promise.resolve(null);
@@ -117,7 +121,9 @@ export function loadCarModel(id: string): Promise<Template | null> {
   if (pending) return pending;
   ensureKTX2Support(); // probe GPU formats before the first KTX2 GLB parse
   const p = loader
-    .loadAsync(def.modelUrl)
+    .loadAsync(def.modelUrl, (e) => {
+      if (onProgress && e.lengthComputable) onProgress(e.loaded, e.total);
+    })
     .then((gltf) => {
       const tpl = buildTemplate(id, gltf.scene);
       templates.set(id, tpl);

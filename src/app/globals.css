@@ -179,6 +179,24 @@
   transform: skewX(-8deg);
 }
 
+/* boot loading bar — sliding light sheen over the amber fill */
+.loader-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 32%, rgba(255, 255, 255, 0.38) 50%, transparent 68%);
+  background-size: 220% 100%;
+  animation: loader-sheen 1.15s linear infinite;
+}
+@keyframes loader-sheen {
+  from {
+    background-position: 220% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
 /* nitro bar */
 .nitro-bar {
   border: 1px solid rgba(255, 255, 255, 0.14);

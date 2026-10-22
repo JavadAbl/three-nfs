@@ -20,6 +20,27 @@ import { getGLTFLoader } from "./CarModelLoader";
 const SET_BASE = "/models/city/";
 const SETS = ["ny", "night", "lpcity", "cc"] as const;
 
+/** canonical city-set URLs — the AssetPreloader warms exactly these so the
+ * race never downloads 8MB of buildings mid-drive (was: freeze on entry). */
+export function citySetUrls(): { set: string; url: string; label: string }[] {
+  return [
+    { set: "ny", url: SET_BASE + "ny.glb", label: "NEW YORK BLOCKS" },
+    { set: "night", url: SET_BASE + "night.glb", label: "MIDNIGHT TOWERS" },
+    { set: "lpcity", url: SET_BASE + "lpcity.glb", label: "LOW-RISE DISTRICT" },
+    { set: "cc", url: SET_BASE + "cc.glb", label: "NEON HEIGHTS" },
+  ];
+}
+
+/** per-set load lifecycle events for boot loading bars (first caller wins) */
+export type CityLoadEvent =
+  | { set: string; phase: "download"; loaded: number; total: number }
+  | { set: string; phase: "bake"; done: number; total: number }
+  | { set: string; phase: "done" };
+export type CityLoadListener = (ev: CityLoadEvent) => void;
+
+/** yield the main thread so the loading bar can paint between bakes */
+const yieldToUI = () => new Promise<void>((r) => setTimeout(r, 0));
+
 export interface BuildingPart {
   geometry: THREE.BufferGeometry;
   material: THREE.MeshStandardMaterial;
@@ -123,8 +144,10 @@ function bakeParts(root: THREE.Object3D): { parts: BuildingPart[]; box: THREE.Bo
   return { parts, box };
 }
 
-async function loadSet(loader: GLTFLoader, set: string): Promise<BuildingProto[]> {
-  const gltf = await loader.loadAsync(SET_BASE + set + ".glb");
+async function loadSet(loader: GLTFLoader, set: string, onEvent?: CityLoadListener): Promise<BuildingProto[]> {
+  const gltf = await loader.loadAsync(SET_BASE + set + ".glb", (e) => {
+    if (onEvent && e.lengthComputable) onEvent({ set, phase: "download", loaded: e.loaded, total: e.total });
+  });
   const out: BuildingProto[] = [];
   const root = gltf.scene;
   root.updateMatrixWorld(true);
@@ -167,9 +190,14 @@ async function loadSet(loader: GLTFLoader, set: string): Promise<BuildingProto[]
   // gltf.scene -> "cityset" node -> building wrappers
   const cityset = root.children.find((c) => c.name === "cityset") ?? root;
   const wrappers = cityset === root ? root.children : cityset.children;
-  for (const child of wrappers) {
+  for (const [i, child] of wrappers.entries()) {
     // each child = one normalized building wrapper
     const { parts, box } = bakeParts(child);
+    if (onEvent) onEvent({ set, phase: "bake", done: i + 1, total: wrappers.length });
+    // cooperative bake: yield every few buildings so the boot loading bar
+    // keeps painting — mergeGeometries bursts otherwise freeze the tab for
+    // seconds on iGPUs and the bar looks dead
+    if ((i + 1) % 3 === 0) await yieldToUI();
     if (!parts.length) continue;
     const size = new THREE.Vector3();
     box.getSize(size);
@@ -194,17 +222,19 @@ async function loadSet(loader: GLTFLoader, set: string): Promise<BuildingProto[]
       shaderGlow: daySets,
     });
   }
+  if (onEvent) onEvent({ set, phase: "done" });
   return out;
 }
 
-/** load + bake all sets (cached; safe to call repeatedly) */
-export function loadCityModels(): Promise<BuildingProto[]> {
+/** load + bake all sets (cached; safe to call repeatedly). onEvent (first
+ *  caller only) streams download/bake progress for the boot loading bar. */
+export function loadCityModels(onEvent?: CityLoadListener): Promise<BuildingProto[]> {
   if (protos) return Promise.resolve(protos);
   if (inflight) return inflight;
   // shared loader: DRACO decoders + KTX2 transcoder (city GLBs are
   // KHR_texture_basisu) with GPU-format detection already wired
   const loader = getGLTFLoader();
-  inflight = Promise.all(SETS.map((s) => loadSet(loader, s).catch((e) => {
+  inflight = Promise.all(SETS.map((s) => loadSet(loader, s, onEvent).catch((e) => {
     console.warn("[CityModels] set " + s + " failed:", e);
     return [] as BuildingProto[];
   }))).then((lists) => {

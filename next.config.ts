@@ -7,6 +7,24 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // static game assets are content-addressed in practice (models swap only
+  // via new files / ?v= revs) — hard-cache them at the HTTP layer so a
+  // production deploy never re-downloads 26MB of GLBs + textures per visit.
+  // Dev is covered by the asset service worker (public/sw.js).
+  async headers() {
+    const immutable = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=31536000, immutable",
+      },
+    ];
+    return [
+      { source: "/models/:path*", headers: immutable },
+      { source: "/textures/:path*", headers: immutable },
+      { source: "/draco/:path*", headers: immutable },
+      { source: "/ktx2/:path*", headers: immutable },
+    ];
+  },
 };
 
 export default nextConfig;

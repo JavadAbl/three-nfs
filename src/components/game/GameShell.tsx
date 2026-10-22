@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Game, type GameMode } from "@/game/core/Game";
 import { NetClient } from "@/game/net/NetClient";
-import { loadCarModel, preloadAllCarModels } from "@/game/world/CarModelLoader";
+import { loadCarModel } from "@/game/world/CarModelLoader";
 import { preloadCarIds } from "@/game/cars/registry";
+import {
+  preloadGameAssets,
+  registerAssetServiceWorker,
+  type BootProgress,
+} from "@/game/core/AssetPreloader";
 import { mapDef } from "@/game/maps/registry";
 import { useGameStore } from "@/stores/gameStore";
 import { HUD } from "@/components/game/HUD";
+import { LoadingScreen } from "@/components/game/LoadingScreen";
 import { MainMenu } from "@/components/game/MainMenu";
 import { OnlineBrowser } from "@/components/game/OnlineBrowser";
 import { OnlineLobby } from "@/components/game/OnlineLobby";
@@ -50,10 +56,29 @@ export function GameShell() {
   const [raceSession, setRaceSession] = useState<StartRequest | null>(null);
   const launchingRef = useRef(false);
 
-  // warm the model cache while the user is in the menus (all registry cars —
-  // draco viper GLBs included — so the garage + countdown are instant)
+  // ── boot: asset cache worker + FULL preload behind a game loading bar ──
+  // (was: ~20MB of city GLBs + asphalt textures downloading mid-race = the
+  // "game freeze when loading contents" report; also SW-cached across sessions)
+  const [boot, setBoot] = useState<BootProgress>({
+    pct: 0,
+    label: "CONNECTING",
+    mbLoaded: "0.0",
+    mbTotal: "—",
+    files: [],
+  });
+  const [bootDone, setBootDone] = useState(false);
   useEffect(() => {
-    void preloadAllCarModels();
+    let alive = true;
+    void (async () => {
+      await registerAssetServiceWorker();
+      await preloadGameAssets((ev) => {
+        if (alive) setBoot(ev);
+      });
+      if (alive) setBootDone(true);
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const disposeGame = useCallback(() => {
@@ -289,6 +314,9 @@ export function GameShell() {
       {inRaceUi && <HUD gameRef={gameRef} />}
       {inRaceUi && <TouchControls gameRef={gameRef} />}
 
+      {/* boot loading gate — sits above everything until assets are ready */}
+      {!bootDone && <LoadingScreen progress={boot} />}
+
       {/* mute + pause quick buttons while racing */}
       {screen === "racing" && (
         <div className="absolute top-3 right-3 flex gap-2 z-20">
@@ -313,7 +341,7 @@ export function GameShell() {
         </div>
       )}
 
-      {screen === "menu" && <MainMenu onStart={startOffline} onOpenBrowser={handleOpenBrowser} />}
+      {screen === "menu" && bootDone && <MainMenu onStart={startOffline} onOpenBrowser={handleOpenBrowser} />}
       {screen === "browser" && (
         <OnlineBrowser net={net} ensureNet={ensureNet} netRef={netRef} onBack={() => setScreen("menu")} onEnterRoom={handleEnterRoom} onNetReset={handleLeaveRoom} />
       )}

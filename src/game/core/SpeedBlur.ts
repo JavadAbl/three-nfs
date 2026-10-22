@@ -137,6 +137,16 @@ export class SpeedBlur {
   private blurQuad: FullScreenQuad;
   private compositeQuad: FullScreenQuad;
 
+  // ── warm-up pacing ──────────────────────────────────────────────────────
+  // The chain's 3 programs + 4 GPU storages only materialize on their FIRST
+  // real use (driver compiles at draw time, targets allocate at first bind).
+  // Game paces warmUpStep() one step per disengaged frame so that cost lands
+  // while the grid is parked (countdown), not mid-drive at 150 km/h — which
+  // read as "game freezes 1-2 s when the blur starts for the first time".
+  // 0..3 = pending steps, WARM_STEPS = done.
+  private warmStep = 0;
+  private static readonly WARM_STEPS = 4;
+
   constructor(
     renderer: THREE.WebGLRenderer,
     scene: THREE.Scene,
@@ -178,6 +188,54 @@ export class SpeedBlur {
 
   get strength() {
     return this.blurMat.uniforms.uStrength.value as number;
+  }
+
+  get warmedUp() {
+    return this.warmStep >= SpeedBlur.WARM_STEPS;
+  }
+
+  /**
+   * Run ONE chain-warm step, fully OFF-SCREEN: bind the next never-used GL
+   * object / compile the next chain program so the first real engage has
+   * zero compile-or-allocate work left. The composite step draws into tScene
+   * (reads tEncode+tBlur while writing tScene — feedback-free, and nothing
+   * ever touches the default framebuffer, so no flash even mid-race).
+   * Returns true while steps remain. Each step leaves the default
+   * framebuffer bound again — the direct path in Game.renderFrame renders
+   * into whatever target is current, so a dangling tScene bind would
+   * silently paint the live scene INTO the blur target.
+   */
+  warmUpStep(): boolean {
+    if (this.warmStep >= SpeedBlur.WARM_STEPS) return false;
+    const r = this.renderer;
+    switch (this.warmStep) {
+      case 0:
+        // MSAA HalfFloat storage materializes on first bind + clear
+        r.setRenderTarget(this.tScene);
+        r.clear();
+        break;
+      case 1:
+        // OutputPass program + tEncode storage (samples tScene → forces the
+        // MSAA resolve path too)
+        this.outputPass.render(r, this.tEncode, this.tScene, 0, false);
+        break;
+      case 2:
+        // radial-blur program + tBlur storage + FullScreenQuad geometry upload
+        this.blurMat.uniforms.tDiffuse.value = this.tEncode.texture;
+        r.setRenderTarget(this.tBlur);
+        this.blurQuad.render(r);
+        break;
+      default:
+        // composite program — into tScene, NOT the screen
+        this.compositeMat.uniforms.tSharp.value = this.tEncode.texture;
+        this.compositeMat.uniforms.tBlurred.value = this.tBlur.texture;
+        r.setRenderTarget(this.tScene);
+        this.compositeQuad.render(r);
+        break;
+    }
+    this.warmStep++;
+    r.setRenderTarget(null);
+    return this.warmStep < SpeedBlur.WARM_STEPS;
   }
 
   setSize(width: number, height: number) {

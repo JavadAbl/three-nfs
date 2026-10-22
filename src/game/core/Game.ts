@@ -632,6 +632,14 @@ export class Game {
    */
   private renderFrame() {
     const s = this.speedFX.strength;
+    // First-engage freeze fix: the chain's programs + GPU storages only
+    // materialize on their first real use, which used to be the first frame
+    // above ~150 km/h — a 1-2 s mid-drive stall ("game freezes when the
+    // blur starts"). One off-screen warm-up step per disengaged frame parks
+    // that cost in the parked countdown (4 steps ≈ 66 ms of frames) — before
+    // the car can even move. No phase gate: any disengaged frame is a safe
+    // host, and by racing speed the chain is long hot.
+    if (!this.blurActive && !this.speedFX.warmedUp) this.speedFX.warmUpStep();
     if (!this.blurActive && s > 0.05) this.blurActive = true;
     else if (this.blurActive && s <= 0.02) this.blurActive = false;
     if (this.blurActive) this.speedFX.render();

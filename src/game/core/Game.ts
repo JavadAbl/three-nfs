@@ -621,14 +621,14 @@ export class Game {
 
   /**
    * Render direct to canvas while the blur has nothing VISIBLE to do, through
-   * the composer when it does. The engage seam (s > 0.05 ≈ 150+ km/h) sits
-   * where the smear first becomes perceptible — below it the composer would
-   * burn a full-res HalfFloat MSAA target + 3 passes for an invisible
-   * ~2% edge smear, which on iGPUs read as the "frame dropped a few seconds
-   * after launch" report. Wide hysteresis (engage 0.05 / release 0.02) so a
-   * speed hovering at the seam can't flap between paths frame to frame.
-   * OutputPass owns ACES + sRGB and runs before the blur, so the two paths
-   * are pixel-identical at the seam.
+   * the mixed-res chain when it does. The engage seam (s > 0.05 ≈ 150+ km/h)
+   * sits where the smear first becomes perceptible — below it the chain would
+   * burn an HDR MSAA target + 3 quad passes for an invisible ~2% edge smear,
+   * which on iGPUs read as the "frame dropped a few seconds after launch"
+   * report. (Engaged frames render at 0.8× chain res — see SpeedBlur.) Wide
+   * hysteresis (engage 0.05 / release 0.02) so a speed hovering at the seam
+   * can't flap between paths frame to frame. OutputPass owns ACES + sRGB in
+   * both paths, so they stay pixel-identical at the seam.
    */
   private renderFrame() {
     const s = this.speedFX.strength;

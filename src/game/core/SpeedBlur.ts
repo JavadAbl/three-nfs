@@ -1,22 +1,48 @@
-// ─── SpeedBlur: speed-reactive radial blur (post-processing chain) ──────────
-// NFS-style "the world smears as you go fast": the scene renders into an HDR
-// MSAA target, then OutputPass applies ACES + sRGB, and the radial (zoom)
-// blur pass smears the frame PERIPHERY toward the edges LAST — the center
-// stays sharp so the road/racing line ahead is always readable.
+// ─── SpeedBlur: speed-reactive radial blur (mixed-res post chain) ───────────
+// NFS-style "the world smears as you go fast": the scene renders HDR + MSAA
+// into an offscreen target, OutputPass applies ACES + sRGB, and a radial
+// (zoom) blur smears the frame PERIPHERY — the center stays sharp so the
+// road/racing line ahead is always readable.
 //
-// ORDERING IS LOAD-BEARING (bug fix): the blur used to run BEFORE
-// OutputPass, averaging raw HDR samples and tonemapping after — ACES is
-// concave, so ACES(mean) > mean(ACES) (Jensen) and every engaged frame read
-// ~4-7 luma brighter, building windows washing out the whole scene. Now the
-// blur runs on display-encoded values after OutputPass — the FXAA-style
-// pattern three's docs sanction — at the cost of clipped streaks on the
-// very brightest sources (acceptable: they saturate, not glow).
+// ── iGPU frame-drop fix (2026-10-22): bandwidth-first chain ─────────────────
+// The old EffectComposer chain ran HalfFloat targets at FULL resolution
+// (pixelRatio ≤ 2!) — scene + resolve + tonemap + a 10-tap blur, every byte
+// HDR: ~300MB/frame of texture traffic, which read as "frames drop when the
+// blur engages". The engaged chain is now:
+//
+//   scene ──▶ tScene   HalfFloat MSAA2 @ 0.8×   HDR + AA, 36% fewer pixels
+//         ──▶ OutputPass ──▶ tEncode  RGBA8      display-encoded = ½ the bytes
+//         ──▶ radial blur  ──▶ tBlur   RGBA8 ½×  ~16% of the old blur ALU/fill
+//         ──▶ composite   ──▶ screen              sharp center, smeared ring
+//
+// Three levers, none visible while smeared at 60fps motion:
+//   1. QUALITY_SCALE — the engaged chain renders at 0.8× (see const) — the
+//      periphery is smeared and the bilinear upscale reads as part of the
+//      speed haze. Bump to 1 if the center window ever feels soft.
+//   2. post-tonemap targets are RGBA8 — OutputPass emits display-encoded
+//      values, so HalfFloat there was pure bandwidth waste (16bpx → 8bpx).
+//   3. the blur runs at half-res — each tap bilinearly downsamples the
+//      full chain buffer for free; a smear is the one effect that HIDES
+//      resolution. The composite pass then restores the sharp CENTER from
+//      the chain-res buffer, so only the smeared periphery is half-res.
+// All targets are allocated in setSize() — engaging never allocates, so the
+// engage seam can't hitch.
+//
+// ORDERING IS LOAD-BEARING (bug fix, kept): the blur runs on display-encoded
+// values AFTER OutputPass — averaging raw HDR samples and tonemapping after
+// made every engaged frame read brighter (ACES is concave: ACES(mean) >
+// mean(ACES)), washing windows out. Composite reads the same encoded buffer
+// the disengaged path paints, so the engage/release seam stays clean.
+//
 // Strength is fed per-frame by Game from player speed + nitro state.
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
+
+/** engaged-chain resolution (0.8 → 64% of the pixels; only while smeared) */
+const QUALITY_SCALE = 0.8;
+/** blur resolution relative to the engaged chain — invisible under a smear */
+const BLUR_SCALE = 0.5;
 
 const RadialBlurShader = {
   uniforms: {
@@ -31,6 +57,9 @@ const RadialBlurShader = {
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
+  // Mask-less on purpose: the radial offset already fades with dist, and the
+  // COMPOSITE pass owns the center mask — masking in both places would
+  // double-attenuate the mid-ring smear and visibly weaken the effect.
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform float uStrength;
@@ -38,10 +67,7 @@ const RadialBlurShader = {
     void main() {
       vec2 dir = vUv - vec2(0.5);
       float dist = length(dir);
-      // periphery-only mask: the inner ~13% of the frame stays perfectly
-      // sharp so the racing line ahead never smears; full effect by ~50%
-      float mask = smoothstep(0.13, 0.5, dist);
-      if (uStrength < 0.002 || mask < 0.002) {
+      if (uStrength < 0.002 || dist < 0.02) {
         gl_FragColor = texture2D(tDiffuse, vUv);
         return;
       }
@@ -50,7 +76,7 @@ const RadialBlurShader = {
       // edge distance — the classic zoom/radial smear toward the borders
       for (int i = 0; i < 10; i++) {
         float t = float(i) / 9.0 - 0.5;
-        vec2 uv = vUv - dir * (t * uStrength * 0.5 * dist * mask);
+        vec2 uv = vUv - dir * (t * uStrength * 0.5 * dist);
         sum += texture2D(tDiffuse, uv);
       }
       gl_FragColor = sum / 10.0;
@@ -58,9 +84,58 @@ const RadialBlurShader = {
   `,
 };
 
+const CompositeShader = {
+  uniforms: {
+    tSharp: { value: null as THREE.Texture | null },
+    tBlurred: { value: null as THREE.Texture | null },
+    uStrength: { value: 0 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  // The composite IS the center mask (was inside the blur shader before):
+  // inner ~13% of the frame stays the sharp chain-res pixel, full effect by
+  // ~50% radius. Same smoothstep as the old in-shader mask, so the seam
+  // behavior (strength ≈ 0 → pure sharp) is unchanged.
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tSharp;
+    uniform sampler2D tBlurred;
+    uniform float uStrength;
+    varying vec2 vUv;
+    void main() {
+      vec4 sharp = texture2D(tSharp, vUv);
+      if (uStrength < 0.002) {
+        gl_FragColor = sharp;
+        return;
+      }
+      float mask = smoothstep(0.13, 0.5, length(vUv - vec2(0.5)));
+      vec4 blurred = texture2D(tBlurred, vUv);
+      gl_FragColor = mix(sharp, blurred, mask);
+    }
+  `,
+};
+
 export class SpeedBlur {
-  private composer: EffectComposer;
-  private blurPass: ShaderPass;
+  private renderer: THREE.WebGLRenderer;
+  private scene: THREE.Scene;
+  private camera: THREE.Camera;
+
+  /** HDR + MSAA2 scene target (the only HalfFloat buffer left) */
+  private tScene: THREE.WebGLRenderTarget;
+  /** display-encoded (post-ACES+sRGB) chain-res buffer, RGBA8 */
+  private tEncode: THREE.WebGLRenderTarget;
+  /** half-res smeared buffer, RGBA8 */
+  private tBlur: THREE.WebGLRenderTarget;
+
+  private outputPass = new OutputPass();
+  private blurMat = new THREE.ShaderMaterial(RadialBlurShader);
+  private compositeMat = new THREE.ShaderMaterial(CompositeShader);
+  private blurQuad: FullScreenQuad;
+  private compositeQuad: FullScreenQuad;
 
   constructor(
     renderer: THREE.WebGLRenderer,
@@ -69,44 +144,81 @@ export class SpeedBlur {
     width: number,
     height: number,
   ) {
-    // HDR + MSAA target: keeps the ACES band in OutputPass clean and the
-    // geometry edges anti-aliased (the canvas's own AA does nothing for
-    // offscreen targets). MSAA 2x, not 4x: half the resolve cost on iGPUs
-    // and the periphery is smeared by the blur anyway — only the sharp
-    // center window really benefits from AA.
+    this.renderer = renderer;
+    this.scene = scene;
+    this.camera = camera;
+
     const pr = renderer.getPixelRatio();
-    const rt = new THREE.WebGLRenderTarget(
-      Math.max(1, Math.floor(width * pr)),
-      Math.max(1, Math.floor(height * pr)),
-      { samples: 2, type: THREE.HalfFloatType },
+    const cw = Math.max(1, Math.round(width * pr * QUALITY_SCALE));
+    const ch = Math.max(1, Math.round(height * pr * QUALITY_SCALE));
+    // MSAA 2x, not 4x: half the resolve cost on iGPUs, and the periphery is
+    // smeared by the blur anyway — only the sharp center really benefits.
+    this.tScene = new THREE.WebGLRenderTarget(cw, ch, {
+      samples: 2,
+      type: THREE.HalfFloatType,
+    });
+    // display-encoded values fit RGBA8 — no HDR waste after the tonemap
+    this.tEncode = new THREE.WebGLRenderTarget(cw, ch, {
+      type: THREE.UnsignedByteType,
+    });
+    this.tBlur = new THREE.WebGLRenderTarget(
+      Math.max(1, Math.round(cw * BLUR_SCALE)),
+      Math.max(1, Math.round(ch * BLUR_SCALE)),
+      { type: THREE.UnsignedByteType },
     );
-    this.composer = new EffectComposer(renderer, rt);
-    this.composer.setPixelRatio(pr);
-    this.composer.setSize(width, height);
-    this.composer.addPass(new RenderPass(scene, camera));
-    // tone-map + sRGB BEFORE the blur — see header comment (Jensen lift)
-    this.composer.addPass(new OutputPass());
-    this.blurPass = new ShaderPass(RadialBlurShader);
-    this.composer.addPass(this.blurPass);
+
+    this.blurQuad = new FullScreenQuad(this.blurMat);
+    this.compositeQuad = new FullScreenQuad(this.compositeMat);
   }
 
   setStrength(v: number) {
-    this.blurPass.uniforms.uStrength.value = v;
+    this.blurMat.uniforms.uStrength.value = v;
+    this.compositeMat.uniforms.uStrength.value = v;
   }
 
   get strength() {
-    return this.blurPass.uniforms.uStrength.value as number;
+    return this.blurMat.uniforms.uStrength.value as number;
   }
 
   setSize(width: number, height: number) {
-    this.composer.setSize(width, height);
+    const pr = this.renderer.getPixelRatio();
+    const cw = Math.max(1, Math.round(width * pr * QUALITY_SCALE));
+    const ch = Math.max(1, Math.round(height * pr * QUALITY_SCALE));
+    this.tScene.setSize(cw, ch);
+    this.tEncode.setSize(cw, ch);
+    this.tBlur.setSize(
+      Math.max(1, Math.round(cw * BLUR_SCALE)),
+      Math.max(1, Math.round(ch * BLUR_SCALE)),
+    );
   }
 
   render() {
-    this.composer.render();
+    const r = this.renderer;
+    // 1. scene → HDR MSAA target (resolve happens automatically on sample)
+    r.setRenderTarget(this.tScene);
+    r.clear();
+    r.render(this.scene, this.camera);
+    // 2. ACES + sRGB → display-encoded RGBA8
+    this.outputPass.render(r, this.tEncode, this.tScene, 0, false);
+    // 3. half-res radial smear (each tap bilinearly downsamples for free)
+    this.blurMat.uniforms.tDiffuse.value = this.tEncode.texture;
+    r.setRenderTarget(this.tBlur);
+    this.blurQuad.render(r);
+    // 4. composite to screen: sharp chain-res center, smeared periphery
+    this.compositeMat.uniforms.tSharp.value = this.tEncode.texture;
+    this.compositeMat.uniforms.tBlurred.value = this.tBlur.texture;
+    r.setRenderTarget(null);
+    this.compositeQuad.render(r);
   }
 
   dispose() {
-    this.composer.dispose();
+    this.tScene.dispose();
+    this.tEncode.dispose();
+    this.tBlur.dispose();
+    this.outputPass.dispose();
+    this.blurQuad.dispose();
+    this.compositeQuad.dispose();
+    this.blurMat.dispose();
+    this.compositeMat.dispose();
   }
 }

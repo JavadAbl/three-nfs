@@ -16,7 +16,6 @@ import { InputManager } from "./Input";
 import { EngineAudio } from "../audio/EngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
 import { makeNightEnvironment } from "./nightEnv";
-import { SpeedBlur } from "./SpeedBlur";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 
 export type GameMode = "quick" | "trial" | "online";
@@ -110,10 +109,6 @@ export class Game {
   private raf = 0;
   private disposed = false;
   private moon: THREE.DirectionalLight;
-  /** radial speed-blur post chain (strength driven in the loop) */
-  private speedFX!: SpeedBlur;
-  /** smoothed blur strength — eased, never snapped, incl. nitro slam */
-  private speedBlurLevel = 0;
   // fps meter — 0.5 s rolling window over RAW frame deltas (the physics
   // clamp on dt must not fake the number, and rAF-throttled headless
   // browsers report honestly)
@@ -121,8 +116,6 @@ export class Game {
   private fpsFrames = 0;
   private fps = 0;
   private frameMs = 0;
-  // blur chain engages only when it has visible work (hysteresis seam)
-  private blurActive = false;
   net: NetClient | null;
   results: RaceResultEntry[] = [];
   private finishOrder = 0;
@@ -166,9 +159,6 @@ export class Game {
 
     this.camera = new THREE.PerspectiveCamera(74, canvas.clientWidth / canvas.clientHeight, 0.1, 1400);
     this.cameraRig = new CameraRig(this.camera);
-
-    // ── post chain: speed blur (renders scene → radial blur → output) ──
-    this.speedFX = new SpeedBlur(this.renderer, this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
 
     // ── scene: night atmosphere (map palette) ──
     const P = resolveMapPalette(map);
@@ -483,7 +473,6 @@ export class Game {
     this.track.dispose();
     this.city.dispose();
     this.particles.dispose();
-    this.speedFX.dispose();
     for (const c of this.allCars) {
       this.scene.remove(c.group);
       c.dispose();
@@ -501,7 +490,6 @@ export class Game {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.speedFX.setSize(w, h);
   };
 
   getMinimapData() {
@@ -596,54 +584,20 @@ export class Game {
       }
     }
 
-    // ── speed blur: ramps in with speed, slams to max on nitro ──
-    this.updateSpeedFX(dt);
     this.renderFrame();
   };
 
   /**
-   * Radial blur strength from player speed + nitro. Ramps in above ~80
-   * km/h with a gentle ease (mid-corner speeds stay clean, straights
-   * smear), nitro slams it to max with a fast attack; release eases out
-   * slowly. Live-tested on Skyline GP: 0.01 @ 140 km/h corners with the
-   * old (v-28)^2 curve — this one gives ~0.12 @ 140, 0.68 @ top speed.
-   */
-  private updateSpeedFX(dt: number) {
-    const v = Math.abs(this.player.speed);
-    const maxV = this.player.tuning.maxSpeed;
-    const speedFrac = THREE.MathUtils.clamp((v - 22) / (maxV - 22), 0, 1);
-    let target = Math.pow(speedFrac, 1.7) * 0.75;
-    if (this.player.nitroActive) target = Math.max(target, 0.75 + 0.5 * speedFrac);
-    const rate = this.player.nitroActive ? 10 : 2.6;
-    this.speedBlurLevel = THREE.MathUtils.lerp(this.speedBlurLevel, target, 1 - Math.exp(-rate * dt));
-    this.speedFX.setStrength(this.speedBlurLevel);
-  }
-
-  /**
-   * Render direct to canvas while the blur has nothing VISIBLE to do, through
-   * the mixed-res chain when it does. The engage seam (s > 0.05 ≈ 150+ km/h)
-   * sits where the smear first becomes perceptible — below it the chain would
-   * burn an HDR MSAA target + 3 quad passes for an invisible ~2% edge smear,
-   * which on iGPUs read as the "frame dropped a few seconds after launch"
-   * report. (Engaged frames render at 0.8× chain res — see SpeedBlur.) Wide
-   * hysteresis (engage 0.05 / release 0.02) so a speed hovering at the seam
-   * can't flap between paths frame to frame. OutputPass owns ACES + sRGB in
-   * both paths, so they stay pixel-identical at the seam.
+   * Single render seam. The speed-blur post chain was REMOVED by user
+   * request (2026-10-22, "remove blur") after a run of iGPU pain (steady
+   * FPS drops + first-engage compile stall) — this is now a plain direct
+   * render; the renderer's own ACES + sRGB pipeline is unchanged, so colors
+   * are identical to the old disengaged path. If a post effect is ever
+   * re-added, do it here and mind the first-use compile stall (see
+   * SpeedBlur in git history for the warm-up pattern).
    */
   private renderFrame() {
-    const s = this.speedFX.strength;
-    // First-engage freeze fix: the chain's programs + GPU storages only
-    // materialize on their first real use, which used to be the first frame
-    // above ~150 km/h — a 1-2 s mid-drive stall ("game freezes when the
-    // blur starts"). One off-screen warm-up step per disengaged frame parks
-    // that cost in the parked countdown (4 steps ≈ 66 ms of frames) — before
-    // the car can even move. No phase gate: any disengaged frame is a safe
-    // host, and by racing speed the chain is long hot.
-    if (!this.blurActive && !this.speedFX.warmedUp) this.speedFX.warmUpStep();
-    if (!this.blurActive && s > 0.05) this.blurActive = true;
-    else if (this.blurActive && s <= 0.02) this.blurActive = false;
-    if (this.blurActive) this.speedFX.render();
-    else this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.camera);
   }
 
   /** car-vs-car collision resolution + impact feedback (FX/sound/shake) */
@@ -759,7 +713,6 @@ export class Game {
       this.raceManager?.update(dt, racing);
     }
     this.emitHud();
-    this.updateSpeedFX(dt);
     this.renderFrame();
     const standing = this.raceManager?.standingFor(this.player);
     return {

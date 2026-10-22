@@ -33,6 +33,16 @@ REWRITING .gitignore to a 2-line stub. These commits are local-only — but:
   If UUID-message (or otherwise non-human) commits are on top, drop them first:
   `git reset --mixed origin/main` (working files survive), `git restore .gitignore`,
   then re-stage only intended changes.
+- **Restore .gitignore BEFORE starting the dev server after any relaunch.**
+  A stubbed .gitignore doesn't just pollute commits — it OOM-bombs the app:
+  Tailwind v4 oxide auto-scans every un-ignored path (incl. the 86MB upload/
+  GLB pile), the CSS compile balloons >4GB RSS, the cgroup OOM-killer SIGKILLs
+  the PostCSS worker, and Turbopack panics with "globals.css / unexpected end
+  of file" → GET / 500 (observed 2026-10-22). Symptom-to-cause: instant 500s +
+  /tmp/next-panic-*.log + dmesg "Killed process" = check .gitignore first.
+  Also note: hibernation can roll back the LOCAL repo state (refs AND tree) to
+  an older snapshot — always `git fetch` + compare BOTH directions before
+  diagnosing anything as "lost"; the remote is the only truth.
 - **Push soon after real work** — the remote is the only protection against both
   sandbox restarts and sweeper pollution.
 - If the remote itself ever gets polluted (sweeper commits pushed), clean the

@@ -1,8 +1,19 @@
 // ─── Night city: instanced buildings, ground, stars, neon ───────────────────
 import * as THREE from "three";
 import type { Track } from "./Track";
+import { GROUND_FILES, groundCandidates } from "./Track";
 import { ENV_THEMES, type EnvThemeSpec } from "../maps/registry";
 import { loadCityModels, type BuildingProto } from "./CityModels";
+
+/** night tint multiplied into the ground scan — earthier + slightly dimmer
+ *  than the road's 0x4a4a4a so the tarmac stays the hero surface while the
+ *  dirt lots read as dry ground, not void (user: "empty space between road
+ *  and buildings is black — looks like we race in space"). */
+const GROUND_TEX_TINT = 0x55483c;
+/** self-glow floor for the ground grain — below the road's 0.34 so the
+ *  tarmac stays the hero surface. 0.22 read "quite dark" to VLM (6/10);
+ *  0.28 keeps the dirt clearly readable while the road still pops. */
+const GROUND_EMISSIVE = 0.28;
 
 export class CityEnvironment {
   group = new THREE.Group();
@@ -48,11 +59,69 @@ export class CityEnvironment {
   private makeGround(): THREE.Mesh {
     const geo = new THREE.PlaneGeometry(2200, 2200, 1, 1);
     const mat = new THREE.MeshStandardMaterial({ color: this.theme.groundColor, roughness: 1 });
+    this.applyPbrGround(mat);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = -0.4;
     mesh.receiveShadow = true;
     return mesh;
+  }
+
+  /** Swap the flat color plane for the scanned PBR ground set (Poly Haven
+   *  aerial_ground_rock, CC0): dry dirt + rock grain fills the space between
+   *  road and buildings. Tries /textures/ground/ first (accepted assets),
+   *  then /textures/staging/ground/ (pending acceptance); if the color map
+   *  is nowhere to be found the flat plane stays. Same night-readability
+   *  recipe as the road: subtle self-glow + lifted tint, else ACES + dim
+   *  ambient crush the scan back into the black void the user reported. */
+  private applyPbrGround(mat: THREE.MeshStandardMaterial): void {
+    const loader = new THREE.TextureLoader();
+    const load = (name: string, ok: (t: THREE.Texture) => void): void => {
+      const paths = groundCandidates(name);
+      const attempt = (i: number): void => {
+        if (i >= paths.length) return; // silent: flat color stays
+        loader.load(paths[i], ok, undefined, () => attempt(i + 1));
+      };
+      attempt(0);
+    };
+    // 2200 m / 122 reps ≈ 18 m per tile: pebble/rock grain reads from the
+    // car; normal/rough layers tile + rotate off the albedo grid so the
+    // repetition never lines up across passes (same anti-wallpaper trick
+    // as the road scan)
+    const tile = (t: THREE.Texture, rep: number, rot = 0): THREE.Texture => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 8; // ground is seen at grazing angles from every camera
+      t.repeat.set(rep, rep);
+      if (rot) {
+        t.center.set(0.5, 0.5);
+        t.rotation = rot;
+      }
+      return t;
+    };
+    load(GROUND_FILES[0], (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      mat.map = tile(t, 122);
+      // the scan is its own albedo: replace the near-black palette floor
+      // (0x0a0a0b multiplied in would crush the map back to black)
+      mat.color = new THREE.Color(GROUND_TEX_TINT);
+      // night-readability floor, dimmer sibling of the road's 0.34
+      mat.emissive = new THREE.Color(0xffffff);
+      mat.emissiveMap = t;
+      mat.emissiveIntensity = GROUND_EMISSIVE;
+      mat.needsUpdate = true;
+    });
+    load(GROUND_FILES[1], (t) => {
+      mat.normalMap = tile(t, 173, 0.4);
+      mat.normalScale = new THREE.Vector2(1.1, 1.1);
+      mat.needsUpdate = true;
+    });
+    load(GROUND_FILES[2], (t) => {
+      mat.roughnessMap = tile(t, 151, -0.25);
+      // scalar multiplies the map: bright (rough) spots stay matte dirt,
+      // dark patches catch a faint sheen like damp patches at the docks
+      mat.roughness = 0.95;
+      mat.needsUpdate = true;
+    });
   }
 
   private makeStars(): THREE.Points {

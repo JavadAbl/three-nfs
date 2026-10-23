@@ -19,7 +19,7 @@ import * as THREE from "three";
 import { CAR_LIBRARY } from "../cars/registry";
 import { loadCarModel } from "../world/CarModelLoader";
 import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityModels";
-import { ASPHALT_FILES, asphaltCandidates } from "../world/Track";
+import { ASPHALT_FILES, asphaltCandidates, GROUND_FILES, groundCandidates } from "../world/Track";
 
 /** decoder + transcoder payloads the loaders fetch on first use — warming them
  * through the service worker means session 2+ starts with zero downloads. */
@@ -145,6 +145,11 @@ const ASPHALT_ASSETS = ASPHALT_FILES.map((f) => ({
   label: "ROAD " + f.replace("asphalt-2k-", "").replace(".jpg", "").toUpperCase(),
   candidates: asphaltCandidates(f),
 }));
+const GROUND_ASSETS = GROUND_FILES.map((f) => ({
+  key: "ground:" + f,
+  label: "TERRAIN " + f.replace("ground-2k-", "").replace(".jpg", "").toUpperCase(),
+  candidates: groundCandidates(f),
+}));
 
 /** preload EVERYTHING the game can load, emitting boot progress. Always
  * resolves (units fail soft) — the loading screen must never trap the user. */
@@ -153,6 +158,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
     ...CAR_ASSETS.map((c) => c.url),
     ...CITY_ASSETS.map((c) => c.url),
     ...ASPHALT_ASSETS.map((a) => a.candidates[0]),
+    ...GROUND_ASSETS.map((a) => a.candidates[0]),
     ...DECODER_URLS,
   ];
   const seeds = await seedSizes(primaryUrls);
@@ -173,6 +179,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
   for (const c of CAR_ASSETS) unit("car:" + c.id, c.label, c.url);
   for (const c of CITY_ASSETS) unit("city:" + c.set, c.label, c.url);
   for (const a of ASPHALT_ASSETS) unit(a.key, a.label, a.candidates[0]);
+  for (const a of GROUND_ASSETS) unit(a.key, a.label, a.candidates[0]);
   {
     // one unit for the whole decoder payload (5 small files)
     unit("decoders", "GPU DECODERS");
@@ -286,6 +293,27 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
         })
         .catch(() => {
           u.state = "error"; // procedural road stays — game is fine
+          emit(true);
+        }),
+    );
+  }
+  for (const a of GROUND_ASSETS) {
+    const u = units.find((x) => x.key === a.key)!;
+    jobs.push(
+      fetchWithProgress(a.candidates, (loaded, total) => {
+        u.loaded = loaded;
+        if (!u.total && total) u.total = total;
+        u.state = "loading";
+        setLabel(u, "LOADING");
+        emit();
+      })
+        .then(() => {
+          u.state = "done";
+          u.bakeFrac = 1;
+          emit(true);
+        })
+        .catch(() => {
+          u.state = "error"; // flat ground stays — game is fine
           emit(true);
         }),
     );

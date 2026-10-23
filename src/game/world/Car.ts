@@ -510,9 +510,18 @@ export class Car {
       // 1.4-1.8g proved over-restrained though (user: "too tame, all cars")
       // — the arcade fleet now runs 2.45-2.95g (registry maxLatAccel):
       // decisive turn-in at 200+ km/h, hairpins still need braking.
+      // But a FLAT budget felt right only at low speed: its 1/v yaw cap
+      // strangled highway cornering (user: "good at low speed but too tame
+      // at high speed") — full lock at 250+ km/h was a ~230 m radius, and
+      // any steering past ~40% input clipped to nothing. The budget now
+      // grows with speed (downforce illusion, latAccelSpeedBoost): ~2× at
+      // top speed, halved turn radii at speed, low-speed feel untouched.
       // Handbrake grants a 1.6× rotation bonus: sliding rears free up yaw,
       // so drift entries stay punchy and counter-steerable.
-      const latCap = (T.maxLatAccel / Math.max(Math.abs(vf), 3.5)) * (c.handbrake ? 1.6 : 1);
+      const latBudget =
+        T.maxLatAccel *
+        (1 + T.latAccelSpeedBoost * THREE.MathUtils.clamp(Math.abs(vf) / T.maxSpeed, 0, 1));
+      const latCap = (latBudget / Math.max(Math.abs(vf), 3.5)) * (c.handbrake ? 1.6 : 1);
       const yawRate =
         THREE.MathUtils.clamp(c.steer * T.steerRate * falloff * speedFactor, -latCap, latCap) *
         (vf < -0.5 ? -1 : 1);

@@ -60,6 +60,14 @@ export const CAR_TUNING = {
    *  hairpins still need braking. Handbrake keeps its 1.6× drift bonus.
    *  1g ≈ 9.81. Per-car overrides live in the registry. */
   maxLatAccel: 25.5,
+  /** Downforce illusion: how much the lateral budget GROWS from standstill
+   *  to top speed (budget = maxLatAccel × (1 + boost × v/maxSpeed)). A flat
+   *  budget felt right at low speed but its 1/v yaw cap strangled high-speed
+   *  cornering (user: "good at low speed but too tame at high speed") —
+   *  full lock at 250+ km/h meant a ~230 m radius and any input past ~40%
+   *  did nothing. 1.0 ≈ doubles the budget at top speed: halved turn radii
+   *  at speed, low-speed feel untouched. Per-car overridable. */
+  latAccelSpeedBoost: 1.0,
   nitroCapacity: 100,
   nitroDrain: 34, // per second
   nitroRegen: 3.5, // passive per second

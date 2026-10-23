@@ -34,6 +34,9 @@ export interface CarTuning {
   steerFalloffMin: number;
   /** lateral grip budget m/s² — the v·ω yaw cap (see CAR_TUNING.maxLatAccel) */
   maxLatAccel: number;
+  /** downforce illusion — lateral budget growth 0→top speed
+   *  (see CAR_TUNING.latAccelSpeedBoost) */
+  latAccelSpeedBoost: number;
   nitroCapacity: number;
   nitroDrain: number; // per second
   nitroRegen: number; // passive per second

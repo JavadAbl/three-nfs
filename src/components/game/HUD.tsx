@@ -6,7 +6,7 @@ import { fmtTime, type Game } from "@/game/core/Game";
 import { MODE_LABEL, DEFAULT_TUNING, type CameraTuning } from "@/game/core/CameraRig";
 import { cn } from "@/lib/utils";
 
-const MAX_KMH = 260;
+const MAX_KMH = 320; // dial top — above the fleet's fastest natural top (305 km/h)
 const GAUGE_START = 135; // degrees
 const GAUGE_SWEEP = 270;
 const TUNING_KEY = "nfs-carbon-cam";
@@ -101,8 +101,8 @@ export function HUD({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
           <path d="M 20 120 A 85 85 0 1 1 180 120" fill="none" stroke="#0c0c0f" strokeWidth="26" strokeLinecap="round" />
           <path d="M 20 120 A 85 85 0 1 1 180 120" fill="none" stroke="url(#gaugeArc)" strokeWidth="4" strokeLinecap="round" opacity="0.5" />
           {/* ticks */}
-          {Array.from({ length: 14 }, (_, i) => {
-            const kmh = (i / 13) * MAX_KMH;
+          {Array.from({ length: 17 }, (_, i) => {
+            const kmh = (i / 16) * MAX_KMH;
             const a = ((GAUGE_START + (kmh / MAX_KMH) * GAUGE_SWEEP - 90) * Math.PI) / 180;
             const r1 = i % 2 === 0 ? 66 : 72;
             const cx = 100,
@@ -114,7 +114,7 @@ export function HUD({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
                 y1={cy + Math.sin(a) * r1}
                 x2={cx + Math.cos(a) * 80}
                 y2={cy + Math.sin(a) * 80}
-                stroke={kmh > 210 ? "#ef4444" : "#8a8a93"}
+                stroke={kmh > 260 ? "#ef4444" : "#8a8a93"}
                 strokeWidth={i % 2 === 0 ? 2.4 : 1.2}
               />
             );

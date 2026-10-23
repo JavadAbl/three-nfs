@@ -16,9 +16,14 @@ export const GAME_CONFIG = {
 
 // Baseline physics shared by every car — per-car deltas live in
 // src/game/cars/registry.ts (CarDef.tuning) and merge over these values.
+// PHILOSOPHY (2026-10-23 "too tame, all cars" rework): the car's REAL top
+// speed is the natural drag equilibrium enginePower/drag — the maxSpeed wall
+// is a pure safety clamp that must sit ABOVE it and never bind. Per-car
+// (P, drag) pairs are solved so natural tops land at NFS-like 240-305 km/h
+// with 0-100 km/h in 2.2-3.1s (see scripts/excitement_calib.ts).
 export const CAR_TUNING = {
   /** Max engine acceleration m/s² */
-  enginePower: 14.5,
+  enginePower: 14.0,
   /** Extra acceleration while nitro is engaged */
   nitroPower: 16,
   /** fraction of the car's natural top speed (enginePower/drag) over which
@@ -29,10 +34,14 @@ export const CAR_TUNING = {
   brakeForce: 26,
   /** Reverse acceleration */
   reversePower: 6,
-  maxSpeed: 72, // m/s ≈ 259 km/h
+  /** safety wall m/s — must stay above every car's natural top speed
+   *  (enginePower/drag); per-car overrides in the registry */
+  maxSpeed: 90, // ≈ 324 km/h
   maxReverseSpeed: 12,
-  /** Rolling + air drag combined damping per second */
-  drag: 0.38,
+  /** Rolling + air drag combined damping per second — together with
+   *  enginePower this sets the car's natural top speed (P/drag). Far lower
+   *  than the old 0.38: speeds carry further and tops are NFS-like */
+  drag: 0.18,
   offRoadDrag: 1.8,
   /** Base lateral grip (how quickly lateral velocity is killed) */
   grip: 7.2,
@@ -46,8 +55,11 @@ export const CAR_TUNING = {
    *  costs lateral acceleration; yaw faster than the tires can pull is
    *  physically impossible, and without this cap the steerRate model let
    *  cars swivel at up to ~7g at speed (user: "the cars turn very fast").
+   *  But 1.4-1.8g proved over-restrained (user: "too tame, all cars") —
+   *  the arcade fleet now pulls 2.45-2.95g: decisive at 200+ km/h, while
+   *  hairpins still need braking. Handbrake keeps its 1.6× drift bonus.
    *  1g ≈ 9.81. Per-car overrides live in the registry. */
-  maxLatAccel: 16.5,
+  maxLatAccel: 25.5,
   nitroCapacity: 100,
   nitroDrain: 34, // per second
   nitroRegen: 3.5, // passive per second

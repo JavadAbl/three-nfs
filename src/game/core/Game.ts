@@ -733,14 +733,16 @@ function gearAndRpm(speed: number): [string, number] {
   const s = Math.abs(speed);
   if (speed < -0.5) return ["R", Math.min(s / 12, 1)];
   if (s < 0.5) return ["N", 0.12];
-  const bands = [0, 11, 21, 32, 44, 57, 74];
-  for (let g = 1; g < bands.length - 1; g++) {
+  // 7 gears up to 92 m/s (331 km/h) — tops now run to ~305 km/h, and the
+  // old 6-band table pegged rpm at redline from 57 m/s (205 km/h) up
+  const bands = [0, 11, 21, 32, 44, 57, 74, 92];
+  for (let g = 1; g < bands.length; g++) {
     if (s < bands[g]) {
       const frac = (s - bands[g - 1]) / (bands[g] - bands[g - 1]);
       return [String(g), 0.25 + frac * 0.75];
     }
   }
-  return ["6", 1];
+  return ["7", 1];
 }
 
 export function fmtTime(ms: number): string {

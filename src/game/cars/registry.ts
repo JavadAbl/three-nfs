@@ -64,6 +64,13 @@ export interface CarDef {
 // Initial values are first-pass, balanced by feel — tune here, nowhere else.
 // Identity: GT-R = AWD launch monster, TT RS = nimble, SRT10 = wild tail,
 // ACR = track weapon, Muscle = drift king.
+// 2026-10-23 "too tame" rework: each car now pins its own (enginePower, drag)
+// pair so the NATURAL top speed (P/drag — the real ceiling, since nitro is
+// accel-only) lands NFS-high, plus its own maxSpeed safety wall above that
+// and an arcade lateral budget. Solved via scripts/excitement_calib.ts:
+//   TT RS  240 km/h · 0-100 3.05s · 2.45g    GT-R 285 km/h · 0-100 2.15s · 2.75g
+//   Muscle 255 km/h · 0-100 2.84s · 2.65g    SRT10 295 km/h · 0-100 2.55s · 2.60g
+//                                             ACR 305 km/h · 0-100 2.45s · 2.95g
 export const CAR_LIBRARY: CarDef[] = [
   {
     id: "gtr",
@@ -71,7 +78,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "GT-R",
     modelUrl: "/models/nissan-gtr-r35.glb",
     spec: "NISMO · 600 HP",
-    tuning: { enginePower: 15.5, grip: 8.0, steerRate: 2.0, maxLatAccel: 17.5, mass: 1.15 },
+    tuning: { enginePower: 15.9, drag: 0.201, maxSpeed: 84, grip: 8.0, steerRate: 2.0, maxLatAccel: 27, mass: 1.15 },
   },
   {
     id: "audi",
@@ -79,7 +86,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "TT RS",
     modelUrl: "/models/audi-tt-rs.glb",
     spec: "QUATTRO · 400 HP",
-    tuning: { enginePower: 12.5, grip: 7.6, steerRate: 2.3, maxLatAccel: 17, mass: 0.95 },
+    tuning: { enginePower: 11.8, drag: 0.177, maxSpeed: 71, grip: 7.6, steerRate: 2.3, maxLatAccel: 24, mass: 0.95 },
   },
   {
     id: "viper08",
@@ -87,7 +94,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "SRT10",
     modelUrl: "/models/viper-srt10-2008.glb",
     spec: "V10 · 600 HP",
-    tuning: { enginePower: 16.5, grip: 6.4, steerRate: 1.9, maxLatAccel: 15, mass: 1.05 },
+    tuning: { enginePower: 13.3, drag: 0.162, maxSpeed: 87, grip: 6.4, steerRate: 1.9, maxLatAccel: 25.5, mass: 1.05 },
   },
   {
     id: "viper16",
@@ -95,7 +102,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "ACR",
     modelUrl: "/models/viper-acr-2016.glb",
     spec: "V10 · 645 HP · ACR",
-    tuning: { enginePower: 17.0, grip: 7.4, steerRate: 2.15, maxLatAccel: 18 },
+    tuning: { enginePower: 13.7, drag: 0.162, maxSpeed: 90, grip: 7.4, steerRate: 2.15, maxLatAccel: 29 },
   },
   {
     id: "classic",
@@ -103,7 +110,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "MUSCLE",
     modelUrl: null,
     spec: "V8 · PROCEDURAL",
-    tuning: { enginePower: 15.0, grip: 5.8, steerRate: 1.8, maxLatAccel: 14, mass: 1.1 },
+    tuning: { enginePower: 12.4, drag: 0.175, maxSpeed: 75, grip: 5.8, steerRate: 1.8, maxLatAccel: 26, mass: 1.1 },
   },
 ];
 
@@ -151,16 +158,25 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const pct = (v: number) => Math.round(clamp01(v) * 100);
 
 export function statsOf(t: CarTuning): CarStats {
+  // 2026-10-23: bars now derive from what the physics ACTUALLY gives the
+  // player — the natural top speed (enginePower/drag, the real ceiling) and
+  // the analytic 0-100 time of the drag ODE — not the safety wall. The
+  // windows span the current fleet (240-305 km/h, 2.15-3.05s) so bars read
+  // as game-relative position, NFS-garage style.
+  const naturalTop = t.enginePower / t.drag; // m/s — the real ceiling
+  const v100 = 100 / 3.6;
+  const t100 =
+    naturalTop > v100 + 1 ? (1 / t.drag) * Math.log(naturalTop / (naturalTop - v100)) : 9.9;
   return {
-    topSpeed: pct((t.maxSpeed - 56) / 22),
-    accel: pct((t.enginePower - 12.5) / 6),
-    // handling now includes the lateral-grip budget — with the v·ω yaw cap
+    topSpeed: pct((naturalTop - 63) / 23), // 240→305 km/h window
+    accel: pct((3.4 - t100) / 1.5), // 3.4s→2.15s 0-100 window
+    // handling includes the lateral-grip budget — with the v·ω yaw cap
     // in place, maxLatAccel is what actually separates stiff from planted
     // at race speeds, so the bar must reflect it
     handling: pct(
       0.45 * clamp01((t.grip - 5.2) / 3.4) +
         0.25 * clamp01((t.steerRate - 1.7) / 0.7) +
-        0.3 * clamp01((t.maxLatAccel - 13) / 6)
+        0.3 * clamp01((t.maxLatAccel - 22) / 8)
     ),
   };
 }

@@ -142,7 +142,10 @@ export class CameraRig {
     this.lookPitch = THREE.MathUtils.lerp(this.lookPitch, this.lookPitchT, lookT);
 
     const fwd = car.forward;
-    const speedT = THREE.MathUtils.clamp(Math.abs(car.speed) / 70, 0, 1);
+    // normalize drama against the reworked speed range: fleet tops now run
+    // to ~305 km/h, so widen the reference from 70 to 85 m/s or every car
+    // past 252 km/h would sit at max drama with no headroom left
+    const speedT = THREE.MathUtils.clamp(Math.abs(car.speed) / 85, 0, 1);
     const isCockpit = this.mode === "hood" || this.mode === "bumper";
 
     // Carbon speed drama: chase cams pull back a touch and drop lower;

@@ -55,7 +55,14 @@ export class AICar extends Car {
     for (let ahead = 6; ahead <= lookSamples + 14; ahead += 4) {
       maxCurv = Math.max(maxCurv, track.curvatureAt(idx + ahead, 6));
     }
-    const cornerLimit = Math.sqrt(0.9 * 9.81 / Math.max(maxCurv, 1e-4)); // µ≈0.9
+    // corner budget from the car's OWN lateral grip (per-car maxLatAccel),
+    // skill-scaled — the old flat µ≈0.9 (8.8 m/s²) was under half of what
+    // the reworked cars pull, so rivals crawled through corners while the
+    // player carved past (user: "too tame, all cars"). Skill is folded in
+    // HERE (not multiplied again below) so the target never exceeds the
+    // physics cap the same car is subject to.
+    const latBudget = this.tuning.maxLatAccel * (0.72 + this.skill * 0.18);
+    const cornerLimit = Math.sqrt(latBudget / Math.max(maxCurv, 1e-4));
     const skillTop = this.tuning.maxSpeed * (0.62 + this.skill * 0.4);
 
     // rubber-banding relative to the player
@@ -67,7 +74,7 @@ export class AICar extends Car {
     rubber = THREE.MathUtils.lerp(1, rubber, rubberBlend);
 
     const targetSpeed = THREE.MathUtils.clamp(
-      Math.min(cornerLimit * (0.8 + this.skill * 0.3), skillTop) * rubber,
+      Math.min(cornerLimit, skillTop) * rubber,
       8,
       this.tuning.maxSpeed * 1.05
     );
@@ -75,7 +82,11 @@ export class AICar extends Car {
     if (this.speed < targetSpeed - 1) {
       c.throttle = 1;
       c.brake = 0;
-      c.nitro = this.speed > 30 && this.speed < 46 && angle < 0.1 && Math.random() < 0.3;
+      // nitro mid-acceleration only: above ~30 m/s, below 60% of the car's
+      // natural top (the boost has faded to ~full there, and past it nitro
+      // buys nothing — it is accel-only by design)
+      const naturalTop = this.tuning.enginePower / this.tuning.drag;
+      c.nitro = this.speed > 30 && this.speed < naturalTop * 0.6 && angle < 0.1 && Math.random() < 0.3;
     } else if (this.speed > targetSpeed + 2) {
       c.throttle = 0;
       c.brake = THREE.MathUtils.clamp((this.speed - targetSpeed) / 12, 0.25, 1);

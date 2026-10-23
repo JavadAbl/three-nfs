@@ -105,6 +105,29 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonCount: 10,
     modelCity: { modelSpacing: 52, heroCount: 6, maxTowerHeight: 200 },
   },
+  // neon touge district: dense low-rise street canyon, magenta/violet neon —
+  // the curvy tuner map's backdrop. Denser grid + shorter buildings than
+  // the city theme so the esses read as tight streets, not tower avenues
+  touge: {
+    id: "touge",
+    range: 420,
+    spacing: 30,
+    clearance: 26,
+    jitter: 10,
+    minHeight: 9,
+    heightSpan: 55,
+    minWidth: 11,
+    widthSpan: 12,
+    groundColor: 0x0e0a12,
+    buildingColors: [0x181420, 0x141019, 0x1a1410],
+    windowWarm: "#ff9ed2",
+    windowCool: "#c8d8f0",
+    windowAccent: "#ff6ec7",
+    neonColors: [0xe879f9, 0xff2d78, 0x7c6cf0, 0x22d3a7],
+    starCount: 700,
+    neonCount: 16,
+    modelCity: { modelSpacing: 46, heroCount: 3, maxTowerHeight: 120 },
+  },
   // container port: low wide warehouses, sodium lamps, hazier sky,
   // container stacks + gantry cranes near the corridor
   harbor: {
@@ -228,29 +251,57 @@ export const MAP_LIBRARY: MapDef[] = [
     ],
   },
   {
-    // ported from the local menu line — big-elevation GP circuit
-    id: "skyline",
-    name: "SKYLINE GP",
-    description: "2.9 KM · fast sweepers · big climbs",
+    // replaces SKYLINE GP (too close to DOWNTOWN NEON). Identity: maximum
+    // curve density — validated by scripts/track_check.cjs against the
+    // game's exact spline: 14 corners vs downtown 4 / harbor 12, 65% of the
+    // lap under 120 m radius, tightest corner 15 m (harbor's shipped hairpin
+    // is 14 m). Esses → carousel → double-apex hairpin → kink rhythm
+    // section → final carousel. Tuner territory: the lap is won in the
+    // corners, not on the straights.
+    id: "touge",
+    name: "NEON TOUGE",
+    description: "Twisty neon streets · 14 corners · esses + hairpin",
+    envTheme: "touge",
+    palette: {
+      // violet-magenta drift vibe, distinct from downtown's blue-violet night
+      asphalt: 0x16131c,
+      fog: 0x3a2545,
+      sky: 0x0a0510,
+      ground: 0x0e0a12,
+      finishPrimary: 0xe879f9,
+    },
     points: [
       [0, 0, 0],
-      [90, 0, -10],
-      [170, 2, -44],
-      [210, 5, -110],
-      [200, 8, -190],
-      [140, 10, -240],
-      [60, 10, -260],
-      [-20, 8, -250],
-      [-80, 6, -208],
-      [-140, 6, -160],
-      [-210, 7, -170],
-      [-270, 6, -206],
-      [-310, 4, -160],
-      [-320, 3, -92],
-      [-285, 2, -30],
-      [-220, 1, 4],
-      [-140, 0, 14],
-      [-70, 0, 10],
+      [55, 0, -5],
+      [110, 1, -18], // right sweep opens
+      [150, 2, -55],
+      [145, 3, -100], // S1: bend back left
+      [100, 4, -125],
+      [55, 5, -100], // S2: ess right
+      [15, 5, -125],
+      [10, 5, -170], // carousel down the left
+      [50, 6, -205],
+      [105, 6, -215],
+      [150, 5, -245], // kink right
+      [210, 4, -245],
+      [250, 4, -282], // hairpin apex 1 (right)
+      [242, 4, -322], // hairpin apex 2
+      [192, 3, -340],
+      [130, 3, -318], // rhythm section: left/right/left kinks
+      [88, 3, -300],
+      [42, 3, -322],
+      [-4, 3, -298],
+      [-50, 2, -312],
+      [-95, 1, -330], // big left carousel
+      [-140, 1, -300],
+      [-130, 1, -255],
+      [-96, 1, -210], // return: right sweeper
+      [-76, 2, -160], // flowing NE over the crest
+      [-112, 2, -118], // left sweeper
+      [-158, 2, -98], // final carousel apex 1 (right)
+      [-158, 2, -58], // final carousel apex 2
+      [-100, 1, -28], // exit onto the straight
+      [-42, 0, -8],
     ],
   },
 ];

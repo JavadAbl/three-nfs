@@ -37,7 +37,7 @@ export function asphaltCandidates(name: string): string[] {
 }
 
 /** Ground texture revision — bump when swapping a scanned ground set. */
-const GROUND_REV = 2;
+const GROUND_REV = 3;
 
 /** URL candidates for a theme's ground texture — per-theme subdirs
  *  (user: "each map should has its own ground texture"); the file names

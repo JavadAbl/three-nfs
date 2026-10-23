@@ -128,14 +128,14 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     starCount: 900,
     neonCount: 10,
     modelCity: { modelSpacing: 52, heroCount: 6, maxTowerHeight: 200 },
-    // worn concrete plaza (Poly Haven concrete_floor_worn_001) — city lots
-    // read as cracked pavement, cool grey so neon reflections stay the star.
-    // 0x77747a + 0.30 read flat/dark to VLM; brighter keeps the plaza a
-    // readable surface, not a near-void
+    // packed dirt lots (ambientCG Ground086 — dirt/forest/stones path) —
+    // downtown's empty blocks read as bare earth between towers. Warm brown,
+    // brighter than the touge so neon reflections stay the star. Poly Haven
+    // concrete plaza was swapped per user request for ambientCG picks
     ground: {
       dir: "city",
       files: ["city-2k-color.jpg", "city-2k-normal.jpg", "city-2k-rough.jpg"],
-      tint: 0x8a878f,
+      tint: 0x8a7a68,
       emissive: 0.32,
       reps: 100,
       normalReps: 141,
@@ -164,12 +164,13 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     starCount: 700,
     neonCount: 16,
     modelCity: { modelSpacing: 46, heroCount: 3, maxTowerHeight: 120 },
-    // dry dirt + rock grain (Poly Haven aerial_ground_rock) — the touge's
-    // mountain-pass shoulder; earthier + one notch dimmer than the road
+    // short grass (ambientCG Grass005 — clean lawn) — the touge's
+    // mountain-pass shoulders; green but darkened to sit under the
+    // violet/magenta night without fighting the neon
     ground: {
       dir: "touge",
       files: ["touge-2k-color.jpg", "touge-2k-normal.jpg", "touge-2k-rough.jpg"],
-      tint: 0x55483c,
+      tint: 0x52604a,
       emissive: 0.28,
       reps: 122,
       normalReps: 173,
@@ -199,13 +200,13 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     modelCity: { modelSpacing: 64, heroCount: 0, maxTowerHeight: 70 },
     containers: { count: 130, colors: [0xb4402f, 0x2e5f8a, 0x3f6b4f, 0x8a8f98, 0xb07a2a] },
     cranes: { count: 7, height: 34, boom: 42 },
-    // packed gravel yard (Poly Haven gravel_floor) — dock lots are coarse
-    // grey gravel between the container stacks; dimmest of the three so the
+    // rocky ground (ambientCG Rock030 — grey cliff/stone) — the port's
+    // craggy back lots; neutral grey, dimmest of the three so the
     // sodium-lamp harbor keeps its moody contrast
     ground: {
       dir: "harbor",
       files: ["harbor-2k-color.jpg", "harbor-2k-normal.jpg", "harbor-2k-rough.jpg"],
-      tint: 0x5a544d,
+      tint: 0x6e6a66,
       emissive: 0.26,
       reps: 130,
       normalReps: 184,

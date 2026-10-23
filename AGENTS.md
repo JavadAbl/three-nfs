@@ -49,6 +49,28 @@ REWRITING .gitignore to a 2-line stub. These commits are local-only — but:
   history with a revert/rewrite commit ASAP, keeping the remote the source of
   truth.
 
+## 1c. Keeping the dev server alive across tool calls (observed 2026-10-23)
+
+The tool-call harness sweeps the bash session's **descendants** when a call
+ends. A plain `setsid nohup <cmd> &` is still a *child* of the tool bash at
+sweep time (setsid changes the session, NOT the parent) — it dies within
+seconds of the call returning. This was long misread as "nothing survives
+between calls" — wrong:
+
+- **`setsid -f <cmd>`** (util-linux "always fork") double-forks: the child is
+  reparented to init *before* the call ends, so the sweeper never sees it.
+  A dev server started this way survives across tool calls indefinitely
+  (verified: next dev served 200s across 15+ calls and an 8+ min lifetime).
+- That is why platform-started services (their parent chain escapes the tool
+  bash) and agent-browser's daemonized chrome always survive.
+- `scripts/launch.sh` uses `setsid -f` — keep that pattern. Do NOT "simplify"
+  it back to `setsid nohup ... &`.
+- Memory ceiling is a 4GB cgroup: Turbopack (~1.2GB) + a headless chrome with
+  the city loaded (~2.4GB, SwiftShader software GL) = OOM. Start the server
+  with `NODE_OPTIONS=--max-old-space-size=1280` and keep ONE small-viewport
+  browser tab when probing. If a trivial eval hangs: check
+  `/sys/fs/cgroup/memory/memory.usage_in_bytes` first.
+
 ## 2. Asset acceptance workflow (existing user rule, kept)
 
 New models/assets are NOT committed until the user accepts them. Candidates go

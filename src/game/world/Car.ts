@@ -502,7 +502,20 @@ export class Car {
         T.steerFalloffMin,
         THREE.MathUtils.clamp((Math.abs(vf) - T.steerFalloffStart) / (T.maxSpeed - T.steerFalloffStart), 0, 1)
       );
-      const yawRate = c.steer * T.steerRate * falloff * speedFactor * (vf < -0.5 ? -1 : 1);
+      // lateral-grip cap: rotating the car costs lateral acceleration a = v·ω.
+      // The raw steerRate model allowed up to ~7g — cars swivelled like
+      // spinning tops at speed (user: "the cars turn very fast"). The cap is
+      // the tire budget: yaw faster than the car can be pulled sideways is
+      // physically impossible, and it is what makes cornering feel weighted.
+      // Calibrated per car (registry maxLatAccel, 1.4-1.8g) against the real
+      // map curvature: hairpins (R≈18-25 m) land at 58-77 km/h, sweepers
+      // (R≈90-115 m) hold at 144 km/h — brake for corners, not through them.
+      // Handbrake grants a 1.6× rotation bonus: sliding rears free up yaw,
+      // so drift entries stay punchy and counter-steerable.
+      const latCap = (T.maxLatAccel / Math.max(Math.abs(vf), 3.5)) * (c.handbrake ? 1.6 : 1);
+      const yawRate =
+        THREE.MathUtils.clamp(c.steer * T.steerRate * falloff * speedFactor, -latCap, latCap) *
+        (vf < -0.5 ? -1 : 1);
       this.heading -= yawRate * dt;
     } else {
       this.nitroActive = false;

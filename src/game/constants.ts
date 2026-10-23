@@ -42,6 +42,12 @@ export const CAR_TUNING = {
   /** Speed where steering begins to tighten (m/s) */
   steerFalloffStart: 18,
   steerFalloffMin: 0.42, // fraction of steerRate at top speed
+  /** Lateral grip budget m/s² — the v·ω cap on yaw rate. Rotating a car
+   *  costs lateral acceleration; yaw faster than the tires can pull is
+   *  physically impossible, and without this cap the steerRate model let
+   *  cars swivel at up to ~7g at speed (user: "the cars turn very fast").
+   *  1g ≈ 9.81. Per-car overrides live in the registry. */
+  maxLatAccel: 16.5,
   nitroCapacity: 100,
   nitroDrain: 34, // per second
   nitroRegen: 3.5, // passive per second

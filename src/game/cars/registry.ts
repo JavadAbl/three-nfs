@@ -32,6 +32,8 @@ export interface CarTuning {
   steerFalloffStart: number;
   /** fraction of steerRate at top speed */
   steerFalloffMin: number;
+  /** lateral grip budget m/s² — the v·ω yaw cap (see CAR_TUNING.maxLatAccel) */
+  maxLatAccel: number;
   nitroCapacity: number;
   nitroDrain: number; // per second
   nitroRegen: number; // passive per second
@@ -69,7 +71,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "GT-R",
     modelUrl: "/models/nissan-gtr-r35.glb",
     spec: "NISMO · 600 HP",
-    tuning: { enginePower: 15.5, grip: 8.0, steerRate: 2.0, mass: 1.15 },
+    tuning: { enginePower: 15.5, grip: 8.0, steerRate: 2.0, maxLatAccel: 17.5, mass: 1.15 },
   },
   {
     id: "audi",
@@ -77,7 +79,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "TT RS",
     modelUrl: "/models/audi-tt-rs.glb",
     spec: "QUATTRO · 400 HP",
-    tuning: { enginePower: 12.5, grip: 7.6, steerRate: 2.3, mass: 0.95 },
+    tuning: { enginePower: 12.5, grip: 7.6, steerRate: 2.3, maxLatAccel: 17, mass: 0.95 },
   },
   {
     id: "viper08",
@@ -85,7 +87,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "SRT10",
     modelUrl: "/models/viper-srt10-2008.glb",
     spec: "V10 · 600 HP",
-    tuning: { enginePower: 16.5, grip: 6.4, steerRate: 1.9, mass: 1.05 },
+    tuning: { enginePower: 16.5, grip: 6.4, steerRate: 1.9, maxLatAccel: 15, mass: 1.05 },
   },
   {
     id: "viper16",
@@ -93,7 +95,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "ACR",
     modelUrl: "/models/viper-acr-2016.glb",
     spec: "V10 · 645 HP · ACR",
-    tuning: { enginePower: 17.0, grip: 7.4, steerRate: 2.15 },
+    tuning: { enginePower: 17.0, grip: 7.4, steerRate: 2.15, maxLatAccel: 18 },
   },
   {
     id: "classic",
@@ -101,7 +103,7 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "MUSCLE",
     modelUrl: null,
     spec: "V8 · PROCEDURAL",
-    tuning: { enginePower: 15.0, grip: 5.8, steerRate: 1.8, mass: 1.1 },
+    tuning: { enginePower: 15.0, grip: 5.8, steerRate: 1.8, maxLatAccel: 14, mass: 1.1 },
   },
 ];
 
@@ -152,7 +154,14 @@ export function statsOf(t: CarTuning): CarStats {
   return {
     topSpeed: pct((t.maxSpeed - 56) / 22),
     accel: pct((t.enginePower - 12.5) / 6),
-    handling: pct(0.55 * clamp01((t.grip - 5.2) / 3.4) + 0.45 * clamp01((t.steerRate - 1.7) / 0.7)),
+    // handling now includes the lateral-grip budget — with the v·ω yaw cap
+    // in place, maxLatAccel is what actually separates stiff from planted
+    // at race speeds, so the bar must reflect it
+    handling: pct(
+      0.45 * clamp01((t.grip - 5.2) / 3.4) +
+        0.25 * clamp01((t.steerRate - 1.7) / 0.7) +
+        0.3 * clamp01((t.maxLatAccel - 13) / 6)
+    ),
   };
 }
 

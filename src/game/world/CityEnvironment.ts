@@ -1,19 +1,15 @@
 // ─── Night city: instanced buildings, ground, stars, neon ───────────────────
 import * as THREE from "three";
 import type { Track } from "./Track";
-import { GROUND_FILES, groundCandidates } from "./Track";
+import { groundCandidates } from "./Track";
 import { ENV_THEMES, type EnvThemeSpec } from "../maps/registry";
 import { loadCityModels, type BuildingProto } from "./CityModels";
 
-/** night tint multiplied into the ground scan — earthier + slightly dimmer
- *  than the road's 0x4a4a4a so the tarmac stays the hero surface while the
- *  dirt lots read as dry ground, not void (user: "empty space between road
- *  and buildings is black — looks like we race in space"). */
-const GROUND_TEX_TINT = 0x55483c;
-/** self-glow floor for the ground grain — below the road's 0.34 so the
- *  tarmac stays the hero surface. 0.22 read "quite dark" to VLM (6/10);
- *  0.28 keeps the dirt clearly readable while the road still pops. */
-const GROUND_EMISSIVE = 0.28;
+// Per-map ground sets live in EnvThemeSpec.ground (maps/registry):
+// downtown = worn concrete plaza, harbor = packed gravel yard,
+// touge = dirt + rock grain (user: "each map should has its own ground
+// texture"). Night recipe constants — tint + emissive — ride the spec so
+// each district can pick how dark its lots read.
 
 export class CityEnvironment {
   group = new THREE.Group();
@@ -67,17 +63,19 @@ export class CityEnvironment {
     return mesh;
   }
 
-  /** Swap the flat color plane for the scanned PBR ground set (Poly Haven
-   *  aerial_ground_rock, CC0): dry dirt + rock grain fills the space between
-   *  road and buildings. Tries /textures/ground/ first (accepted assets),
-   *  then /textures/staging/ground/ (pending acceptance); if the color map
-   *  is nowhere to be found the flat plane stays. Same night-readability
-   *  recipe as the road: subtle self-glow + lifted tint, else ACES + dim
-   *  ambient crush the scan back into the black void the user reported. */
+  /** Swap the flat color plane for the theme's scanned PBR ground set
+   *  (Poly Haven, CC0): each map's own material fills the space between
+   *  road and buildings. Tries /textures/ground/<dir>/ first (accepted
+   *  assets), then /textures/staging/ground/<dir>/ (pending acceptance);
+   *  if the color map is nowhere to be found the flat plane stays. Same
+   *  night-readability recipe as the road: subtle self-glow + lifted tint,
+   *  else ACES + dim ambient crush the scan back into the black void the
+   *  user reported. */
   private applyPbrGround(mat: THREE.MeshStandardMaterial): void {
+    const g = this.theme.ground;
     const loader = new THREE.TextureLoader();
     const load = (name: string, ok: (t: THREE.Texture) => void): void => {
-      const paths = groundCandidates(name);
+      const paths = groundCandidates(g.dir, name);
       const attempt = (i: number): void => {
         if (i >= paths.length) return; // silent: flat color stays
         loader.load(paths[i], ok, undefined, () => attempt(i + 1));
@@ -98,25 +96,25 @@ export class CityEnvironment {
       }
       return t;
     };
-    load(GROUND_FILES[0], (t) => {
+    load(g.files[0], (t) => {
       t.colorSpace = THREE.SRGBColorSpace;
-      mat.map = tile(t, 122);
+      mat.map = tile(t, g.reps);
       // the scan is its own albedo: replace the near-black palette floor
-      // (0x0a0a0b multiplied in would crush the map back to black)
-      mat.color = new THREE.Color(GROUND_TEX_TINT);
+      // (theme.groundColor multiplied in would crush the map back to black)
+      mat.color = new THREE.Color(g.tint);
       // night-readability floor, dimmer sibling of the road's 0.34
       mat.emissive = new THREE.Color(0xffffff);
       mat.emissiveMap = t;
-      mat.emissiveIntensity = GROUND_EMISSIVE;
+      mat.emissiveIntensity = g.emissive;
       mat.needsUpdate = true;
     });
-    load(GROUND_FILES[1], (t) => {
-      mat.normalMap = tile(t, 173, 0.4);
+    load(g.files[1], (t) => {
+      mat.normalMap = tile(t, g.normalReps, 0.4);
       mat.normalScale = new THREE.Vector2(1.1, 1.1);
       mat.needsUpdate = true;
     });
-    load(GROUND_FILES[2], (t) => {
-      mat.roughnessMap = tile(t, 151, -0.25);
+    load(g.files[2], (t) => {
+      mat.roughnessMap = tile(t, g.roughReps, -0.25);
       // scalar multiplies the map: bright (rough) spots stay matte dirt,
       // dark patches catch a faint sheen like damp patches at the docks
       mat.roughness = 0.95;

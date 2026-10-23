@@ -36,18 +36,15 @@ export function asphaltCandidates(name: string): string[] {
   return [`/textures/asphalt/${name}`, `/textures/staging/asphalt/${name}`].map((p) => `${p}?v=${ASPHALT_REV}`);
 }
 
-/** Ground texture revision — bump when swapping the scanned ground set. */
-const GROUND_REV = 1;
+/** Ground texture revision — bump when swapping a scanned ground set. */
+const GROUND_REV = 2;
 
-/** scanned-ground file names — the AssetPreloader warms these too.
- *  Source: Poly Haven "aerial_ground_rock" (CC0) — dry dirt + rock grain
- *  chosen for the gaps between road and buildings; ambientCG (user's first
- *  pick) was unreachable from the sandbox, CC0 license is identical. */
-export const GROUND_FILES = ["ground-2k-color.jpg", "ground-2k-normal.jpg", "ground-2k-rough.jpg"] as const;
-
-/** URL candidates for a ground texture — same accepted/staging/rev pattern. */
-export function groundCandidates(name: string): string[] {
-  return [`/textures/ground/${name}`, `/textures/staging/ground/${name}`].map((p) => `${p}?v=${GROUND_REV}`);
+/** URL candidates for a theme's ground texture — per-theme subdirs
+ *  (user: "each map should has its own ground texture"); the file names
+ *  and dir live in EnvThemeSpec.ground (maps/registry). Same
+ *  accepted/staging/rev pattern as the asphalt scan. */
+export function groundCandidates(dir: string, name: string): string[] {
+  return [`/textures/ground/${dir}/${name}`, `/textures/staging/ground/${dir}/${name}`].map((p) => `${p}?v=${GROUND_REV}`);
 }
 
 export interface TrackSample {

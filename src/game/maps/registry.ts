@@ -24,6 +24,28 @@ export interface MapPalette {
 /** per-map deltas — anything unspecified falls back to the global night palette */
 export type MapPaletteOverride = Partial<MapPalette>;
 
+/** per-theme scanned ground set — every map gets its own terrain, so the
+ *  empty lots read as the right material for the district (user: "each map
+ *  should has its own ground texture"). Sources: Poly Haven CC0 2K PBR.
+ *  Night recipe shared with the road scan: the color map is its own albedo,
+ *  tint + self-glow keep it readable under ACES at night. */
+export interface GroundSpec {
+  /** texture dir: /textures/ground/<dir> (accepted) and staging twin (pending) */
+  dir: string;
+  /** color / OpenGL-normal / roughness file names inside the dir */
+  files: [string, string, string];
+  /** night tint multiplied into the scan (darker/earthier = dimmer lots) */
+  tint: number;
+  /** self-glow floor for night readability — dimmer than the road's 0.34 so
+   *  the tarmac stays the hero surface */
+  emissive: number;
+  /** albedo tile reps over the 2200 m ground plane (≈18 m per tile at 122) */
+  reps: number;
+  /** normal/rough layers tile + rotate off the albedo grid (anti-wallpaper) */
+  normalReps: number;
+  roughReps: number;
+}
+
 /** city furniture knobs — one named theme per environment style */
 export interface EnvThemeSpec {
   id: string;
@@ -55,6 +77,8 @@ export interface EnvThemeSpec {
   cranes?: CraneSpec;
   /** real-model city scatter tuning (defaults inlined at read site) */
   modelCity?: ModelCitySpec;
+  /** the theme's own scanned ground set */
+  ground: GroundSpec;
 }
 
 /** container-yard dressing — boxes stacked near the corridor (harbor/industrial) */
@@ -104,6 +128,19 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     starCount: 900,
     neonCount: 10,
     modelCity: { modelSpacing: 52, heroCount: 6, maxTowerHeight: 200 },
+    // worn concrete plaza (Poly Haven concrete_floor_worn_001) — city lots
+    // read as cracked pavement, cool grey so neon reflections stay the star.
+    // 0x77747a + 0.30 read flat/dark to VLM; brighter keeps the plaza a
+    // readable surface, not a near-void
+    ground: {
+      dir: "city",
+      files: ["city-2k-color.jpg", "city-2k-normal.jpg", "city-2k-rough.jpg"],
+      tint: 0x8a878f,
+      emissive: 0.32,
+      reps: 100,
+      normalReps: 141,
+      roughReps: 124,
+    },
   },
   // neon touge district: dense low-rise street canyon, magenta/violet neon —
   // the curvy tuner map's backdrop. Denser grid + shorter buildings than
@@ -127,6 +164,17 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     starCount: 700,
     neonCount: 16,
     modelCity: { modelSpacing: 46, heroCount: 3, maxTowerHeight: 120 },
+    // dry dirt + rock grain (Poly Haven aerial_ground_rock) — the touge's
+    // mountain-pass shoulder; earthier + one notch dimmer than the road
+    ground: {
+      dir: "touge",
+      files: ["touge-2k-color.jpg", "touge-2k-normal.jpg", "touge-2k-rough.jpg"],
+      tint: 0x55483c,
+      emissive: 0.28,
+      reps: 122,
+      normalReps: 173,
+      roughReps: 151,
+    },
   },
   // container port: low wide warehouses, sodium lamps, hazier sky,
   // container stacks + gantry cranes near the corridor
@@ -151,6 +199,18 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     modelCity: { modelSpacing: 64, heroCount: 0, maxTowerHeight: 70 },
     containers: { count: 130, colors: [0xb4402f, 0x2e5f8a, 0x3f6b4f, 0x8a8f98, 0xb07a2a] },
     cranes: { count: 7, height: 34, boom: 42 },
+    // packed gravel yard (Poly Haven gravel_floor) — dock lots are coarse
+    // grey gravel between the container stacks; dimmest of the three so the
+    // sodium-lamp harbor keeps its moody contrast
+    ground: {
+      dir: "harbor",
+      files: ["harbor-2k-color.jpg", "harbor-2k-normal.jpg", "harbor-2k-rough.jpg"],
+      tint: 0x5a544d,
+      emissive: 0.26,
+      reps: 130,
+      normalReps: 184,
+      roughReps: 161,
+    },
   },
 };
 

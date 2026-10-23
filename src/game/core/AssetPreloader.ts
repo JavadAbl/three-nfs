@@ -19,7 +19,8 @@ import * as THREE from "three";
 import { CAR_LIBRARY } from "../cars/registry";
 import { loadCarModel } from "../world/CarModelLoader";
 import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityModels";
-import { ASPHALT_FILES, asphaltCandidates, GROUND_FILES, groundCandidates } from "../world/Track";
+import { ASPHALT_FILES, asphaltCandidates, groundCandidates } from "../world/Track";
+import { ENV_THEMES } from "../maps/registry";
 
 /** decoder + transcoder payloads the loaders fetch on first use — warming them
  * through the service worker means session 2+ starts with zero downloads. */
@@ -145,11 +146,16 @@ const ASPHALT_ASSETS = ASPHALT_FILES.map((f) => ({
   label: "ROAD " + f.replace("asphalt-2k-", "").replace(".jpg", "").toUpperCase(),
   candidates: asphaltCandidates(f),
 }));
-const GROUND_ASSETS = GROUND_FILES.map((f) => ({
-  key: "ground:" + f,
-  label: "TERRAIN " + f.replace("ground-2k-", "").replace(".jpg", "").toUpperCase(),
-  candidates: groundCandidates(f),
-}));
+// every theme's ground set warms the preload (user: "each map should has
+// its own ground texture") — 3 sets × 3 maps, first candidate each; the
+// lazy loader in CityEnvironment falls back staging→flat on miss
+const GROUND_ASSETS = Object.values(ENV_THEMES).flatMap((th) =>
+  th.ground.files.map((f, i) => ({
+    key: `ground:${th.ground.dir}:${f}`,
+    label: `TERRAIN ${th.id.toUpperCase()} ${["COLOR", "NORMAL", "ROUGH"][i]}`,
+    candidates: groundCandidates(th.ground.dir, f),
+  })),
+);
 
 /** preload EVERYTHING the game can load, emitting boot progress. Always
  * resolves (units fail soft) — the loading screen must never trap the user. */

@@ -322,12 +322,14 @@ export class Track {
       }
       return t;
     };
-    // albedo + emissive share one texture object, so both follow repeat (3,2)
-    // -> one damage patch ≈ 5 m across: the mottled repair blotches are the
-    // point of this set, so let them breathe; contrast is pre-boosted in the
-    // committed JPEG (std 25->47) so they survive the night tint + ACES
+    // albedo + emissive share one texture object. Uniform fine-grain set
+    // (ambientCG Asphalt009 — replaced Damage001 whose big repair blotches
+    // wallpapered as 'stuck-together squares' at tile scale): repeat (2.4,1)
+    // makes one tile 10m x 10m on a 24m-wide road = square texel density
+    // (~2 px/cm at 2K), and the even grain means repeats don't read. v
+    // repeat stays integral so the pattern wraps cleanly at start/finish.
     load("asphalt-2k-color.jpg", (t) => {
-      mat.map = tile(t, 3, 2);
+      mat.map = tile(t, 2.4, 1);
       t.colorSpace = THREE.SRGBColorSpace;
       // scan is its own albedo: lift the flat-palette vertex tint to ASPHALT_TEX_TINT
       geo.setAttribute("color", new THREE.Float32BufferAttribute(texColors, 3));
@@ -345,17 +347,23 @@ export class Track {
       mat.envMapIntensity = 0.85;
       mat.needsUpdate = true;
     });
+    // Micro-relief layers, ALIGNED (no rotation): the old anti-wallpaper
+    // rotation trick was tuned for Damage001's blotches — on the uniform
+    // Asphalt009 the two rotated grids superposed into a visible
+    // checkerboard (bisected: layers off = grid gone). Seamless + aligned
+    // + integral v repeats (wrap at start/finish) show no borders; the
+    // different repeat scales keep normal/rough features uncorrelated.
     load("asphalt-2k-normal.jpg", (t) => {
-      mat.normalMap = tile(t, 8, 5, 0.35);
-      mat.normalScale = new THREE.Vector2(1.2, 1.2);
+      mat.normalMap = tile(t, 4.8, 2); // 5m x 5m tiles, square texels
+      mat.normalScale = new THREE.Vector2(0.8, 0.8);
       mat.needsUpdate = true;
     });
     load("asphalt-2k-rough.jpg", (t) => {
-      mat.roughnessMap = tile(t, 6, 4, -0.22);
-      // wet-look: the scalar multiplies the map, so smooth-repaired patches
-      // (dark in the map) go properly reflective while rough aggregate stays
+      mat.roughnessMap = tile(t, 2.4, 1); // matches albedo scale
+      // wet-look: the scalar multiplies the map, so smooth patches (dark
+      // in the map) go properly reflective while rough aggregate stays
       // semi-gloss — damp street, not rain-slicked puddle
-      mat.roughness = 0.45;
+      mat.roughness = 0.5;
       mat.needsUpdate = true;
     });
   }

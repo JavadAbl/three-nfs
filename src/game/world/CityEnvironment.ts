@@ -53,15 +53,19 @@ export class CityEnvironment {
   }
 
   private makeGround(track: Track): THREE.Mesh {
-    // elevated circuits (NEON TOUGE) get a displaced heightfield that
-    // follows the road — real embankments under every climb instead of a
+    // elevated circuits (NEON TOUGE, SPA '92) get a displaced heightfield
+    // that follows the road — real embankments under every climb instead of a
     // ribbon floating over a pancake. Flat maps keep the cheap 1x1 plane:
     // identical output, zero extra verts.
-    // 360 segments = 6.1m cells: chords over dips err by ~L²/8R, which at
-    // this density stays under the road's 7cm clearance even on the crest.
+    // segments keep ~6 m cells (chord error over dips ~L²/8R stays well
+    // under the road's 7 cm clearance — validated at this density on the
+    // touge in the terrain-bury fix); the plane size is per-map via
+    // groundExtent — the 6.95 km spa needs 2600 m, others 2200 m.
+    const extent = track.groundExtent;
+    const segs = track.hasElevation ? Math.ceil(extent / 6) : 1;
     const geo = track.hasElevation
-      ? new THREE.PlaneGeometry(2200, 2200, 360, 360)
-      : new THREE.PlaneGeometry(2200, 2200, 1, 1);
+      ? new THREE.PlaneGeometry(extent, extent, segs, segs)
+      : new THREE.PlaneGeometry(extent, extent, 1, 1);
     if (track.hasElevation) {
       geo.rotateX(-Math.PI / 2);
       const pos = geo.attributes.position as THREE.BufferAttribute;

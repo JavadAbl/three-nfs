@@ -1,7 +1,7 @@
 // ─── Spline circuit: road mesh, samples, checkpoints ────────────────────────
 import * as THREE from "three";
 import { GAME_CONFIG } from "../constants";
-import type { MapDef } from "../maps/registry";
+import type { MapDef, BaseTerrainSpec } from "../maps/registry";
 import { resolveMapPalette } from "../maps/registry";
 
 /** Tint multiplied over the scanned albedo (ambientCG Asphalt_001, CC0).
@@ -78,6 +78,11 @@ export class Track {
   readonly checkpointCount: number;
   /** sample indices that mark each checkpoint gate */
   checkpointIndices: number[] = [];
+  /** ground plane size in metres (registry groundExtent, default 2200) —
+   *  the env builds its ground/terrain to this size */
+  readonly groundExtent: number;
+  /** real-model base terrain grid (spa); null = flat -0.4 base everywhere */
+  private baseGrid: BaseTerrainSpec | null = null;
   group = new THREE.Group();
   /** true when any control point sits above y=0 — enables the
    *  terrain-follows-road ground + building anchoring */
@@ -93,18 +98,41 @@ export class Track {
   /** fully-resolved look for this map (road, lines, lamps, finish) */
   private readonly P: ReturnType<typeof resolveMapPalette>;
 
+  /** base terrain height at (x, z): bilinear sample of the map's real-model
+   *  grid with edge clamping; -0.4 for maps without a scanned terrain
+   *  (flat base plane, exactly the pre-spa behaviour). */
+  private baseSample(x: number, z: number): number {
+    const g = this.baseGrid;
+    if (!g) return -0.4;
+    const n = Math.round((g.half * 2) / g.cell) + 1;
+    const gx = THREE.MathUtils.clamp((x + g.half) / g.cell, 0, n - 1 - 1e-6);
+    const gz = THREE.MathUtils.clamp((z + g.half) / g.cell, 0, n - 1 - 1e-6);
+    const ix = Math.floor(gx), iz = Math.floor(gz);
+    const fx = gx - ix, fz = gz - iz;
+    const h00 = g.heights[iz * n + ix];
+    const h10 = g.heights[iz * n + ix + 1];
+    const h01 = g.heights[(iz + 1) * n + ix];
+    const h11 = g.heights[(iz + 1) * n + ix + 1];
+    return (
+      h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) +
+      h01 * (1 - fx) * fz + h11 * fx * fz
+    );
+  }
+
   /** World y of the terrain at (x, z): blends the road's elevation down to
-   *  the flat base plane so hills get real embankments instead of floating
-   *  ribbons. Flat maps (all control points y=0) return the base plane
-   *  height unchanged, so city/harbor behave exactly as before.
+   *  the base terrain (real scanned hills for spa, flat plane for the rest)
+   *  so hills get real embankments instead of floating ribbons. Flat maps
+   *  (all control points y=0) return the base plane height unchanged, so
+   *  city/harbor behave exactly as before.
    *  - within halfWidth+4m of the centre line: terrain = exact curve height
    *    MINUS ROAD_CLEARANCE — the tarmac rides a few cm proud of the
    *    shoulder (like a real road bed) so heightfield triangle interpolation
    *    can never poke through the asphalt. Returning the nearest stored
    *    sample's own Y here instead used to bury the road on every grade.
-   *  - blending out over 46m: smoothstep embankment, flat beyond */
+   *  - blending out over 46m: smoothstep embankment to the local base
+   *    height, base terrain beyond */
   terrainHeightAt(x: number, z: number): number {
-    const BASE = -0.4;
+    const BASE = this.baseSample(x, z);
     if (!this.hasElevation) return BASE;
     const cell = Track.GRID_CELL;
     const cx = Math.floor(x / cell);
@@ -135,6 +163,7 @@ export class Track {
     const N = this.sampleCount;
     let projD2 = Infinity;
     let projY = 0;
+    let projG = 0; // local |grade| of the chosen segment (dy / horiz len)
     for (let k = -2; k <= 1; k++) {
       const a = this.samples[(bestIdx + k + N) % N].pos;
       const b = this.samples[(bestIdx + k + 1 + N) % N].pos;
@@ -149,11 +178,18 @@ export class Track {
       if (d2 < projD2) {
         projD2 = d2;
         projY = a.y + (b.y - a.y) * t;
+        projG = len2 > 0 ? Math.abs(b.y - a.y) / Math.sqrt(len2) : 0;
       }
     }
 
+    // The ribbon is flat across its width (no banking), but on a curved
+    // grade the perpendicular foot from the outer tarmac edge lands up to
+    // ~2.5 m along the track, where the helical road surface sits
+    // delta*grade higher (spa: +25 cm at a 20 m-radius corner on a 14.5 %
+    // grade). Carve the corridor correspondingly deeper so the shoulder
+    // stays under the tarmac everywhere; flat sections keep the plain 7 cm.
     const d = Math.sqrt(projD2);
-    const roadY = projY - Track.ROAD_CLEARANCE;
+    const roadY = projY - Track.ROAD_CLEARANCE - projG * 2.5;
     const inner = this.halfWidth + 4;
     const outer = inner + 46;
     if (d <= inner) return roadY;
@@ -181,6 +217,8 @@ export class Track {
     this.railLateral = this.halfWidth + 1.4;
     this.checkpointCount = def.checkpoints ?? GAME_CONFIG.CHECKPOINTS;
     this.hasElevation = pts.some((p) => Math.abs(p.y) > 0.01);
+    this.groundExtent = def.groundExtent ?? 2200;
+    this.baseGrid = def.baseTerrain ?? null;
     const positions = this.curve.getSpacedPoints(N);
     // getSpacedPoints(N) returns N+1 points with last == first; drop duplicate
     positions.pop();

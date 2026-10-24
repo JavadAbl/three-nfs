@@ -147,15 +147,24 @@ const ASPHALT_ASSETS = ASPHALT_FILES.map((f) => ({
   candidates: asphaltCandidates(f),
 }));
 // every theme's ground set warms the preload (user: "each map should has
-// its own ground texture") — 3 sets × 3 maps, first candidate each; the
-// lazy loader in CityEnvironment falls back staging→flat on miss
-const GROUND_ASSETS = Object.values(ENV_THEMES).flatMap((th) =>
-  th.ground.files.map((f, i) => ({
-    key: `ground:${th.ground.dir}:${f}`,
-    label: `TERRAIN ${th.id.toUpperCase()} ${["COLOR", "NORMAL", "ROUGH"][i]}`,
-    candidates: groundCandidates(th.ground.dir, f),
-  })),
-);
+// its own ground texture") — first candidate each; the lazy loader in
+// CityEnvironment falls back staging→flat on miss. Themes may SHARE a set
+// (spa reuses the touge's Grass005) — dedupe by key or React flags the
+// doubled children and the file gets downloaded twice.
+const GROUND_ASSETS = [
+  ...new Map(
+    Object.values(ENV_THEMES).flatMap((th) =>
+      th.ground.files.map((f, i) => [
+        `ground:${th.ground.dir}:${f}`,
+        {
+          key: `ground:${th.ground.dir}:${f}`,
+          label: `TERRAIN ${th.id.toUpperCase()} ${["COLOR", "NORMAL", "ROUGH"][i]}`,
+          candidates: groundCandidates(th.ground.dir, f),
+        },
+      ]),
+    ),
+  ).values(),
+];
 
 /** preload EVERYTHING the game can load, emitting boot progress. Always
  * resolves (units fail soft) — the loading screen must never trap the user. */

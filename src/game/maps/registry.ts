@@ -4,6 +4,20 @@
 // here without cycles. ADDING A MAP = one entry below (+ optional palette /
 // envTheme / geometry overrides). No other file should list map ids.
 import { PALETTE } from "../constants";
+import { SPA_POINTS, SPA_TERRAIN, SPA_GROUND_EXTENT } from "./spa_generated";
+
+/** off-road base terrain: a coarse height grid rasterized from a scanned
+ *  real-world model (see spa_generated.ts). terrainHeightAt() bilinearly
+ *  samples it for every query outside the road corridor, so hills, valleys
+ *  and the road's cuttings/embankments all sit at real elevations. */
+export interface BaseTerrainSpec {
+  /** grid half-extent in metres (grid spans [-half, half] on both axes) */
+  half: number;
+  /** cell size in metres; grid side = 2*half/cell + 1 nodes, row-major,
+ *    z from -half (row 0), x fastest */
+  cell: number;
+  heights: number[];
+}
 
 /** full look of a map's world — unspecified keys inherit the night defaults */
 export interface MapPalette {
@@ -213,6 +227,40 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
       roughReps: 161,
     },
   },
+  // ardennes forest night: the real-circuit map's backdrop — sparse low
+  // farmhouses/village lights scattered through dark pine woods, sodium-warm
+  // windows, zero neon billboards (a forest has no arcades) and the deepest
+  // star field of the three. Ground reuses the touge's Grass005 set (same
+  // dir/files = already accepted + preloaded, zero new bytes).
+  spa: {
+    id: "spa",
+    range: 1000,
+    spacing: 70,
+    clearance: 30,
+    jitter: 20,
+    minHeight: 6,
+    heightSpan: 16,
+    minWidth: 10,
+    widthSpan: 12,
+    groundColor: 0x0b120c,
+    buildingColors: [0x1a231c, 0x241f16, 0x181d24],
+    windowWarm: "#ffc27a",
+    windowCool: "#c8dce8",
+    windowAccent: "#a3e4c4",
+    neonColors: [0xffc27a, 0x22d3a7],
+    starCount: 1200,
+    neonCount: 0,
+    modelCity: { modelSpacing: 90, heroCount: 0, maxTowerHeight: 40 },
+    ground: {
+      dir: "touge",
+      files: ["touge-2k-color.jpg", "touge-2k-normal.jpg", "touge-2k-rough.jpg"],
+      tint: 0x3d4a36,
+      emissive: 0.22,
+      reps: 144,
+      normalReps: 204,
+      roughReps: 178,
+    },
+  },
 };
 
 export const DEFAULT_ENV_THEME = "city";
@@ -238,6 +286,11 @@ export interface MapDef {
   palette?: MapPaletteOverride;
   /** environment theme id (default "city") */
   envTheme?: string;
+  /** ground plane size in metres (default 2200) — maps bigger than the
+   *  default world (e.g. the 6.95 km spa) enlarge their ground + terrain */
+  groundExtent?: number;
+  /** real-model base terrain grid (default none — flat -0.4 base) */
+  baseTerrain?: BaseTerrainSpec;
 }
 
 // The launch circuit — exact geometry of the former global TRACK_POINTS.
@@ -364,6 +417,33 @@ export const MAP_LIBRARY: MapDef[] = [
       [-100, 0, -28], // exit onto the straight
       [-42, 0, -8],
     ],
+  },
+  // The real thing: Spa-Francorchamps 1992 GP layout, centerline + terrain
+  // extracted from the CC-BY-4.0 Sketchfab model by Dave Love (see
+  // spa_generated.ts for full attribution). 6.954 km, ~100 m of real
+  // elevation (Eau Rouge climbs at ~15%), La Source hairpin, Kemmel,
+  // the mid-sector loop and Blanchimont. Track is 4.3x the length of the
+  // other maps — defaultLaps 2 keeps a quick race quick.
+  {
+    id: "spa",
+    name: "SPA '92",
+    description: "Real 1992 GP layout · 6.95 km forest epic",
+    envTheme: "spa",
+    palette: {
+      // belgian-yellow finish arch, deep forest-green night
+      asphalt: 0x14161a,
+      fog: 0x0d1a14,
+      sky: 0x040705,
+      ground: 0x0b120c,
+      finishPrimary: 0xfde047,
+    },
+    points: SPA_POINTS,
+    roadHalfWidth: 10,
+    samples: 2200,
+    checkpoints: 24,
+    defaultLaps: 2,
+    groundExtent: SPA_GROUND_EXTENT,
+    baseTerrain: SPA_TERRAIN,
   },
 ];
 

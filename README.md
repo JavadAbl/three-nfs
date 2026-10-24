@@ -120,3 +120,11 @@ The barebone uses procedural geometry. The plan for the asset update:
 ## License
 
 MIT — do whatever you want, attribution appreciated.
+
+## Asset credits
+
+- Cars, buildings, asphalt/ground textures: ambientCG / Poly Haven (CC0)
+- **SPA '92** circuit geometry (centerline + terrain heights): "Circuit de
+  Spa-Francorchamps 1992 layout" by Dave Love
+  (Sketchfab), [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) —
+  extracted into `src/game/maps/spa_generated.ts` by `scripts/extract_spa.cjs`

@@ -68,6 +68,15 @@ export function GameShell() {
   });
   const [bootDone, setBootDone] = useState(false);
   useEffect(() => {
+    // a game site has no use for the browser's right-click menu — right
+    // mouse is free-look in-race and dead weight on menus. Suppress it
+    // app-wide (menus included); devtools/inspectors unaffected.
+    const block = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     void (async () => {
       await registerAssetServiceWorker();

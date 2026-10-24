@@ -22,6 +22,19 @@ const UP = new THREE.Vector3(0, 1, 0);
 const _rel = new THREE.Vector3();
 const _clamped = new THREE.Vector3();
 
+/** night-lights master switch — headlight beams, sodium paint-fill and
+ *  rival cones are night furniture. Game sets this from the theme's
+ *  timeOfDay BEFORE constructing cars (module-level on purpose: cars are
+ *  built in several places and all of them belong to one race); default
+ *  true keeps every existing night map identical. Daytime maps run with
+ *  beams off: the sun rig outshines them, and skipping the per-car
+ *  spotlights saves real per-frame shading cost. Lamp glow sprites stay on
+ *  either way — cars running with lights on at day read as alive. */
+let nightLights = true;
+export function setCarNightLights(v: boolean): void {
+  nightLights = v;
+}
+
 export class Car {
   controls: CarControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
   /** world position (y follows road) */
@@ -223,53 +236,57 @@ export class Car {
 
   private attachHeadlightsAndLabel(d: { frontZ: number; topY: number; width: number; length: number }) {
     const w2 = d.width / 2;
-    if (this.kind === "player") {
-      for (const sx of [0.62, -0.62]) {
-        const beam = new THREE.SpotLight(0xfff0c8, 90, 90, 0.45, 0.55, 1.6);
-        beam.position.set(sx * w2, d.topY * 0.55, d.frontZ - 0.1);
+    // night maps only: real headlight beams. (Day maps skip them — see
+    // setCarNightLights — but keep the lamp glow sprites below: cars running
+    // with lights on at day read as alive, and it costs two tiny planes.)
+    if (nightLights) {
+      if (this.kind === "player") {
+        for (const sx of [0.62, -0.62]) {
+          const beam = new THREE.SpotLight(0xfff0c8, 90, 90, 0.45, 0.55, 1.6);
+          beam.position.set(sx * w2, d.topY * 0.55, d.frontZ - 0.1);
+          const target = new THREE.Object3D();
+          target.position.set(sx * 6, 0, d.frontZ + 34);
+          this.bodyGroup.add(target);
+          beam.target = target;
+          this.bodyGroup.add(beam);
+          if (sx > 0) this.headBeamL = beam;
+          else this.headBeamR = beam;
+        }
+      } else {
+        // real single-beam headlight for rivals — their stretch of road now
+        // visibly lights up (they used to be dark silhouettes with a faint
+        // fake cone); short target + low decay concentrates a warm pool 5-15m
+        // ahead where the chase cam actually sees it; no shadow pass to keep
+        // the per-light cost minimal
+        const beam = new THREE.SpotLight(0xfff0c8, 110, 55, 0.5, 0.6, 1.2);
+        beam.position.set(0, d.topY * 0.5, d.frontZ - 0.05);
         const target = new THREE.Object3D();
-        target.position.set(sx * 6, 0, d.frontZ + 34);
-        this.bodyGroup.add(target);
+        target.position.set(0, 0, d.frontZ + 16);
+        this.bodyGroup.add(target, beam);
         beam.target = target;
-        this.bodyGroup.add(beam);
-        if (sx > 0) this.headBeamL = beam;
-        else this.headBeamR = beam;
+
+        const coneMat = new THREE.MeshBasicMaterial({
+          color: 0xfff0c0,
+          transparent: true,
+          opacity: 0.07,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        this.owned.push(coneMat);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 16, 8, 1, true), coneMat);
+        cone.rotation.x = Math.PI / 2;
+        cone.position.set(0, 0.5, d.frontZ + 9.5);
+        this.bodyGroup.add(cone);
       }
-    } else {
-      // real single-beam headlight for rivals — their stretch of road now
-      // visibly lights up (they used to be dark silhouettes with a faint
-      // fake cone); short target + low decay concentrates a warm pool 5-15m
-      // ahead where the chase cam actually sees it; no shadow pass to keep
-      // the per-light cost minimal
-      const beam = new THREE.SpotLight(0xfff0c8, 110, 55, 0.5, 0.6, 1.2);
-      beam.position.set(0, d.topY * 0.5, d.frontZ - 0.05);
-      const target = new THREE.Object3D();
-      target.position.set(0, 0, d.frontZ + 16);
-      this.bodyGroup.add(target, beam);
-      beam.target = target;
-
-      const coneMat = new THREE.MeshBasicMaterial({
-        color: 0xfff0c0,
-        transparent: true,
-        opacity: 0.07,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      this.owned.push(coneMat);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 16, 8, 1, true), coneMat);
-      cone.rotation.x = Math.PI / 2;
-      cone.position.set(0, 0.5, d.frontZ + 9.5);
-      this.bodyGroup.add(cone);
-      if (this.kind === "remote") this.addLabel(d.topY);
+      // warm city-bounce fill above every car — the streetlights are emissive
+      // decals, so without this NOTHING lights car bodies at night; a small
+      // sodium-tinted point light makes the paint read like the car is
+      // driving through lit zones
+      const fill = new THREE.PointLight(0xffe2b8, 6, 11, 1.8);
+      fill.position.set(0, d.topY + 0.55, -0.2);
+      this.bodyGroup.add(fill);
     }
-
-    // warm city-bounce fill above every car — the streetlights are emissive
-    // decals, so without this NOTHING lights car bodies at night; a small
-    // sodium-tinted point light makes the paint read like the car is
-    // driving through lit zones
-    const fill = new THREE.PointLight(0xffe2b8, 6, 11, 1.8);
-    fill.position.set(0, d.topY + 0.55, -0.2);
-    this.bodyGroup.add(fill);
+    if (this.kind === "remote") this.addLabel(d.topY);
 
     // headlight bloom sprites (mirrors the tail glow) so lamps flare from
     // head-on / chase views even where the emissive boxes are sub-pixel

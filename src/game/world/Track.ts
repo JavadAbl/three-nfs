@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { GAME_CONFIG } from "../constants";
 import type { MapDef, BaseTerrainSpec } from "../maps/registry";
-import { resolveMapPalette } from "../maps/registry";
+import { resolveMapPalette, resolveEnvTheme } from "../maps/registry";
 
 /** Tint multiplied over the scanned albedo (ambientCG Asphalt_001, CC0).
  *  Night mood comes from the scene lighting, not albedo — the tint only has
@@ -10,6 +10,11 @@ import { resolveMapPalette } from "../maps/registry";
  *  palettes. 0x4a4a4a is the VLM-verified night value: readable dark grey
  *  grain unlit, alive under the headlight cones (0xa6a6ae read washed-out). */
 const ASPHALT_TEX_TINT = 0x4a4a4a;
+
+/** daytime counterpart of the night tint — the scan is a DAY photograph, so
+ *  at day it runs near-natural (×0.85 keeps fresh asphalt from blowing out
+ *  under the sun rig) and the night “lift” machinery below stays off. */
+const ASPHALT_TEX_TINT_DAY = 0xd8d8d8;
 
 /** self-illumination of the tarmac so grain stays visible at night —
  *  calibrated head-to-head via VLM (1.4 flat glow / 0.55 still milky / 0.22
@@ -97,6 +102,9 @@ export class Track {
   private static readonly ROAD_CLEARANCE = 0.07;
   /** fully-resolved look for this map (road, lines, lamps, finish) */
   private readonly P: ReturnType<typeof resolveMapPalette>;
+  /** true when the map's env theme plays at day (SPA '92) — the road skips
+   *  every night-readability recipe (self-glow, wet sheen, sodium tint) */
+  private readonly day: boolean;
 
   /** base terrain height at (x, z): bilinear sample of the map's real-model
    *  grid with edge clamping; -0.4 for maps without a scanned terrain
@@ -207,6 +215,7 @@ export class Track {
   constructor(def: MapDef) {
     this.mapId = def.id;
     this.P = resolveMapPalette(def);
+    this.day = resolveEnvTheme(def).timeOfDay === "day";
     const pts = def.points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
 
@@ -273,7 +282,7 @@ export class Track {
     const texColors: number[] = [];
 
     const base = new THREE.Color(this.P.asphalt);
-    const texBase = new THREE.Color(ASPHALT_TEX_TINT);
+    const texBase = new THREE.Color(this.day ? ASPHALT_TEX_TINT_DAY : ASPHALT_TEX_TINT);
 
     for (let i = 0; i <= N; i++) {
       const s = this.samples[i % N];
@@ -371,20 +380,29 @@ export class Track {
     load("asphalt-2k-color.jpg", (t) => {
       mat.map = tile(t, 2.4, 1);
       t.colorSpace = THREE.SRGBColorSpace;
-      // scan is its own albedo: lift the flat-palette vertex tint to ASPHALT_TEX_TINT
+      // scan is its own albedo: lift the flat-palette vertex tint to the
+      // time-of-day tint baked in buildRoad (night 0x4a4a4a, day 0xd8d8d8)
       geo.setAttribute("color", new THREE.Float32BufferAttribute(texColors, 3));
-      // night-readability floor: nothing on the road casts real light (the
-      // street towers were removed for perf; the pools are additive decals),
-      // and ACES + dim ambient would crush a purely lit texture to black —
-      // so the tarmac self-glows with its own grain, subtly, while the
-      // headlight cones paint clearly brighter pools on top
-      mat.emissive = new THREE.Color(0xffffff);
-      mat.emissiveMap = t;
-      mat.emissiveIntensity = ASPHALT_EMISSIVE;
-      // wet-street sheen: the road leans into the night IBL harder than the
-      // global 0.3 — it is the one large glossy surface in the scene and the
-      // sodium-haze blobs in the env are what a damp street would reflect
-      mat.envMapIntensity = 0.85;
+      if (this.day) {
+        // DAY: sun + hemisphere light the grain; no self-glow, a whisper of
+        // env sheen (the sky, not sodium haze) and dry-tarmac roughness
+        mat.emissiveIntensity = 0;
+        mat.envMapIntensity = 0.3;
+        mat.roughness = 0.78;
+      } else {
+        // night-readability floor: nothing on the road casts real light (the
+        // street towers were removed for perf; the pools are additive decals),
+        // and ACES + dim ambient would crush a purely lit texture to black —
+        // so the tarmac self-glows with its own grain, subtly, while the
+        // headlight cones paint clearly brighter pools on top
+        mat.emissive = new THREE.Color(0xffffff);
+        mat.emissiveMap = t;
+        mat.emissiveIntensity = ASPHALT_EMISSIVE;
+        // wet-street sheen: the road leans into the night IBL harder than the
+        // global 0.3 — it is the one large glossy surface in the scene and the
+        // sodium-haze blobs in the env are what a damp street would reflect
+        mat.envMapIntensity = 0.85;
+      }
       mat.needsUpdate = true;
     });
     // Micro-relief layers, ALIGNED (no rotation): the old anti-wallpaper
@@ -400,10 +418,11 @@ export class Track {
     });
     load("asphalt-2k-rough.jpg", (t) => {
       mat.roughnessMap = tile(t, 2.4, 1); // matches albedo scale
-      // wet-look: the scalar multiplies the map, so smooth patches (dark
+      // scalar multiplies the map: night wet-look lets smooth patches (dark
       // in the map) go properly reflective while rough aggregate stays
-      // semi-gloss — damp street, not rain-slicked puddle
-      mat.roughness = 0.5;
+      // semi-gloss — damp street, not rain-slicked puddle. Day runs the same
+      // map through the scalar set in the albedo callback (0.78 = dry).
+      if (!this.day) mat.roughness = 0.5;
       mat.needsUpdate = true;
     });
   }
@@ -430,14 +449,19 @@ export class Track {
       geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       geo.setIndex(indices);
       geo.computeVertexNormals();
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x2a2a30,
-        emissive: new THREE.Color(0x3a2a10),
-        emissiveIntensity: 0.5,
-        roughness: 0.5,
-        metalness: 0.7,
-        side: THREE.DoubleSide,
-      });
+      const mat = new THREE.MeshStandardMaterial(
+        this.day
+          ? // day armco: plain galvanised steel in sunlight, no glow
+            { color: 0x7c8288, roughness: 0.45, metalness: 0.65, side: THREE.DoubleSide }
+          : {
+              color: 0x2a2a30,
+              emissive: new THREE.Color(0x3a2a10),
+              emissiveIntensity: 0.5,
+              roughness: 0.5,
+              metalness: 0.7,
+              side: THREE.DoubleSide,
+            },
+      );
       this.group.add(new THREE.Mesh(geo, mat));
     }
   }

@@ -82,11 +82,20 @@ const inflight = new Map<string, Promise<THREE.Group | null>>();
 export type SpaSceneProgress = (loaded: number, total: number) => void;
 
 /** load (and cache) the imported scene for a map. Resolves null when the GLB
- * can't be fetched — the race stays playable on ground + stars alone. */
-export function loadSpaScene(url: string, onProgress?: SpaSceneProgress): Promise<THREE.Group | null> {
-  const cached = templates.get(url);
+ * can't be fetched — the race stays playable on ground + stars alone.
+ * `day` selects the time-of-day tuning variant (cache-keyed): the same GLB
+ * is tuned once for night (albedo-emissive lift) and once for day (raw
+ * authored textures under the sun rig — the model was photographed at day,
+ * so at day it needs NO lift at all). */
+export function loadSpaScene(
+  url: string,
+  onProgress?: SpaSceneProgress,
+  day = false,
+): Promise<THREE.Group | null> {
+  const cacheKey = url + "|" + (day ? "day" : "night");
+  const cached = templates.get(cacheKey);
   if (cached) return Promise.resolve(cached.clone());
-  const running = inflight.get(url);
+  const running = inflight.get(cacheKey);
   if (running) return running.then((t) => (t ? t.clone() : null));
   const job = (async (): Promise<THREE.Group | null> => {
     const loader = getGLTFLoader();
@@ -113,7 +122,7 @@ export function loadSpaScene(url: string, onProgress?: SpaSceneProgress): Promis
     // scripts/spa_scene_dryrun.cjs corridor fit — main ribbon median 5.2 m) ──
     root.applyMatrix4(worldToGameMatrix());
 
-    // ── pass 2: per-material night tuning (shared within the file) ──
+    // ── pass 2: per-material time-of-day tuning (shared within the file) ──
     const seen = new Set<THREE.MeshStandardMaterial>();
     root.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -124,42 +133,82 @@ export function loadSpaScene(url: string, onProgress?: SpaSceneProgress): Promis
         seen.add(mat);
         // BLEND billboards (trees, fences, signs — 26 materials) → alpha-
         // tested cutouts: no per-frame transparency sorting, correct depth
-        // writes against the forest wall, and hole-free shadow silhouettes
+        // writes against the forest wall, and hole-free shadow silhouettes.
+        // Needed at day too — the foliage alpha is the same in the sun.
         if (mat.transparent) {
           mat.transparent = false;
           mat.alphaTest = 0.35;
           mat.depthWrite = true;
+          // alpha-shaped SHADOWS: the default depth material renders the
+          // full quad opaque, so every billboard would throw a rectangle
+          // shadow (a fence card = a slab of darkness on the ground). A
+          // depth material with the same map + alpha cuts the shadow to
+          // the visible fence/sign shape.
+          if (mat.map) {
+            m.customDepthMaterial = new THREE.MeshDepthMaterial({
+              depthPacking: THREE.RGBADepthPacking,
+              map: mat.map,
+              alphaTest: mat.alphaTest,
+            });
+          }
+          // PINE CARDS DO NOT CAST: they come in dense single-file walls,
+          // and at the day sun's low elevation each card shadows its
+          // neighbours — the entire wall self-blackens (VLM bisection:
+          // shadows off = green forest, on = "black void"; at night the
+          // emissive lift had masked the same physics). Their silhouettes
+          // are dark green photo albedo anyway — unshadowed reads right.
+          if (/pine/i.test(mat.name || "")) {
+            m.userData.noCastShadow = true;
+          }
         }
-        // night lift — texture-modulated self-glow: the model's albedo
-        // doubles as the emissive map, so white fence bands, catch-fence
-        // wires and lit windows glow through the night while black tires
-        // and deep forest stay dark (a flat emissive tint left the safety
-        // furniture reading as a featureless dark strip — VLM-verified
-        // "fence present but dark brown/black"). Materials that authored
-        // their own emissive maps are left alone.
-        if (mat.map) {
+        if (!day) {
+          // night lift — texture-modulated self-glow: the model's albedo
+          // doubles as the emissive map, so white fence bands, catch-fence
+          // wires and lit windows glow through the night while black tires
+          // and deep forest stay dark (a flat emissive tint left the safety
+          // furniture reading as a featureless dark strip — VLM-verified
+          // "fence present but dark brown/black"). Materials that authored
+          // their own emissive maps are left alone.
+          if (mat.map) {
+            mat.emissiveMap = mat.map;
+            mat.emissive = new THREE.Color(0xffffff);
+            mat.emissiveIntensity = 0.28;
+          } else if (!mat.emissiveMap) {
+            mat.emissive = new THREE.Color().copy(mat.color).multiplyScalar(0.1);
+          }
+        } else if (/pine/i.test(mat.name || "") && mat.map) {
+          // DAY forest lift: the pine cards' authored albedo is genuinely
+          // near-black (live texel dump: solid texels avg RGB 32,37,27) —
+          // a night photo of spruce. Diffuse-lit or emissive-modulated, it
+          // renders as a void against a bright day frame (VLM: "pure black
+          // silhouettes", pixel scan: 490 near-black against green ground).
+          // Fix at the ROOT: an HDR color multiplier (three.js Colors may
+          // exceed 1.0) lifts the albedo itself 3x to (96,111,81) readable
+          // forest green, plus a light translucence emissive for backlight.
+          // Calibration: 2.4x still read "almost black" (VLM), 3.0x live-
+          // verified as "dark-green forest".
+          mat.color = new THREE.Color(3, 3, 3);
           mat.emissiveMap = mat.map;
           mat.emissive = new THREE.Color(0xffffff);
-          mat.emissiveIntensity = 0.28;
-        } else if (!mat.emissiveMap) {
-          mat.emissive = new THREE.Color().copy(mat.color).multiplyScalar(0.1);
+          mat.emissiveIntensity = 0.4;
         }
         mat.userData.shared = true; // cache-owned — CityEnvironment.dispose skips
         mat.needsUpdate = true;
       }
-      // geometry + shadows: cast+receive so the moon rig shades the real
-      // buildings and the forest throws soft night shadows
-      m.castShadow = true;
+      // geometry + shadows: cast+receive so the light rig (moon or sun)
+      // shades the real buildings and the forest — except the no-cast
+      // billboards flagged above (pine cards blacken their own wall)
+      m.castShadow = !m.userData.noCastShadow;
       m.receiveShadow = true;
       if (m.geometry) m.geometry.userData.shared = true;
     });
 
-    templates.set(url, root);
+    templates.set(cacheKey, root);
     return root;
   })();
-  inflight.set(url, job);
+  inflight.set(cacheKey, job);
   const out = job.then((t) => {
-    inflight.delete(url);
+    inflight.delete(cacheKey);
     return t ? t.clone() : null;
   });
   return out;

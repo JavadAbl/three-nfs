@@ -15,6 +15,10 @@ import { loadSpaScene } from "./SpaScene";
 export class CityEnvironment {
   group = new THREE.Group();
   private readonly theme: EnvThemeSpec;
+  /** true when the theme plays at day (SPA '92): stars stay out, the ground
+   *  scan runs at natural daylight colours (no night tint/self-glow), and
+   *  the imported scene loads its day variant (no emissive lift) */
+  private readonly day: boolean;
   /** fallback box instanced meshes until the model sets load (then removed) */
   private boxMeshes: THREE.InstancedMesh[] = [];
   /** true once the real building models have replaced the boxes */
@@ -24,8 +28,10 @@ export class CityEnvironment {
   /** builds the world furniture from a map's environment theme */
   constructor(track: Track, theme: EnvThemeSpec = ENV_THEMES.city) {
     this.theme = theme;
+    this.day = theme.timeOfDay === "day";
     this.group.add(this.makeGround(track));
-    this.group.add(this.makeStars());
+    // stars are night furniture — a day sky shows the sun + clouds (DaySky)
+    if (!this.day) this.group.add(this.makeStars());
     if (theme.sceneGlb) {
       // imported-scenery map (SPA '92): the model's own forests, fencing,
       // tire walls and pit buildings ARE the environment — no procedural
@@ -46,7 +52,7 @@ export class CityEnvironment {
   private async buildImportedScene(url: string) {
     let scene: THREE.Group | null = null;
     try {
-      scene = await loadSpaScene(url);
+      scene = await loadSpaScene(url, undefined, this.day);
     } catch (e) {
       console.warn("[CityEnvironment] imported scene failed:", e);
       return;
@@ -147,11 +153,17 @@ export class CityEnvironment {
       mat.map = tile(t, g.reps);
       // the scan is its own albedo: replace the near-black palette floor
       // (theme.groundColor multiplied in would crush the map back to black)
-      mat.color = new THREE.Color(g.tint);
-      // night-readability floor, dimmer sibling of the road's 0.34
-      mat.emissive = new THREE.Color(0xffffff);
-      mat.emissiveMap = t;
-      mat.emissiveIntensity = g.emissive;
+      if (this.day) {
+        // DAY: the scan is a daylight photograph — run it natural, lit by
+        // the sun rig (Grass005 reads as a sunlit lawn/shoulder as authored)
+        mat.color = new THREE.Color(0xffffff);
+      } else {
+        mat.color = new THREE.Color(g.tint);
+        // night-readability floor, dimmer sibling of the road's 0.34
+        mat.emissive = new THREE.Color(0xffffff);
+        mat.emissiveMap = t;
+        mat.emissiveIntensity = g.emissive;
+      }
       mat.needsUpdate = true;
     });
     load(g.files[1], (t) => {

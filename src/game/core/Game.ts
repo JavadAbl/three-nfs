@@ -15,8 +15,10 @@ import { CameraRig, type CameraMode } from "./CameraRig";
 import { InputManager } from "./Input";
 import { EngineAudio } from "../audio/EngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
-import { makeNightEnvironment } from "./nightEnv";
+import { makeNightEnvironment, makeDayEnvironment } from "./nightEnv";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
+import { DaySky, SUN_DIR } from "../world/DaySky";
+import { setCarNightLights } from "../world/Car";
 
 export type GameMode = "quick" | "trial" | "online";
 
@@ -109,6 +111,11 @@ export class Game {
   private raf = 0;
   private disposed = false;
   private moon: THREE.DirectionalLight;
+  /** daytime sky dressing (sun disc + clouds); null on night maps */
+  private daySky: DaySky | null = null;
+  /** true when the map's env theme plays at day (SPA '92) — rerigs lights,
+   * fog, exposure, IBL and disables the night emissive lifts everywhere */
+  private readonly day: boolean;
   // fps meter — 0.5 s rolling window over RAW frame deltas (the physics
   // clamp on dt must not fake the number, and rAF-throttled headless
   // browsers report honestly)
@@ -144,6 +151,11 @@ export class Game {
     this.laps = opts.laps ?? map.defaultLaps ?? GAME_CONFIG.LAPS;
     this.net = opts.net ?? null;
     this.cb = callbacks;
+    const envTheme = resolveEnvTheme(map);
+    this.day = envTheme.timeOfDay === "day";
+    // headlights, sodium fills and headlight cones are night furniture —
+    // set BEFORE any car constructs (setupCars below reads the module flag)
+    setCarNightLights(!this.day);
 
     // ── renderer ──
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -151,31 +163,32 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    // 1.15 read as an under-exposed void once real textured buildings moved
-    // in (VLM: 2/10, "near-black silhouettes") — lift the whole frame
-    this.renderer.toneMappingExposure = 1.45;
+    // night: 1.45 lifts the whole frame out of the void once real textured
+    // buildings moved in (VLM: 2/10, "near-black silhouettes"). day: the sun
+    // rig carries the energy — 1.05 keeps sky and tarmac from blowing out
+    this.renderer.toneMappingExposure = this.day ? 1.05 : 1.45;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.camera = new THREE.PerspectiveCamera(74, canvas.clientWidth / canvas.clientHeight, 0.1, 1400);
     this.cameraRig = new CameraRig(this.camera);
 
-    // ── scene: night atmosphere (map palette) ──
+    // ── scene atmosphere (map palette; day maps carry a daylight palette) ──
     const P = resolveMapPalette(map);
     this.scene.background = new THREE.Color(P.sky);
-    // density 0.0105 -> 0.0048: the old fog capped city visibility at ~150m —
-    // facades across the whole gameplay band were 45-90% dissolved into haze.
-    // Fog COLOUR comes from the palette (lifted blue-violet): distance fades
-    // read as city-glow atmosphere instead of a void swallowing the skyline
-    this.scene.fog = new THREE.FogExp2(P.fog, 0.0048);
+    // night density 0.0048 caps city visibility ~150 m — wrong for day:
+    // the forests at Kemmel and the Blanchimont sweep NEED long sightlines.
+    // day: 0.0011 gives ~500 m clear air, then gentle aerial haze into the
+    // pale horizon (fog COLOUR still comes from the palette in both modes)
+    this.scene.fog = new THREE.FogExp2(P.fog, this.day ? 0.0011 : 0.0048);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const nightEnv = makeNightEnvironment();
+    const nightEnv = this.day ? makeDayEnvironment() : makeNightEnvironment();
     const env = pmrem.fromScene(nightEnv, 0.08);
     this.scene.environment = env.texture;
-    // dark night env (not the old bright studio room) — a touch more global IBL
-    // so glossy surfaces actually reflect the city glow; matte ones barely move
-    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 0.36;
+    // night: a dark env + a touch more global IBL so glossy surfaces reflect
+    // the city glow (0.36). day: the painted sky IS the ambient — full tilt
+    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = this.day ? 1.0 : 0.36;
     pmrem.dispose();
     nightEnv.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -209,38 +222,71 @@ export class Game {
       );
     }
 
-    // night fill lifted across the board (user: buildings "too dark"):
-    // ambient is the omnidirectional facade light — the old 1.4 @ 0x2a2430
-    // left every non-moon-facing wall at ~0.03 linear, i.e. pure black.
-    // Warm hemisphere ground = sodium-lamp bounce off the streets.
-    this.scene.add(new THREE.AmbientLight(0x4a4468, 3.8));
-    const hemi = new THREE.HemisphereLight(0x3a4266, 0x1a1410, 1.0);
-    this.scene.add(hemi);
-    // warm sodium fill from the moon's opposite quadrant — without it every
-    // moon-away facade was ambient-only and read as a flat black slab while
-    // the lit side popped (VLM on iteration 2: right side "window grids, floor
-    // lines", left side "near-black"). No shadow casting — it's a city bounce.
-    const sodiumFill = new THREE.DirectionalLight(0x9a7a55, 0.55);
-    sodiumFill.position.set(-160, 150, -120);
-    this.scene.add(sodiumFill);
-    this.moon = new THREE.DirectionalLight(0xbcd0e8, 0.8);
-    this.moon.position.set(120, 220, 80);
+    // ── lighting rig: one sun or one moon, per the theme's time of day ──
+    if (this.day) {
+      // DAY (SPA '92): ONE warm sun does the modelling; hemisphere + a small
+      // ambient only lift the shadow side. First build ran ambient 0.55 /
+      // hemi 1.35 — VLM read the grid cars as "flat, no grounding shadows"
+      // and shadow-side walls as voids. Punchier sun + darker fill keeps
+      // the NFS look: hard highlights, real contrast, sun-side vs
+      // shade-side reads. No sodium fill — no streetlights at noon.
+      const hemi = new THREE.HemisphereLight(0x9dbfe8, 0x5c5844, 1.05);
+      this.scene.add(hemi);
+      this.scene.add(new THREE.AmbientLight(0xcfe0ee, 0.35));
+      this.moon = new THREE.DirectionalLight(0xfff1d4, 3.2); // the sun
+    } else {
+      // night fill lifted across the board (user: buildings "too dark"):
+      // ambient is the omnidirectional facade light — the old 1.4 @ 0x2a2430
+      // left every non-moon-facing wall at ~0.03 linear, i.e. pure black.
+      // Warm hemisphere ground = sodium-lamp bounce off the streets.
+      this.scene.add(new THREE.AmbientLight(0x4a4468, 3.8));
+      const hemi = new THREE.HemisphereLight(0x3a4266, 0x1a1410, 1.0);
+      this.scene.add(hemi);
+      // warm sodium fill from the moon's opposite quadrant — without it every
+      // moon-away facade was ambient-only and read as a flat black slab while
+      // the lit side popped (VLM on iteration 2: right side "window grids, floor
+      // lines", left side "near-black"). No shadow casting — it's a city bounce.
+      const sodiumFill = new THREE.DirectionalLight(0x9a7a55, 0.55);
+      sodiumFill.position.set(-160, 150, -120);
+      this.scene.add(sodiumFill);
+      this.moon = new THREE.DirectionalLight(0xbcd0e8, 0.8);
+    }
+    // same shadow rig both ways: the light follows the player (tick below),
+    // ortho ±200 covers the road + the nearest forest wall (day shadows read
+    // harder than moon shadows, so the box is a touch wider than night's 160)
+    // light offset = SUN_DIR · 263 — the SAME direction the visible disc
+    // sits at, so shadows fall away from the on-screen sun exactly.
+    // BIAS: zero bias at 5 px/m acne-shadowed whole forest walls into
+    // "deep shadow" (day VLM bisection: shadows off = green forest, on =
+    // black void) — bias kills the self-shadow speckle; the night rig ran
+    // bias-less only because the emissive lifts masked it. normalBias kept
+    // small: 1.2 m peter-panned the CAR's own shadow clean off its tyres
+    // (VLM: "floating, no contact shadow") — 0.5 treads the line between
+    // ground acne and contact shadows that still touch the wheels.
+    this.moon.position.set(SUN_DIR.x * 263, SUN_DIR.y * 263, SUN_DIR.z * 263);
     this.moon.castShadow = true;
     this.moon.shadow.mapSize.set(2048, 2048);
+    this.moon.shadow.bias = -0.0005;
+    this.moon.shadow.normalBias = 0.5;
     this.moon.shadow.camera.near = 10;
     this.moon.shadow.camera.far = 700;
-    this.moon.shadow.camera.left = -160;
-    this.moon.shadow.camera.right = 160;
-    this.moon.shadow.camera.top = 160;
-    this.moon.shadow.camera.bottom = -160;
+    this.moon.shadow.camera.left = this.day ? -200 : -160;
+    this.moon.shadow.camera.right = this.day ? 200 : 160;
+    this.moon.shadow.camera.top = this.day ? 200 : 160;
+    this.moon.shadow.camera.bottom = this.day ? -200 : -160;
     this.scene.add(this.moon, this.moon.target);
 
     // ── world ──
     this.track = new Track(map);
     this.scene.add(this.track.group);
-    this.city = new CityEnvironment(this.track, resolveEnvTheme(map));
+    this.city = new CityEnvironment(this.track, envTheme);
     this.scene.add(this.city.group);
     this.scene.add(this.particles.points);
+    // daytime maps dress the sky: the uploaded sun disc + drifting clouds
+    if (this.day) {
+      this.daySky = new DaySky(this.track.groundExtent);
+      this.scene.add(this.daySky.group);
+    }
 
     // ── cars ──
     this.setupCars();
@@ -472,6 +518,7 @@ export class Game {
     }
     this.track.dispose();
     this.city.dispose();
+    this.daySky?.dispose();
     this.particles.dispose();
     for (const c of this.allCars) {
       this.scene.remove(c.group);
@@ -568,8 +615,13 @@ export class Game {
       this.camera.position.z += (Math.random() - 0.5) * k * 0.5;
       this.impactShake = Math.max(0, this.impactShake - 3.5 * dt);
     }
-    this.moon.position.set(this.player.pos.x + 120, 220, this.player.pos.z + 80);
+    this.moon.position.set(
+      this.player.pos.x + SUN_DIR.x * 263,
+      SUN_DIR.y * 263,
+      this.player.pos.z + SUN_DIR.z * 263,
+    );
     this.moon.target.position.copy(this.player.pos);
+    this.daySky?.update(this.paused ? 0.0001 : dt, this.camera);
 
     // ── audio ──
     if (!this.audio.muted) {

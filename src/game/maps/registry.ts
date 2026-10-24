@@ -63,6 +63,12 @@ export interface GroundSpec {
 /** city furniture knobs — one named theme per environment style */
 export interface EnvThemeSpec {
   id: string;
+  /** time of day the map plays in. Default (unset) = the game's night.
+   * "day" rerigs everything the night look hangs on: scene lights, fog
+   * density, exposure, IBL env, stars, headlight beams, the night
+   * emissive-lifts on road/ground/imported scenery (Game.ts / Track.ts /
+   * CityEnvironment.ts / SpaScene.ts all branch on this one flag). */
+  timeOfDay?: "night" | "day";
   /** grid radius (metres) that building candidates spawn within */
   range: number;
   /** building grid spacing */
@@ -238,6 +244,10 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
   // dir/files = already accepted + preloaded, zero new bytes).
   spa: {
     id: "spa",
+    // daytime circuit: the model's textures are day-authored, so the sun
+    // rig lights them straight with NO night emissive-lift — the forests
+    // and pit buildings read exactly as the author dressed them
+    timeOfDay: "day",
     range: 1000,
     spacing: 70,
     clearance: 30,
@@ -246,7 +256,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     heightSpan: 16,
     minWidth: 10,
     widthSpan: 12,
-    groundColor: 0x0b120c,
+    groundColor: 0x51603f,
     buildingColors: [0x1a231c, 0x241f16, 0x181d24],
     windowWarm: "#ffc27a",
     windowCool: "#c8dce8",
@@ -435,14 +445,17 @@ export const MAP_LIBRARY: MapDef[] = [
   {
     id: "spa",
     name: "SPA '92",
-    description: "Real 1992 GP layout · 6.95 km forest epic",
+    description: "Real 1992 GP layout · 6.95 km daytime forest epic",
     envTheme: "spa",
     palette: {
-      // belgian-yellow finish arch, deep forest-green night
-      asphalt: 0x14161a,
-      fog: 0x0d1a14,
-      sky: 0x040705,
-      ground: 0x0b120c,
+      // daytime look: hazy Belgian morning — bright sky, pale aerial haze,
+      // dry light-grey tarmac. (Was the night set: sky 0x040705, fog 0x0d1a14,
+      // asphalt 0x14161a.) The asphalt color is the procedural-fallback
+      // tint; the scanned-surface day tint lives in Track.ts.
+      asphalt: 0x3a3d42,
+      fog: 0xb9d2e2,
+      sky: 0x87b6e2,
+      ground: 0x51603f,
       finishPrimary: 0xfde047,
     },
     points: SPA_POINTS,

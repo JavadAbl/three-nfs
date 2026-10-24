@@ -22,6 +22,7 @@ import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityMo
 import { ASPHALT_FILES, asphaltCandidates, groundCandidates } from "../world/Track";
 import { ENV_THEMES } from "../maps/registry";
 import { loadSpaScene } from "../world/SpaScene";
+import { loadSunTemplate, loadCloudTemplate, SKY_ASSETS } from "../world/DaySky";
 
 /** decoder + transcoder payloads the loaders fetch on first use — warming them
  * through the service worker means session 2+ starts with zero downloads. */
@@ -171,14 +172,21 @@ const GROUND_ASSETS = [
 // the ground sets in case a future theme shares a file. The 21 MB spa scene
 // is the single biggest asset in the game, so it needs the loading bar more
 // than anything else; the module cache in SpaScene hands the parsed group to
-// the race for free afterwards.
+// the race for free afterwards. The unit warms the SAME time-of-day variant
+// the race will request (day for a day theme), or the race would re-download
+// + re-parse 21 MB behind the wheel.
 const SCENE_ASSETS = [
   ...new Map(
     Object.values(ENV_THEMES)
       .filter((th) => th.sceneGlb)
       .map((th) => [
         "scene:" + th.id,
-        { key: "scene:" + th.id, label: "SCENERY " + th.id.toUpperCase(), url: th.sceneGlb! },
+        {
+          key: "scene:" + th.id,
+          label: "SCENERY " + th.id.toUpperCase(),
+          url: th.sceneGlb!,
+          day: th.timeOfDay === "day",
+        },
       ]),
   ).values(),
 ];
@@ -191,6 +199,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
     ...CITY_ASSETS.map((c) => c.url),
     ...ASPHALT_ASSETS.map((a) => a.candidates[0]),
     ...GROUND_ASSETS.map((a) => a.candidates[0]),
+    ...SKY_ASSETS.map((a) => a.candidates[0]),
     ...SCENE_ASSETS.map((a) => a.url),
     ...DECODER_URLS,
   ];
@@ -213,6 +222,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
   for (const c of CITY_ASSETS) unit("city:" + c.set, c.label, c.url);
   for (const a of ASPHALT_ASSETS) unit(a.key, a.label, a.candidates[0]);
   for (const a of GROUND_ASSETS) unit(a.key, a.label, a.candidates[0]);
+  for (const a of SKY_ASSETS) unit(a.key, a.label, a.candidates[0]);
   for (const a of SCENE_ASSETS) unit(a.key, a.label, a.url);
   {
     // one unit for the whole decoder payload (5 small files)
@@ -362,7 +372,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
         u.state = "loading";
         setLabel(u, "LOADING");
         emit();
-      })
+      }, a.day)
         .then(() => {
           u.state = "done";
           u.bakeFrac = 1;
@@ -370,6 +380,35 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
         })
         .catch(() => {
           u.state = "error"; // race builds on ground + stars — game is fine
+          emit(true);
+        }),
+    );
+  }
+
+  // daytime sky models (sun disc + cloud template) — parsed into the
+  // DaySky module caches so races clone for free; fail-soft (a missing
+  // model just leaves the sky undressed)
+  const skyLoaders: Record<string, (cb?: (l: number, t: number) => void) => Promise<unknown>> = {
+    "sky:sun": loadSunTemplate,
+    "sky:cloud": loadCloudTemplate,
+  };
+  for (const a of SKY_ASSETS) {
+    const u = units.find((x) => x.key === a.key)!;
+    jobs.push(
+      skyLoaders[a.key]((loaded, total) => {
+        u.loaded = loaded;
+        if (!u.total && total) u.total = total;
+        u.state = "loading";
+        setLabel(u, "LOADING");
+        emit();
+      })
+        .then(() => {
+          u.state = "done";
+          u.bakeFrac = 1;
+          emit(true);
+        })
+        .catch(() => {
+          u.state = "error";
           emit(true);
         }),
     );

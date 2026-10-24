@@ -60,3 +60,7 @@ public/staging/
 
 # agent verification artifacts (local only)
 tool-results/
+
+# local sandbox stub — never commit
+skills/
+node_modules/

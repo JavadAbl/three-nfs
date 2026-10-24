@@ -22,7 +22,7 @@ import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityMo
 import { ASPHALT_FILES, asphaltCandidates, groundCandidates } from "../world/Track";
 import { ENV_THEMES } from "../maps/registry";
 import { loadSpaScene } from "../world/SpaScene";
-import { loadSunTemplate, loadCloudTemplate, SKY_ASSETS } from "../world/DaySky";
+import { loadDaySkyTexture, SKY_ASSETS } from "../world/DaySky";
 
 /** decoder + transcoder payloads the loaders fetch on first use — warming them
  * through the service worker means session 2+ starts with zero downloads. */
@@ -385,12 +385,11 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
     );
   }
 
-  // daytime sky models (sun disc + cloud template) — parsed into the
-  // DaySky module caches so races clone for free; fail-soft (a missing
-  // model just leaves the sky undressed)
+  // daytime sky panorama — parsed + uploaded into the DaySky module cache
+  // so races apply it for free; fail-soft (a missing file leaves the flat
+  // palette background)
   const skyLoaders: Record<string, (cb?: (l: number, t: number) => void) => Promise<unknown>> = {
-    "sky:sun": loadSunTemplate,
-    "sky:cloud": loadCloudTemplate,
+    "sky:hdri": loadDaySkyTexture,
   };
   for (const a of SKY_ASSETS) {
     const u = units.find((x) => x.key === a.key)!;

@@ -111,7 +111,7 @@ export class Game {
   private raf = 0;
   private disposed = false;
   private moon: THREE.DirectionalLight;
-  /** daytime sky dressing (sun disc + clouds); null on night maps */
+  /** daytime sky system (HDR panorama background + IBL); null on night maps */
   private daySky: DaySky | null = null;
   /** true when the map's env theme plays at day (SPA '92) — rerigs lights,
    * fog, exposure, IBL and disables the night emissive lifts everywhere */
@@ -282,10 +282,9 @@ export class Game {
     this.city = new CityEnvironment(this.track, envTheme);
     this.scene.add(this.city.group);
     this.scene.add(this.particles.points);
-    // daytime maps dress the sky: the uploaded sun disc + drifting clouds
+    // daytime maps dress the sky: the HDR panorama becomes background + IBL
     if (this.day) {
-      this.daySky = new DaySky(this.track.groundExtent);
-      this.scene.add(this.daySky.group);
+      this.daySky = new DaySky(this.scene, this.renderer);
     }
 
     // ── cars ──

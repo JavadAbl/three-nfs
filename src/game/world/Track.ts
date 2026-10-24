@@ -77,8 +77,57 @@ export class Track {
   /** sample indices that mark each checkpoint gate */
   checkpointIndices: number[] = [];
   group = new THREE.Group();
+  /** true when any control point sits above y=0 — enables the
+   *  terrain-follows-road ground + building anchoring */
+  readonly hasElevation: boolean;
+  /** coarse spatial grid (cell -> sample indices) so terrainHeightAt()
+   *  doesn't scan all N samples per query (40k ground verts at build) */
+  private sampleGrid = new Map<string, number[]>();
+  private static readonly GRID_CELL = 40;
   /** fully-resolved look for this map (road, lines, lamps, finish) */
   private readonly P: ReturnType<typeof resolveMapPalette>;
+
+  /** World y of the terrain at (x, z): blends the road's elevation down to
+   *  the flat base plane so hills get real embankments instead of floating
+   *  ribbons. Flat maps (all control points y=0) return the base plane
+   *  height unchanged, so city/harbor behave exactly as before.
+   *  - within halfWidth+4m of the centre line: terrain = road height
+   *    (shoulders sit flush with the tarmac edge, no gap to see through)
+   *  - blending out over 46m: smoothstep embankment, flat beyond */
+  terrainHeightAt(x: number, z: number): number {
+    const BASE = -0.4;
+    if (!this.hasElevation) return BASE;
+    const cell = Track.GRID_CELL;
+    const cx = Math.floor(x / cell);
+    const cz = Math.floor(z / cell);
+    // ring search: nearest sample within 2 cells (80m) is plenty — the
+    // blend reaches zero at ~62m from the centre line
+    let bestD2 = Infinity;
+    let bestY = 0;
+    for (let rx = -2; rx <= 2; rx++) {
+      for (let rz = -2; rz <= 2; rz++) {
+        const ids = this.sampleGrid.get(`${cx + rx},${cz + rz}`);
+        if (!ids) continue;
+        for (const i of ids) {
+          const p = this.samples[i].pos;
+          const d2 = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z);
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            bestY = p.y;
+          }
+        }
+      }
+    }
+    if (bestD2 === Infinity) return BASE;
+    const d = Math.sqrt(bestD2);
+    const inner = this.halfWidth + 4;
+    const outer = inner + 46;
+    if (d <= inner) return bestY;
+    if (d >= outer) return BASE;
+    const t = (d - inner) / (outer - inner);
+    const w = t * t * (3 - 2 * t); // smoothstep
+    return BASE + (bestY - BASE) * (1 - w);
+  }
 
   /**
    * Build a circuit from a registry MapDef. Unspecified fields fall back to
@@ -97,6 +146,7 @@ export class Track {
     this.halfWidth = def.roadHalfWidth ?? GAME_CONFIG.ROAD_HALF_WIDTH;
     this.railLateral = this.halfWidth + 1.4;
     this.checkpointCount = def.checkpoints ?? GAME_CONFIG.CHECKPOINTS;
+    this.hasElevation = pts.some((p) => Math.abs(p.y) > 0.01);
     const positions = this.curve.getSpacedPoints(N);
     // getSpacedPoints(N) returns N+1 points with last == first; drop duplicate
     positions.pop();
@@ -122,6 +172,18 @@ export class Track {
     this.buildMarkings();
     this.buildRails();
     this.buildStartGate();
+
+    // terrain grid: index every 2nd sample into 40m cells (height queries)
+    if (this.hasElevation) {
+      const cell = Track.GRID_CELL;
+      for (let i = 0; i < N; i += 2) {
+        const p = this.samples[i].pos;
+        const key = `${Math.floor(p.x / cell)},${Math.floor(p.z / cell)}`;
+        const arr = this.sampleGrid.get(key);
+        if (arr) arr.push(i);
+        else this.sampleGrid.set(key, [i]);
+      }
+    }
   }
 
   // ─── geometry construction ──────────────────────────────────────────────

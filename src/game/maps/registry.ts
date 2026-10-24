@@ -335,30 +335,30 @@ export const MAP_LIBRARY: MapDef[] = [
       [0, 0, 0],
       [55, 0, -5],
       [110, 0, -18], // right sweep opens
-      [150, 0, -55],
-      [145, 0, -100], // S1: bend back left
-      [100, 0, -125],
-      [55, 0, -100], // S2: ess right
-      [15, 0, -125],
-      [10, 0, -170], // carousel down the left
-      [50, 0, -205],
-      [105, 0, -215],
-      [150, 0, -245], // kink right
-      [210, 0, -245],
-      [250, 0, -282], // hairpin apex 1 (right)
-      [242, 0, -322], // hairpin apex 2
-      [192, 0, -340],
-      [130, 0, -318], // rhythm section: left/right/left kinks
-      [88, 0, -300],
-      [42, 0, -322],
-      [-4, 0, -298],
-      [-50, 0, -312],
-      [-95, 0, -330], // big left carousel
-      [-140, 0, -300],
-      [-130, 0, -255],
-      [-96, 0, -210], // return: right sweeper
-      [-76, 0, -160], // flowing NE over the crest
-      [-112, 0, -118], // left sweeper
+      [150, 1, -55],
+      [145, 2, -100], // S1: bend back left
+      [100, 3, -125],
+      [55, 4, -100], // S2: ess right
+      [15, 5, -125],
+      [10, 6, -170], // carousel down the left
+      [50, 6.5, -205],
+      [105, 7, -215],
+      [150, 7.5, -245], // kink right
+      [210, 8, -245],
+      [250, 8.5, -282], // hairpin apex 1 (right)
+      [242, 8, -322], // hairpin apex 2
+      [192, 7, -340],
+      [130, 6, -318], // rhythm section: left/right/left kinks
+      [88, 5, -300],
+      [42, 4, -322],
+      [-4, 3, -298],
+      [-50, 2.5, -312],
+      [-95, 2, -330], // big left carousel
+      [-140, 1.5, -300],
+      [-130, 1, -255],
+      [-96, 0.5, -210], // return: right sweeper
+      [-76, 1.5, -160], // flowing NE over the crest
+      [-112, 0.5, -118], // left sweeper
       [-158, 0, -98], // final carousel apex 1 (right)
       [-158, 0, -58], // final carousel apex 2
       [-100, 0, -28], // exit onto the straight

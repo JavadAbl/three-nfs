@@ -23,7 +23,7 @@ export class CityEnvironment {
   /** builds the world furniture from a map's environment theme */
   constructor(track: Track, theme: EnvThemeSpec = ENV_THEMES.city) {
     this.theme = theme;
-    this.group.add(this.makeGround());
+    this.group.add(this.makeGround(track));
     this.group.add(this.makeStars());
     this.buildBuildings(track);
     if (theme.containers) this.buildContainers(track, theme.containers);
@@ -52,13 +52,30 @@ export class CityEnvironment {
     this.modelsUpgraded = true;
   }
 
-  private makeGround(): THREE.Mesh {
-    const geo = new THREE.PlaneGeometry(2200, 2200, 1, 1);
+  private makeGround(track: Track): THREE.Mesh {
+    // elevated circuits (NEON TOUGE) get a displaced heightfield that
+    // follows the road — real embankments under every climb instead of a
+    // ribbon floating over a pancake. Flat maps keep the cheap 1x1 plane:
+    // identical output, zero extra verts.
+    const geo = track.hasElevation
+      ? new THREE.PlaneGeometry(2200, 2200, 220, 220)
+      : new THREE.PlaneGeometry(2200, 2200, 1, 1);
+    if (track.hasElevation) {
+      geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) {
+        pos.setY(i, track.terrainHeightAt(pos.getX(i), pos.getZ(i)));
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+    }
     const mat = new THREE.MeshStandardMaterial({ color: this.theme.groundColor, roughness: 1 });
     this.applyPbrGround(mat);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = -0.4;
+    if (!track.hasElevation) {
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = -0.4;
+    }
     mesh.receiveShadow = true;
     return mesh;
   }
@@ -207,7 +224,8 @@ export class CityEnvironment {
         const w = T.minWidth + Math.random() * T.widthSpan;
         const d = T.minWidth + Math.random() * T.widthSpan;
         m.makeScale(w, h, d);
-        m.setPosition(c.x, -0.4, c.z);
+        // sit on the terrain (elevated circuits), else the flat base plane
+        m.setPosition(c.x, track.terrainHeightAt(c.x, c.z), c.z);
         inst.setMatrixAt(i, m);
         // subtle per-instance tint
         const t = 0.95 + Math.random() * 0.35;
@@ -323,7 +341,8 @@ export class CityEnvironment {
         const inst = new THREE.InstancedMesh(part.geometry, part.material, list.length);
         inst.frustumCulled = false; // instances span the whole map
         list.forEach((p, i) => {
-          pos.set(p.x, -0.4, p.z);
+          // sit on the terrain (elevated circuits), else the flat base plane
+          pos.set(p.x, track.terrainHeightAt(p.x, p.z), p.z);
           q.setFromAxisAngle(up, p.rot);
           scl.setScalar(p.scale);
           m.compose(pos, q, scl);

@@ -20,11 +20,13 @@ const ASPHALT_TEX_TINT = 0x4a4a4a;
  *  lit facades (VLM: "road ahead falls into deep shadow"). */
 const ASPHALT_EMISSIVE = 0.34;
 
-/** Texture revision — bump when swapping the scanned asphalt set: browsers
- *  cache the old JPGs under the same URL and serve stale bytes (this exact
- *  trap made a texture swap look like a no-op in testing). ?v= forces the
- *  refetch for every user, not just dev. */
-const ASPHALT_REV = 3;
+/** Road texture revision — bump on every asphalt set swap. The URL query
+ *  is the invalidation lever for BOTH cache layers (the 1-year immutable
+ *  HTTP header in next.config.ts and the sw.js stale-while-revalidate
+ *  bucket): same ?v= after an in-place file swap = browsers keep serving
+ *  the old bytes (that's exactly how "the asphalt is same as before"
+ *  happened after the Damage001 -> Asphalt009 swap). */
+const ASPHALT_REV = 4;
 
 /** scanned-asphalt file names — the AssetPreloader warms exactly these so
  * the race never downloads ~12MB of road textures mid-drive. */

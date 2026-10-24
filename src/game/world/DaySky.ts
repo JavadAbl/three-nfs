@@ -13,10 +13,15 @@
 // hdri_cloud_bands.mjs — because the visible wedge shows photo elevations
 // [sun_el − 15°, +28°] after the tilt: sunflowers holds 52% cloud cover in
 // that band vs kloofendal_48d's 13%), 2k, preprocessed by scripts/
-// hdr_patch.mjs:
-//  - the below-photo-horizon half (a mirrored blur of the sky) is painted
-//    into a smooth per-column gradient, because we tilt the panorama ~42°
-//    to bring its sun down to SUN_DIR and would otherwise expose it;
+// hdr_repatch.mjs:
+//  - the below-photo-horizon half is painted as a WORLD-SPACE haze wedge:
+//    the real sky colour of each column at the photo horizon fading to the
+//    game fog colour (linear 0xb9d2e2) at the world horizon. The ~34° tilt
+//    that drags the photo sun down to SUN_DIR lifts the photo horizon up to
+//    34° ABOVE the terrain on the anti-sun arc (world az 135°..300°), so the
+//    paint is visible there — it must read as haze that the fogged terrain
+//    silhouette melts into (v6; the old v5 paint was a flat per-column
+//    gradient that read as a tilted "sea" line colliding with the terrain);
 //  - re-encoded with three's own RGBE decode convention (×255, not ×256).
 //
 // SUN PLACEMENT: the photo's sun sits at elevation ~57°, above the chase
@@ -41,8 +46,13 @@ import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 export const SUN_DIR = new THREE.Vector3(500, 160, 325).normalize();
 
 /** file revision — bump when swapping the HDR in place (immutable cache +
- *  SW bucket invalidation, same lesson as ASPHALT_REV). */
-const SKY_REV = 5;
+ *  SW bucket invalidation, same lesson as ASPHALT_REV). v6: below-horizon
+ *  repaint — the old per-column "water" gradient floated up to 34° above the
+ *  terrain on the anti-sun side (the tilt lifts the photo horizon there);
+ *  now a world-space haze wedge: real sky colour at the photo horizon fading
+ *  to the fog colour (0xb9d2e2 linear) at the world horizon, so the terrain
+ *  silhouette melts into sky (scripts/hdr_repatch.mjs). */
+const SKY_REV = 6;
 
 /** the shipped panorama (patched: gradient below-horizon fill; this file
  * is already EV-normalised — sky ~0.5, sun ~6.4e4 — so no scale was baked).

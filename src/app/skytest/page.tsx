@@ -42,7 +42,7 @@ export default function SkyTest() {
     if (new URLSearchParams(window.location.search).get("type") === "float")
       loader.setDataType(THREE.FloatType);
     loader.load(
-      "/models/sky/sunflowers_puresky_2k.hdr?v=5",
+      "/models/sky/sunflowers_puresky_2k.hdr?v=6",
       (tex: THREE.DataTexture) => {
         tex.mapping = THREE.EquirectangularReflectionMapping;
         scene.background = tex;

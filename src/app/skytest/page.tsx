@@ -1,16 +1,16 @@
 "use client";
 
 // /skytest — isolated DaySky harness for headless verification.
-// Renders ONLY: HDR background (rotated exactly like DaySky), the PMREM
-// environment, one grey reference box, the sun directional from SUN_DIR.
-// No track, no cars, no HUD — if the sky is broken HERE it's either the
-// HDR/rotation or a SwiftShader sampling failure, not the game wiring.
+// Renders ONLY: HDR background (unrotated, exactly like DaySky — the v7 bake
+// is world-aligned), the PMREM environment, one grey reference box, the sun
+// directional from SUN_DIR. No track, no cars, no HUD — if the sky is broken
+// HERE it's either the HDR or a SwiftShader sampling failure, not the game
+// wiring.
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 
 const SUN_DIR = new THREE.Vector3(500, 160, 325).normalize();
-const HDR_SUN_DIR = new THREE.Vector3(0.5335, 0.7506, 0.3898).normalize();
 
 export default function SkyTest() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -33,23 +33,18 @@ export default function SkyTest() {
     // pitch camera slightly up so the sun at 15 deg elevation frames
     camera.lookAt(new THREE.Vector3(0, 8, 20));
 
-    const q = new THREE.Quaternion().setFromUnitVectors(HDR_SUN_DIR, SUN_DIR);
-    const euler = new THREE.Euler().setFromQuaternion(q, "XYZ");
-
     // ?type=float → RGBA32F instead of the default RGBA16F (SwiftShader
     // half-float sampling is the prime suspect for the white-out)
     const loader = new HDRLoader();
     if (new URLSearchParams(window.location.search).get("type") === "float")
       loader.setDataType(THREE.FloatType);
     loader.load(
-      "/models/sky/sunflowers_puresky_2k.hdr?v=6",
+      "/models/sky/sunflowers_puresky_2k.hdr?v=7",
       (tex: THREE.DataTexture) => {
         tex.mapping = THREE.EquirectangularReflectionMapping;
         scene.background = tex;
-        scene.backgroundRotation = euler;
         const pmrem = new THREE.PMREMGenerator(renderer);
         scene.environment = pmrem.fromEquirectangular(tex).texture;
-        scene.environmentRotation = euler;
         pmrem.dispose();
         // expose for eval diagnostics
         (window as unknown as Record<string, unknown>).__skytest = { renderer, scene, camera, tex };

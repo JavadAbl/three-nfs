@@ -364,8 +364,14 @@ function CameraControls({
 // ─── Minimap: canvas drawn straight from the game (no React re-render) ──────
 function Minimap({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const outlineRef = useRef<{ x: number; z: number }[] | null>(null);
-  const boundsRef = useRef<{ minX: number; minZ: number; scale: number } | null>(null);
+  // outline pre-transformed to canvas px, built once — the track never moves.
+  // PERF: the old tx()/tz() closures ran outline.map() + Math.max(...) on
+  // EVERY coordinate of EVERY frame: O(N²)/frame, ~0.1 ms on 800-sample
+  // downtown but 162 ms/frame measured on the 2200-sample SPA '92 — the map
+  // was unplayable at ~5 fps while the 3D scene itself was lighter than the
+  // touge. Constants are now computed in the init block and reused.
+  const pathPxRef = useRef<{ x: number; y: number }[] | null>(null);
+  const boundsRef = useRef<{ minX: number; minZ: number; scale: number; ox: number; oy: number } | null>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -379,29 +385,33 @@ function Minimap({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
       const W = canvas.width;
       const H = canvas.height;
 
-      if (!outlineRef.current) {
-        const data = game.getMinimapData();
-        outlineRef.current = data.outline;
-        const xs = data.outline.map((p) => p.x);
-        const zs = data.outline.map((p) => p.z);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minZ = Math.min(...zs);
-        const maxZ = Math.max(...zs);
+      if (!pathPxRef.current) {
+        const outline = game.getMinimapData().outline;
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+        for (const p of outline) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.z < minZ) minZ = p.z;
+          if (p.z > maxZ) maxZ = p.z;
+        }
         const pad = 14;
         const scale = Math.min((W - pad * 2) / (maxX - minX), (H - pad * 2) / (maxZ - minZ));
-        boundsRef.current = { minX, minZ, scale };
+        // centre the scaled track in the canvas — constants, computed once
+        const ox = (W - (maxX - minX) * scale) / 2;
+        const oy = (H - (maxZ - minZ) * scale) / 2;
+        pathPxRef.current = outline.map((p) => ({ x: (p.x - minX) * scale + ox, y: (p.z - minZ) * scale + oy }));
+        boundsRef.current = { minX, minZ, scale, ox, oy };
       }
-      const { minX, minZ, scale } = boundsRef.current!;
-      const tx = (x: number) => (x - minX) * scale + (W - (Math.max(...outlineRef.current!.map((p) => p.x)) - minX) * scale) / 2;
-      const tz = (z: number) => (z - minZ) * scale + (H - (Math.max(...outlineRef.current!.map((p) => p.z)) - minZ) * scale) / 2;
+      const { minX, minZ, scale, ox, oy } = boundsRef.current!;
+      const tx = (x: number) => (x - minX) * scale + ox;
+      const tz = (z: number) => (z - minZ) * scale + oy;
 
       ctx.clearRect(0, 0, W, H);
-      // track ribbon
+      // track ribbon — already in canvas px, just walk it
       ctx.beginPath();
-      const outline = outlineRef.current!;
-      ctx.moveTo(tx(outline[0].x), tz(outline[0].z));
-      for (const p of outline) ctx.lineTo(tx(p.x), tz(p.z));
+      const pts = pathPxRef.current!;
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
       ctx.closePath();
       ctx.strokeStyle = "rgba(160,160,170,0.85)";
       ctx.lineWidth = 5;

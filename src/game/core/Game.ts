@@ -492,9 +492,18 @@ export class Game {
     this.camera.updateProjectionMatrix();
   };
 
+  /** minimap outline is static for a race — cached on first read. The HUD
+   * minimap redraws every rAF (it only needs the cars) but used to pay for
+   * a fresh 2200-object outline array on every call: pure GC churn that
+   * scaled with track length (worst on the 6.95 km spa). */
+  private minimapOutline?: { x: number; z: number }[];
+
   getMinimapData() {
+    if (!this.minimapOutline) {
+      this.minimapOutline = this.track.samples.map((s) => ({ x: s.pos.x, z: s.pos.z }));
+    }
     return {
-      outline: this.track.samples.map((s) => ({ x: s.pos.x, z: s.pos.z })),
+      outline: this.minimapOutline,
       cars: this.allCars.concat([...this.remotes.values()].map((r) => r.car)).map((c) => ({
         x: c.pos.x,
         z: c.pos.z,

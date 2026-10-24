@@ -21,6 +21,7 @@ import { loadCarModel } from "../world/CarModelLoader";
 import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityModels";
 import { ASPHALT_FILES, asphaltCandidates, groundCandidates } from "../world/Track";
 import { ENV_THEMES } from "../maps/registry";
+import { loadSpaScene } from "../world/SpaScene";
 
 /** decoder + transcoder payloads the loaders fetch on first use — warming them
  * through the service worker means session 2+ starts with zero downloads. */
@@ -166,6 +167,22 @@ const GROUND_ASSETS = [
   ).values(),
 ];
 
+// imported-scenery GLBs (SPA '92's own model). Keyed by URL — deduped like
+// the ground sets in case a future theme shares a file. The 21 MB spa scene
+// is the single biggest asset in the game, so it needs the loading bar more
+// than anything else; the module cache in SpaScene hands the parsed group to
+// the race for free afterwards.
+const SCENE_ASSETS = [
+  ...new Map(
+    Object.values(ENV_THEMES)
+      .filter((th) => th.sceneGlb)
+      .map((th) => [
+        "scene:" + th.id,
+        { key: "scene:" + th.id, label: "SCENERY " + th.id.toUpperCase(), url: th.sceneGlb! },
+      ]),
+  ).values(),
+];
+
 /** preload EVERYTHING the game can load, emitting boot progress. Always
  * resolves (units fail soft) — the loading screen must never trap the user. */
 export async function preloadGameAssets(onProgress: Emit): Promise<void> {
@@ -174,6 +191,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
     ...CITY_ASSETS.map((c) => c.url),
     ...ASPHALT_ASSETS.map((a) => a.candidates[0]),
     ...GROUND_ASSETS.map((a) => a.candidates[0]),
+    ...SCENE_ASSETS.map((a) => a.url),
     ...DECODER_URLS,
   ];
   const seeds = await seedSizes(primaryUrls);
@@ -195,6 +213,7 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
   for (const c of CITY_ASSETS) unit("city:" + c.set, c.label, c.url);
   for (const a of ASPHALT_ASSETS) unit(a.key, a.label, a.candidates[0]);
   for (const a of GROUND_ASSETS) unit(a.key, a.label, a.candidates[0]);
+  for (const a of SCENE_ASSETS) unit(a.key, a.label, a.url);
   {
     // one unit for the whole decoder payload (5 small files)
     unit("decoders", "GPU DECODERS");
@@ -329,6 +348,28 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
         })
         .catch(() => {
           u.state = "error"; // flat ground stays — game is fine
+          emit(true);
+        }),
+    );
+  }
+
+  for (const a of SCENE_ASSETS) {
+    const u = units.find((x) => x.key === a.key)!;
+    jobs.push(
+      loadSpaScene(a.url, (loaded, total) => {
+        u.loaded = loaded;
+        if (!u.total && total) u.total = total;
+        u.state = "loading";
+        setLabel(u, "LOADING");
+        emit();
+      })
+        .then(() => {
+          u.state = "done";
+          u.bakeFrac = 1;
+          emit(true);
+        })
+        .catch(() => {
+          u.state = "error"; // race builds on ground + stars — game is fine
           emit(true);
         }),
     );

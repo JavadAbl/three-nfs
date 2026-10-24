@@ -91,6 +91,10 @@ export interface EnvThemeSpec {
   cranes?: CraneSpec;
   /** real-model city scatter tuning (defaults inlined at read site) */
   modelCity?: ModelCitySpec;
+  /** the theme brings its own imported scenery GLB (placed by
+   * world/SpaScene.ts): procedural boxes AND the city-model scatter are
+   * skipped — the file's forests/barriers/buildings ARE the environment */
+  sceneGlb?: string;
   /** the theme's own scanned ground set */
   ground: GroundSpec;
 }
@@ -250,7 +254,11 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [0xffc27a, 0x22d3a7],
     starCount: 1200,
     neonCount: 0,
-    modelCity: { modelSpacing: 90, heroCount: 0, maxTowerHeight: 40 },
+    // the map's own GLB — pine forests, catch fencing, tire walls, pit
+    // buildings, grandstands — imported and placed by SpaScene.ts; the
+    // ?v= rev guards the double browser cache (HTTP immutable + SW bucket)
+    // against future in-place swaps of the same path (ASPHALT_REV lesson)
+    sceneGlb: "/models/spa/spa-92-scene.glb?v=1",
     ground: {
       dir: "touge",
       files: ["touge-2k-color.jpg", "touge-2k-normal.jpg", "touge-2k-rough.jpg"],

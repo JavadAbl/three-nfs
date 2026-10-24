@@ -4,6 +4,7 @@ import type { Track } from "./Track";
 import { groundCandidates } from "./Track";
 import { ENV_THEMES, type EnvThemeSpec } from "../maps/registry";
 import { loadCityModels, type BuildingProto } from "./CityModels";
+import { loadSpaScene } from "./SpaScene";
 
 // Per-map ground sets live in EnvThemeSpec.ground (maps/registry):
 // downtown = worn concrete plaza, harbor = packed gravel yard,
@@ -25,11 +26,33 @@ export class CityEnvironment {
     this.theme = theme;
     this.group.add(this.makeGround(track));
     this.group.add(this.makeStars());
-    this.buildBuildings(track);
+    if (theme.sceneGlb) {
+      // imported-scenery map (SPA '92): the model's own forests, fencing,
+      // tire walls and pit buildings ARE the environment — no procedural
+      // boxes, no city-set scatter (nothing to upgrade out of either)
+      void this.buildImportedScene(theme.sceneGlb);
+    } else {
+      this.buildBuildings(track);
+      // async upgrade: real building models pop in over the fallback boxes
+      void this.upgradeToModels(track);
+    }
     if (theme.containers) this.buildContainers(track, theme.containers);
     if (theme.cranes) this.buildCranes(track, theme.cranes);
-    // async upgrade: real building models pop in over the fallback boxes
-    void this.upgradeToModels(track);
+  }
+
+  /** add the theme's imported scenery GLB (cached + tuned by SpaScene.ts).
+   * Silent-fail: a missed download leaves the race on ground + stars, still
+   * fully playable — matches the texture-fallback philosophy elsewhere. */
+  private async buildImportedScene(url: string) {
+    let scene: THREE.Group | null = null;
+    try {
+      scene = await loadSpaScene(url);
+    } catch (e) {
+      console.warn("[CityEnvironment] imported scene failed:", e);
+      return;
+    }
+    if (this.disposed || !scene) return;
+    this.group.add(scene);
   }
 
   /** swap the procedural boxes for the extracted building sets */

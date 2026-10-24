@@ -84,6 +84,10 @@ export class Track {
    *  doesn't scan all N samples per query (40k ground verts at build) */
   private sampleGrid = new Map<string, number[]>();
   private static readonly GRID_CELL = 40;
+  /** how far the tarmac rides above the terrain inside the road corridor —
+   *  keeps heightfield triangle interpolation (chords over dips) from ever
+   *  covering the asphalt; 7cm reads as a natural road-bed lip, not a step */
+  private static readonly ROAD_CLEARANCE = 0.07;
   /** fully-resolved look for this map (road, lines, lamps, finish) */
   private readonly P: ReturnType<typeof resolveMapPalette>;
 
@@ -91,8 +95,11 @@ export class Track {
    *  the flat base plane so hills get real embankments instead of floating
    *  ribbons. Flat maps (all control points y=0) return the base plane
    *  height unchanged, so city/harbor behave exactly as before.
-   *  - within halfWidth+4m of the centre line: terrain = road height
-   *    (shoulders sit flush with the tarmac edge, no gap to see through)
+   *  - within halfWidth+4m of the centre line: terrain = exact curve height
+   *    MINUS ROAD_CLEARANCE — the tarmac rides a few cm proud of the
+   *    shoulder (like a real road bed) so heightfield triangle interpolation
+   *    can never poke through the asphalt. Returning the nearest stored
+   *    sample's own Y here instead used to bury the road on every grade.
    *  - blending out over 46m: smoothstep embankment, flat beyond */
   terrainHeightAt(x: number, z: number): number {
     const BASE = -0.4;
@@ -100,10 +107,10 @@ export class Track {
     const cell = Track.GRID_CELL;
     const cx = Math.floor(x / cell);
     const cz = Math.floor(z / cell);
-    // ring search: nearest sample within 2 cells (80m) is plenty — the
-    // blend reaches zero at ~62m from the centre line
+    // ring search: nearest indexed sample within 2 cells (80m) is plenty —
+    // the blend reaches zero at ~62m from the centre line
     let bestD2 = Infinity;
-    let bestY = 0;
+    let bestIdx = 0;
     for (let rx = -2; rx <= 2; rx++) {
       for (let rz = -2; rz <= 2; rz++) {
         const ids = this.sampleGrid.get(`${cx + rx},${cz + rz}`);
@@ -113,20 +120,45 @@ export class Track {
           const d2 = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z);
           if (d2 < bestD2) {
             bestD2 = d2;
-            bestY = p.y;
+            bestIdx = i;
           }
         }
       }
     }
     if (bestD2 === Infinity) return BASE;
-    const d = Math.sqrt(bestD2);
+
+    // project (x,z) onto the sample polyline around the nearest indexed
+    // sample: that gives the road's exact height AND true perpendicular
+    // distance here — not the height of a sample up/down the hill.
+    const N = this.sampleCount;
+    let projD2 = Infinity;
+    let projY = 0;
+    for (let k = -2; k <= 1; k++) {
+      const a = this.samples[(bestIdx + k + N) % N].pos;
+      const b = this.samples[(bestIdx + k + 1 + N) % N].pos;
+      const abx = b.x - a.x;
+      const abz = b.z - a.z;
+      const len2 = abx * abx + abz * abz;
+      let t = len2 > 0 ? ((x - a.x) * abx + (z - a.z) * abz) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const px = a.x + abx * t;
+      const pz = a.z + abz * t;
+      const d2 = (px - x) * (px - x) + (pz - z) * (pz - z);
+      if (d2 < projD2) {
+        projD2 = d2;
+        projY = a.y + (b.y - a.y) * t;
+      }
+    }
+
+    const d = Math.sqrt(projD2);
+    const roadY = projY - Track.ROAD_CLEARANCE;
     const inner = this.halfWidth + 4;
     const outer = inner + 46;
-    if (d <= inner) return bestY;
+    if (d <= inner) return roadY;
     if (d >= outer) return BASE;
     const t = (d - inner) / (outer - inner);
     const w = t * t * (3 - 2 * t); // smoothstep
-    return BASE + (bestY - BASE) * (1 - w);
+    return BASE + (roadY - BASE) * (1 - w);
   }
 
   /**

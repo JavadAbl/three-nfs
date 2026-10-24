@@ -57,8 +57,10 @@ export class CityEnvironment {
     // follows the road — real embankments under every climb instead of a
     // ribbon floating over a pancake. Flat maps keep the cheap 1x1 plane:
     // identical output, zero extra verts.
+    // 360 segments = 6.1m cells: chords over dips err by ~L²/8R, which at
+    // this density stays under the road's 7cm clearance even on the crest.
     const geo = track.hasElevation
-      ? new THREE.PlaneGeometry(2200, 2200, 220, 220)
+      ? new THREE.PlaneGeometry(2200, 2200, 360, 360)
       : new THREE.PlaneGeometry(2200, 2200, 1, 1);
     if (track.hasElevation) {
       geo.rotateX(-Math.PI / 2);

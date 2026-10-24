@@ -27,9 +27,9 @@ const _clamped = new THREE.Vector3();
  *  timeOfDay BEFORE constructing cars (module-level on purpose: cars are
  *  built in several places and all of them belong to one race); default
  *  true keeps every existing night map identical. Daytime maps run with
- *  beams off: the sun rig outshines them, and skipping the per-car
- *  spotlights saves real per-frame shading cost. Lamp glow sprites stay on
- *  either way — cars running with lights on at day read as alive. */
+ *  ALL lamp furniture off: beams (perf), glow sprites and the neon
+ *  underglow read wrong under a full sun, so day cars carry dark lens
+ *  boxes only — lights-off, as real cars do at noon. */
 let nightLights = true;
 export function setCarNightLights(v: boolean): void {
   nightLights = v;
@@ -138,40 +138,44 @@ export class Car {
     this.collHalfW = THREE.MathUtils.clamp(d.width / 2, 0.85, 1.5);
     this.collHalfL = THREE.MathUtils.clamp(d.length / 2, 2.0, 3.0);
 
-    // lights
-    const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
+    // lights — day maps get a dark lens instead of the lit-warm lamp face
+    const headMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xfff2cf : 0x4d5157 });
     this.owned.push(headMat);
     for (const sx of [1, -1]) {
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.06), headMat);
       head.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ - 0.02);
       this.bodyGroup.add(head);
     }
-    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    const tailMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xff2222 : 0x571c1c });
     this.owned.push(tailMat);
     for (const sx of [1, -1]) {
       const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.06), tailMat);
       tail.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.02);
       this.bodyGroup.add(tail);
     }
+    let glowTex: THREE.Texture | null = null;
     // red bloom sprites at the tail lights — rivals ship baked emissive
     // tails (GT-R "taillight" @ 1.0); models without them looked dark
-    // from the chase cam, so every model car gets the same night glow
-    const glowTex = radialGlowTexture();
-    const tailGlowMat = new THREE.MeshBasicMaterial({
-      map: glowTex,
-      color: 0xff2a1a,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    this.owned.push(tailGlowMat, glowTex);
-    for (const sx of [1, -1]) {
-      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
-      glow.rotation.y = Math.PI; // face rearward
-      glow.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.07);
-      glow.renderOrder = 3;
-      this.bodyGroup.add(glow);
+    // from the chase cam, so every model car gets the same night glow.
+    // Night only: at day the additive flare reads as lights-on.
+    if (nightLights) {
+      glowTex = radialGlowTexture();
+      const tailGlowMat = new THREE.MeshBasicMaterial({
+        map: glowTex,
+        color: 0xff2a1a,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.owned.push(tailGlowMat, glowTex);
+      for (const sx of [1, -1]) {
+        const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
+        glow.rotation.y = Math.PI; // face rearward
+        glow.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.07);
+        glow.renderOrder = 3;
+        this.bodyGroup.add(glow);
+      }
     }
     this.brakeLights = new THREE.Mesh(
       new THREE.BoxGeometry(d.width * 0.8, 0.09, 0.06),
@@ -206,27 +210,30 @@ export class Car {
 
     // underglow — polygonOffset + clearance keeps it from z-fighting the
     // road when the body pitches/rolls over crests (looked like noise);
-    // neon-clamped so even black paint throws a visible glow
-    const glowMat = new THREE.MeshBasicMaterial({
-      map: glowTex,
-      color: neonGlowColor(this.color),
-      transparent: true,
-      opacity: 0.7,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3,
-    });
-    this.owned.push(glowMat, glowTex);
-    const underglow = new THREE.Mesh(
-      new THREE.PlaneGeometry(d.width + 0.7, d.length + 0.9),
-      glowMat
-    );
-    underglow.rotation.x = -Math.PI / 2;
-    underglow.position.y = 0.09;
-    underglow.renderOrder = 2;
-    this.bodyGroup.add(underglow);
+    // neon-clamped so even black paint throws a visible glow. Night-only:
+    // neon under daylight paint is the wrong kind of toy.
+    if (nightLights) {
+      const glowMat = new THREE.MeshBasicMaterial({
+        map: glowTex!,
+        color: neonGlowColor(this.color),
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      });
+      this.owned.push(glowMat);
+      const underglow = new THREE.Mesh(
+        new THREE.PlaneGeometry(d.width + 0.7, d.length + 0.9),
+        glowMat
+      );
+      underglow.rotation.x = -Math.PI / 2;
+      underglow.position.y = 0.09;
+      underglow.renderOrder = 2;
+      this.bodyGroup.add(underglow);
+    }
 
     this.attachHeadlightsAndLabel(d);
 
@@ -237,8 +244,7 @@ export class Car {
   private attachHeadlightsAndLabel(d: { frontZ: number; topY: number; width: number; length: number }) {
     const w2 = d.width / 2;
     // night maps only: real headlight beams. (Day maps skip them — see
-    // setCarNightLights — but keep the lamp glow sprites below: cars running
-    // with lights on at day read as alive, and it costs two tiny planes.)
+    // setCarNightLights — the glow sprites below are night-only too.)
     if (nightLights) {
       if (this.kind === "player") {
         for (const sx of [0.62, -0.62]) {
@@ -289,22 +295,25 @@ export class Car {
     if (this.kind === "remote") this.addLabel(d.topY);
 
     // headlight bloom sprites (mirrors the tail glow) so lamps flare from
-    // head-on / chase views even where the emissive boxes are sub-pixel
-    const headGlowTex = radialGlowTexture();
-    const headGlowMat = new THREE.MeshBasicMaterial({
-      map: headGlowTex,
-      color: 0xfff3d0,
-      transparent: true,
-      opacity: 0.75,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    this.owned.push(headGlowMat, headGlowTex);
-    for (const sx of [1, -1]) {
-      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), headGlowMat);
-      glow.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ + 0.07);
-      glow.renderOrder = 3;
-      this.bodyGroup.add(glow);
+    // head-on / chase views even where the emissive boxes are sub-pixel.
+    // Night furniture: skipped on day maps along with the beams above.
+    if (nightLights) {
+      const headGlowTex = radialGlowTexture();
+      const headGlowMat = new THREE.MeshBasicMaterial({
+        map: headGlowTex,
+        color: 0xfff3d0,
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.owned.push(headGlowMat, headGlowTex);
+      for (const sx of [1, -1]) {
+        const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), headGlowMat);
+        glow.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ + 0.07);
+        glow.renderOrder = 3;
+        this.bodyGroup.add(glow);
+      }
     }
   }
 
@@ -319,13 +328,13 @@ export class Car {
     const shell = buildMuscleBody(this.color);
     this.bodyGroup.add(shell.root);
 
-    // lights
-    const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
+    // lights — day maps get dark lens boxes instead of lit lamps
+    const headMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xfff2cf : 0x4d5157 });
     const headL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.08), headMat);
     headL.position.set(0.62, 0.48, 2.58);
     const headR = headL.clone();
     headR.position.x = -0.62;
-    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+    const tailMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xff2222 : 0x571c1c });
     const tailL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.08), tailMat);
     tailL.position.set(0.6, 0.62, -2.63);
     const tailR = tailL.clone();
@@ -342,23 +351,27 @@ export class Car {
     );
     this.brakeLights.position.set(0, 0.72, -2.64);
 
-    // tail bloom sprites (see model path — matches emissive rivals)
-    const glowTex = radialGlowTexture();
-    const tailGlowMat = new THREE.MeshBasicMaterial({
-      map: glowTex,
-      color: 0xff2a1a,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    this.owned.push(tailGlowMat, glowTex);
-    for (const x of [0.6, -0.6]) {
-      const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
-      glow.rotation.y = Math.PI;
-      glow.position.set(x, 0.62, -2.68);
-      glow.renderOrder = 3;
-      this.bodyGroup.add(glow);
+    // tail bloom sprites (see model path — matches emissive rivals); night
+    // only, same rule as every other lamp
+    let glowTex: THREE.Texture | null = null;
+    if (nightLights) {
+      glowTex = radialGlowTexture();
+      const tailGlowMat = new THREE.MeshBasicMaterial({
+        map: glowTex,
+        color: 0xff2a1a,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.owned.push(tailGlowMat, glowTex);
+      for (const x of [0.6, -0.6]) {
+        const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
+        glow.rotation.y = Math.PI;
+        glow.position.set(x, 0.62, -2.68);
+        glow.renderOrder = 3;
+        this.bodyGroup.add(glow);
+      }
     }
 
     // exhaust flames (nitro)
@@ -378,24 +391,27 @@ export class Car {
     }
 
     // underglow (NFS night vibe) — offset material avoids road z-fighting;
-    // neon-clamped so dark paints still glow (see model path)
-    const underglow = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.2, 6.0),
-      new THREE.MeshBasicMaterial({
-        map: glowTex,
-        color: neonGlowColor(this.color),
-        transparent: true,
-        opacity: 0.7,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -3,
-        polygonOffsetUnits: -3,
-      })
-    );
-    underglow.rotation.x = -Math.PI / 2;
-    underglow.position.y = 0.09;
-    underglow.renderOrder = 2;
+    // neon-clamped so dark paints still glow (see model path); night only
+    let underglow: THREE.Mesh | null = null;
+    if (nightLights) {
+      underglow = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.2, 6.0),
+        new THREE.MeshBasicMaterial({
+          map: glowTex!,
+          color: neonGlowColor(this.color),
+          transparent: true,
+          opacity: 0.7,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -3,
+          polygonOffsetUnits: -3,
+        })
+      );
+      underglow.rotation.x = -Math.PI / 2;
+      underglow.position.y = 0.09;
+      underglow.renderOrder = 2;
+    }
 
     // wheels — shared builder (tire + gold rim), slots + front flags from
     // the same single source the showroom preview uses
@@ -408,7 +424,7 @@ export class Car {
     }
 
     for (const m of [headL, headR, tailL, tailR, this.brakeLights]) this.bodyGroup.add(m);
-    this.bodyGroup.add(underglow);
+    if (underglow) this.bodyGroup.add(underglow);
 
     this.attachHeadlightsAndLabel({ frontZ: 2.58, topY: 1.25, width: 2.05, length: 4.6 });
 

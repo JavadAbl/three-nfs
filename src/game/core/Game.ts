@@ -14,6 +14,7 @@ import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
 import { InputManager } from "./Input";
 import { EngineAudio } from "../audio/EngineAudio";
+import { SampledEngineAudio, familyForCar } from "../audio/SampledEngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
 import { makeNightEnvironment, makeDayEnvironment } from "./nightEnv";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
@@ -83,7 +84,9 @@ export class Game {
   camera: THREE.PerspectiveCamera;
   cameraRig: CameraRig;
   input = new InputManager();
-  audio = new EngineAudio();
+  /** sampled engine ladder (per-car family) with synth UI blips; the pure
+   *  synth EngineAudio remains as the silent-asset fallback surface mate */
+  audio!: EngineAudio | SampledEngineAudio;
   clock = new THREE.Clock();
 
   // world
@@ -156,6 +159,20 @@ export class Game {
     // headlights, sodium fills and headlight cones are night furniture —
     // set BEFORE any car constructs (setupCars below reads the module flag)
     setCarNightLights(!this.day);
+
+    // sampled audio: per-car engine family, unlocked on the first real user
+    // gesture (pointer/key) — browsers refuse AudioContext outside one. Both
+    // one-shot listeners share this wrapper so we can unhook the survivor.
+    this.audio = new SampledEngineAudio(familyForCar(this.opts.carId));
+    const unlock = () => {
+      this.audio.resume();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      this.unlockAudio = null;
+    };
+    this.unlockAudio = unlock;
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
 
     // ── renderer ──
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -500,6 +517,8 @@ export class Game {
     this.beginCountdown();
   }
 
+  private unlockAudio: (() => void) | null = null;
+
   quit() {
     this.disposed = true;
     if (typeof window !== "undefined" && (window as { __game?: Game }).__game === this) {
@@ -508,6 +527,11 @@ export class Game {
     cancelAnimationFrame(this.raf);
     window.removeEventListener("resize", this.onResize);
     this.input.detach();
+    if (this.unlockAudio) {
+      window.removeEventListener("pointerdown", this.unlockAudio);
+      window.removeEventListener("keydown", this.unlockAudio);
+      this.unlockAudio = null;
+    }
     this.audio.dispose();
     // release net callbacks so the lobby can re-wire them for the next race
     if (this.net) {
@@ -625,7 +649,7 @@ export class Game {
     // ── audio ──
     if (!this.audio.muted) {
       const [gear, rpm] = gearAndRpm(this.player.speed);
-      this.audio.update(rpm, Math.abs(this.player.speed), this.player.drifting, this.player.nitroActive);
+      this.audio.update(rpm, Math.abs(this.player.speed), this.player.drifting, this.player.nitroActive, gear);
     }
 
     // ── HUD feed at ~30 Hz ──
@@ -672,7 +696,8 @@ export class Game {
         const strength = THREE.MathUtils.clamp(c.impact / 9, 0.2, 1);
         this.impactShake = Math.max(this.impactShake, strength);
         if (!this.audio.muted)
-          this.audio.blip(55 + Math.random() * 45, 0.18, "sawtooth", 0.08 + 0.3 * strength);
+          // car-vs-car metal — tiered one-shot (light/med/heavy)
+          this.audio.impact(strength);
       }
     }
     // guardrail scrape feedback for the player (rate-limited thud)
@@ -681,7 +706,8 @@ export class Game {
       const strength = THREE.MathUtils.clamp(this.player.railHit / 12, 0.2, 1);
       this.impactShake = Math.max(this.impactShake, strength * 0.7);
       if (!this.audio.muted)
-        this.audio.blip(70 + Math.random() * 50, 0.2, "sawtooth", 0.06 + 0.28 * strength);
+        // guardrail scrape — one tier down from the car-vs-car hit above
+        this.audio.impact(strength * 0.7);
       this.railSoundCd = 0.22;
     }
   }

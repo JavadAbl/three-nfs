@@ -85,8 +85,8 @@ export class EngineAudio {
     }
   }
 
-  /** rpm 0..1, speed m/s, drifting, nitro */
-  update(rpm: number, speed: number, drifting: boolean, nitro: boolean) {
+  /** rpm 0..1, speed m/s, drifting, nitro — gear ignored by the synth */
+  update(rpm: number, speed: number, drifting: boolean, nitro: boolean, _gear?: string) {
     if (!this.started || !this.ctx || !this.engineOsc || !this.engineGain) return;
     const t = this.ctx.currentTime;
     const hz = 55 + rpm * 180;
@@ -96,6 +96,12 @@ export class EngineAudio {
     this.engineGain.gain.setTargetAtTime(vol, t, 0.05);
     this.screechGain?.gain.setTargetAtTime(drifting ? 0.1 : 0, t, 0.05);
     this.windGain?.gain.setTargetAtTime(Math.max(0, (speed - 25) / 70) * 0.16, t, 0.1);
+  }
+
+  /** collision metal — synth approximation of the sampled impact tiers */
+  impact(strength: number) {
+    const s = Math.min(Math.max(strength, 0.2), 1);
+    this.blip(55 + s * 60, 0.18, "sawtooth", 0.08 + 0.3 * s);
   }
 
   /** short UI blips: countdown / finish */

@@ -1,2 +1,11 @@
 skills/
 node_modules/
+.next/
+dev.log
+server.log
+db/
+upload/
+worklog.md
+scripts/audio_dl/
+public/audio/staging/
+tsconfig.tsbuildinfo

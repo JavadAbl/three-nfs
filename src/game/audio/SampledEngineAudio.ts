@@ -1,6 +1,6 @@
 // ─── Sampled car audio (WebAudio + staged OGG assets) ────────────────────────
 // Per-family engine ladders (idle/low/mid/high loops) crossfaded by RPM,
-// plus skid/shift/impact/boost/rumble one-shots — NFS-style. Falls back to
+// plus skid/impact/boost/rumble one-shots — NFS-style. Falls back to
 // silence for the engine (synth UI blips still work) if the staged assets
 // can't be fetched/decoded, so a missing file never crashes the race.
 //
@@ -42,7 +42,6 @@ export class SampledEngineAudio {
   private rumbleGain: GainNode | null = null;
   private bufs: Record<string, AudioBuffer> = {};
   private engineReady = false;
-  private lastGear = "";
   private lastNitro = false;
   private lastImpactAt = 0;
 
@@ -79,8 +78,9 @@ export class SampledEngineAudio {
   }
 
   // ── per-frame drive ──────────────────────────────────────────────────────
-  /** rpm 0..1, speed m/s, drifting, nitro, gear ("N","R","1".."7") */
-  update(rpm: number, speed: number, drifting: boolean, nitro: boolean, gear?: string) {
+  /** rpm 0..1, speed m/s, drifting, nitro — gear unused (no shift sample; the
+   *  staged clank read as a "bell", user asked it gone; rpm dip already sells the shift) */
+  update(rpm: number, speed: number, drifting: boolean, nitro: boolean, _gear?: string) {
     if (!this.ctx || !this.master) return;
     const t = this.ctx.currentTime;
 
@@ -112,13 +112,6 @@ export class SampledEngineAudio {
     // nitro rising edge → boost whoosh
     if (nitro && !this.lastNitro) this.oneShot("boost", 0.75);
     this.lastNitro = nitro;
-
-    // numeric gear change → shift clunk (launch N→1 included; skips N/R)
-    if (gear && gear !== this.lastGear) {
-      const isNum = (s: string) => /^[1-7]$/.test(s);
-      if (isNum(gear) && isNum(this.lastGear) && gear !== this.lastGear) this.oneShot("shift", 0.55);
-      this.lastGear = gear;
-    }
   }
 
   // ── one-shots ───────────────────────────────────────────────────────────
@@ -173,7 +166,7 @@ export class SampledEngineAudio {
     names.forEach((n, i) =>
       jobs.push(this.loadOne(`${STAGE}/engines/${this.family}/${n}.ogg`).then((buf) => ({ name: `L${i}`, buf })))
     );
-    for (const n of ["skid", "shift", "boost", "rumble", "light", "med", "heavy"]) {
+    for (const n of ["skid", "boost", "rumble", "light", "med", "heavy"]) {
       jobs.push(this.loadOne(`${STAGE}/${n}.ogg`).then((buf) => ({ name: n, buf })));
     }
     const results = await Promise.allSettled(jobs);

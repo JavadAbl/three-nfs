@@ -1,0 +1,5 @@
+[00:00:00.810] Server  LOG     ✓ Ready in 616ms
+[00:00:06.441] Server  LOG     ○ Compiling / ...
+[00:00:10.822] Server  ERROR   TypeError: Failed to parse URL from /draco/draco_wasm_wrapper.js
+[00:00:11.522] Server  ERROR   ⨯ "unhandledRejection:" TypeError: Failed to parse URL from /draco/draco_wasm_wrapper.js
+[00:00:12.260] Server  ERROR   ⨯ "unhandledRejection: " TypeError: Failed to parse URL from /draco/draco_wasm_wrapper.js

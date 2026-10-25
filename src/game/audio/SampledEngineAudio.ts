@@ -57,8 +57,15 @@ export class SampledEngineAudio {
         return;
       }
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.55;
-      this.master.connect(this.ctx.destination);
+      this.master.gain.value = this.muted ? 0 : 0.9;
+      // limiter: engine + skid + impacts can now sum hot, never clip the output
+      const limiter = this.ctx.createDynamicsCompressor();
+      limiter.threshold.value = -10;
+      limiter.knee.value = 12;
+      limiter.ratio.value = 8;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.25;
+      this.master.connect(limiter).connect(this.ctx.destination);
       void this.loadAssets();
     }
     if (this.ctx.state === "suspended") void this.ctx.resume();
@@ -67,7 +74,7 @@ export class SampledEngineAudio {
   setMuted(m: boolean) {
     this.muted = m;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(m ? 0 : 0.55, this.ctx.currentTime, 0.05);
+      this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05);
     }
   }
 
@@ -86,7 +93,8 @@ export class SampledEngineAudio {
         sum += v;
         return v;
       });
-      const vol = 0.05 + Math.min(speed / 70, 1) * 0.2 + (nitro ? 0.05 : 0);
+      // loud under load — rpm carries the level, speed adds a sense of pace
+      const vol = 0.18 + r * 0.34 + Math.min(speed / 70, 1) * 0.12 + (nitro ? 0.12 : 0);
       this.layers.forEach((l, i) => {
         const g = sum > 0 ? (w[i] / sum) * vol : 0;
         l.gain.gain.setTargetAtTime(g, t, 0.06);
@@ -97,18 +105,18 @@ export class SampledEngineAudio {
     }
 
     // skid
-    this.skidGain?.gain.setTargetAtTime(drifting ? 0.22 : 0, t, 0.05);
+    this.skidGain?.gain.setTargetAtTime(drifting ? 0.4 : 0, t, 0.05);
     // road rumble at speed (night city or day circuit both live on asphalt)
-    this.rumbleGain?.gain.setTargetAtTime(Math.max(0, (speed - 8) / 60) * 0.12, t, 0.1);
+    this.rumbleGain?.gain.setTargetAtTime(Math.max(0, (speed - 8) / 60) * 0.22, t, 0.1);
 
     // nitro rising edge → boost whoosh
-    if (nitro && !this.lastNitro) this.oneShot("boost", 0.5);
+    if (nitro && !this.lastNitro) this.oneShot("boost", 0.75);
     this.lastNitro = nitro;
 
     // numeric gear change → shift clunk (launch N→1 included; skips N/R)
     if (gear && gear !== this.lastGear) {
       const isNum = (s: string) => /^[1-7]$/.test(s);
-      if (isNum(gear) && isNum(this.lastGear) && gear !== this.lastGear) this.oneShot("shift", 0.32);
+      if (isNum(gear) && isNum(this.lastGear) && gear !== this.lastGear) this.oneShot("shift", 0.55);
       this.lastGear = gear;
     }
   }
@@ -121,7 +129,7 @@ export class SampledEngineAudio {
     if (now - this.lastImpactAt < 0.12) return; // no machine-gun impacts
     this.lastImpactAt = now;
     const key = s < 0.4 ? "light" : s < 0.75 ? "med" : "heavy";
-    this.oneShot(key, 0.35 + 0.5 * s);
+    this.oneShot(key, 0.6 + 0.4 * s);
   }
 
   /** short UI blips: countdown / lap — synth so menus sound before assets land */

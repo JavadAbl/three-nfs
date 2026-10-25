@@ -4,6 +4,8 @@
 //   2. wheels auto-detected by node name (/wheel/i), axle pairs split L/R,
 //      wrapped in spin/steer pivots
 //   3. paint materials detected (/carpaint/i or /_details$/) for per-player tint
+//   4. dark lamp meshes split at the midline + lit: warm-white front
+//      (headlights), red rear (tail lights)
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
@@ -361,6 +363,14 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
       if (s >= 0.05 && s < 1.5) sm.emissive.multiplyScalar(2.2);
     }
   });
+
+  // ── dark-lamp split & glow ──
+  // Sketchfab OBJ exports merge ALL lamp geometry per material into one
+  // mesh with emissive baked to 0 ("TTRS_luz" = head + tail lenses in a
+  // single buffer), so the car shows dead-dark lamps at night while the
+  // game rips glow. Split spanning lamp meshes at the z-midline and inject
+  // head/tail emissive so the lamp lenses themselves light up.
+  splitDarkLamps(wrapper);
 
   // shadows for the whole car
   wrapper.traverse((o) => {
@@ -875,6 +885,70 @@ function splitMeshByPlane(mesh: THREE.Mesh, axis: "x" | "z", splitAt: number): T
     out.push(m);
   }
   return out;
+}
+
+// ─── dark-lamp split & glow ─────────────────────────────────────────────────
+/** lamp-family material names (multilingual: Sketchfab models carry Spanish
+ * "luz", German "lampe"/"Leuchte", French "phare"/"feux"). Tokens are
+ * letter-boundary-guarded: "dMAT_Details" contains "tail" but mid-word, so
+ * body-detail materials must NOT match (the first draft lit up a whole
+ * Viper), while "TTRS_luz"/"luz2"/"dMAT_Lights_315" do ("_" and digits count
+ * as separators — JS \b would treat "_" as a word char and miss them). */
+const LAMP_MAT =
+  /(?<![A-Za-z])(head.?lights?|tail.?lights?|tail.?lamps?|brake.?lights?|lights?|lamps?|luz(?:es)?|lamp(?:es|en)?|faroles?|leuchten?|phares?|feux|glows?|emiss\w*)(?![A-Za-z])/i;
+/** lamp-looking names that are NOT lamps ("glass_light" on the ACR is the
+ * windshield) — a false positive here would light up windows */
+const NOT_LAMP_MAT = /glass|vidrio|windshield|window/i;
+/** warm halogen white for headlight lenses */
+const HEAD_EMISSIVE = new THREE.Color(1, 0.93, 0.72);
+/** stop-lamp red for tail lenses */
+const TAIL_EMISSIVE = new THREE.Color(1, 0.03, 0.015);
+
+/** Light DARK lamp-family meshes: spanning meshes are split at the z
+ * midline (front half = headlight white, rear half = tail red), single-ended
+ * meshes are lit whole. Meshes that already glow (GT-R/Vipers) and glass
+ * impostors are never touched, so existing cars render exactly as before. */
+function splitDarkLamps(wrapper: THREE.Group): void {
+  const victims: THREE.Mesh[] = [];
+  wrapper.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || mesh.geometry.groups.length > 0) return;
+    const mat = mesh.material;
+    if (Array.isArray(mat) || !mat) return; // multi-material meshes: leave alone
+    const sm = mat as THREE.MeshStandardMaterial;
+    const name = sm.name ?? "";
+    if (NOT_LAMP_MAT.test(name) || !LAMP_MAT.test(name)) return;
+    if (!sm.emissive) return;
+    const glow = (sm.emissive.r + sm.emissive.g + sm.emissive.b) * (sm.emissiveIntensity ?? 1);
+    if (glow >= 0.05) return; // already lit — don't double-bake
+    victims.push(mesh);
+  });
+
+  for (const mesh of victims) {
+    const geo = mesh.geometry;
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox!;
+    const spansBothEnds = bb.min.z < -0.02 && bb.max.z > 0.02;
+
+    let pieces: THREE.Mesh[];
+    if (spansBothEnds) {
+      pieces = splitMeshByPlane(mesh, "z", 0); // halves added as siblings
+      mesh.parent?.remove(mesh); // …the merged original is replaced by them
+    } else {
+      pieces = [mesh];
+    }
+
+    for (const piece of pieces) {
+      piece.geometry.computeBoundingBox();
+      const pbb = piece.geometry.boundingBox!;
+      const front = (pbb.min.z + pbb.max.z) / 2 >= 0;
+      const lit = (piece.material as THREE.MeshStandardMaterial).clone();
+      lit.name = `${(piece.material as THREE.Material).name}_${front ? "head" : "rear"}`;
+      lit.emissive.copy(front ? HEAD_EMISSIVE : TAIL_EMISSIVE);
+      lit.emissiveIntensity = front ? 2.2 : 3.2;
+      piece.material = lit;
+    }
+  }
 }
 
 function extractTriangles(geo: THREE.BufferGeometry, triIndices: number[]): THREE.BufferGeometry {

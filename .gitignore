@@ -5,6 +5,8 @@ dev.log
 server.log
 db/
 upload/
+download/
+tool-results/
 worklog.md
 scripts/audio_dl/
 tsconfig.tsbuildinfo

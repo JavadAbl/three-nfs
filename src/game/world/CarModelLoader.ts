@@ -945,7 +945,10 @@ function splitDarkLamps(wrapper: THREE.Group): void {
       const lit = (piece.material as THREE.MeshStandardMaterial).clone();
       lit.name = `${(piece.material as THREE.Material).name}_${front ? "head" : "rear"}`;
       lit.emissive.copy(front ? HEAD_EMISSIVE : TAIL_EMISSIVE);
-      lit.emissiveIntensity = front ? 2.2 : 3.2;
+      // boosted (was 2.2/3.2): these lenses are now the car's ONLY lamp
+      // visuals at night — the old floating glow-quads/lamp-box impostors
+      // in Car.ts are gone, so the real geometry must carry the glow alone
+      lit.emissiveIntensity = front ? 2.6 : 4.0;
       piece.material = lit;
     }
   }

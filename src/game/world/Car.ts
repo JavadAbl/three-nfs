@@ -138,51 +138,26 @@ export class Car {
     this.collHalfW = THREE.MathUtils.clamp(d.width / 2, 0.85, 1.5);
     this.collHalfL = THREE.MathUtils.clamp(d.length / 2, 2.0, 3.0);
 
-    // lights — day maps get a dark lens instead of the lit-warm lamp face
-    const headMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xfff2cf : 0x4d5157 });
-    this.owned.push(headMat);
-    for (const sx of [1, -1]) {
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.06), headMat);
-      head.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ - 0.02);
-      this.bodyGroup.add(head);
-    }
-    const tailMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xff2222 : 0x571c1c });
-    this.owned.push(tailMat);
-    for (const sx of [1, -1]) {
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.06), tailMat);
-      tail.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.02);
-      this.bodyGroup.add(tail);
-    }
+    // NO fake lamp furniture on model cars: the old floating head/tail lamp
+    // boxes and the additive glow quads (the "wrapper pages" hovering over
+    // the real lenses) are gone — every model's OWN lamp meshes are the lamps
+    // now (Audi via CarModelLoader.splitDarkLamps emissive, GT-R/Vipers ship
+    // baked emissive lamp materials). Real illumination still comes from the
+    // SpotLight beams + sodium fill in attachHeadlightsAndLabel; the brake
+    // bar below flashes on braking only.
     let glowTex: THREE.Texture | null = null;
-    // red bloom sprites at the tail lights — rivals ship baked emissive
-    // tails (GT-R "taillight" @ 1.0); models without them looked dark
-    // from the chase cam, so every model car gets the same night glow.
-    // Night only: at day the additive flare reads as lights-on.
     if (nightLights) {
-      glowTex = radialGlowTexture();
-      const tailGlowMat = new THREE.MeshBasicMaterial({
-        map: glowTex,
-        color: 0xff2a1a,
-        transparent: true,
-        opacity: 0.9,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      this.owned.push(tailGlowMat, glowTex);
-      for (const sx of [1, -1]) {
-        const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), tailGlowMat);
-        glow.rotation.y = Math.PI; // face rearward
-        glow.position.set(sx * w2 * 0.6, d.topY * 0.6, d.rearZ + 0.07);
-        glow.renderOrder = 3;
-        this.bodyGroup.add(glow);
-      }
+      glowTex = radialGlowTexture(); // underglow's texture
+      this.owned.push(glowTex);
     }
+    // brake bar — hidden at rest (the per-frame update drives opacity),
+    // flashes red across the tail only while actually braking
     this.brakeLights = new THREE.Mesh(
       new THREE.BoxGeometry(d.width * 0.8, 0.09, 0.06),
       new THREE.MeshBasicMaterial({
         color: 0xff0000,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       })
@@ -243,8 +218,8 @@ export class Car {
 
   private attachHeadlightsAndLabel(d: { frontZ: number; topY: number; width: number; length: number }) {
     const w2 = d.width / 2;
-    // night maps only: real headlight beams. (Day maps skip them — see
-    // setCarNightLights — the glow sprites below are night-only too.)
+    // night maps only: real headlight beams + sodium fill. (Day maps skip
+    // them — see setCarNightLights.)
     if (nightLights) {
       if (this.kind === "player") {
         for (const sx of [0.62, -0.62]) {
@@ -294,27 +269,9 @@ export class Car {
     }
     if (this.kind === "remote") this.addLabel(d.topY);
 
-    // headlight bloom sprites (mirrors the tail glow) so lamps flare from
-    // head-on / chase views even where the emissive boxes are sub-pixel.
-    // Night furniture: skipped on day maps along with the beams above.
-    if (nightLights) {
-      const headGlowTex = radialGlowTexture();
-      const headGlowMat = new THREE.MeshBasicMaterial({
-        map: headGlowTex,
-        color: 0xfff3d0,
-        transparent: true,
-        opacity: 0.75,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      this.owned.push(headGlowMat, headGlowTex);
-      for (const sx of [1, -1]) {
-        const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), headGlowMat);
-        glow.position.set(sx * w2 * 0.62, d.topY * 0.62, d.frontZ + 0.07);
-        glow.renderOrder = 3;
-        this.bodyGroup.add(glow);
-      }
-    }
+    // (headlight bloom sprites removed — same "wrapper page" impostors as
+    // the tail glow quads; the model's own lit lens meshes flare on their own
+    // now, boosted in CarModelLoader.splitDarkLamps to carry the night look)
   }
 
   // ─── procedural fallback path (original stacked-box muscle car) ─────────
@@ -684,7 +641,7 @@ export class Car {
 
     // brake lights
     const braking = this.controls.brake > 0.05;
-    (this.brakeLights.material as THREE.MeshBasicMaterial).opacity = braking ? 0.95 : 0.3;
+    (this.brakeLights.material as THREE.MeshBasicMaterial).opacity = braking ? 0.95 : 0;
 
     // nitro flames flicker
     for (const f of this.nitroFlames) {

@@ -9,7 +9,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   // Allow the sandbox preview proxy to hit the dev server so HMR and
   // chunk requests resolve over the preview domain (prevents stale pages).
-  allowedDevOrigins: ["space-z.ai"],
+  // Bare domains do NOT match subdomains in Next 16 — need the wildcard
+  // form for preview-chat-<id>.space-z.ai (verified: bare form still 403s).
+  allowedDevOrigins: ["*.space-z.ai", "space-z.ai"],
   // static game assets are content-addressed in practice (models swap only
   // via new files / ?v= revs) — hard-cache them at the HTTP layer so a
   // production deploy never re-downloads 26MB of GLBs + textures per visit.

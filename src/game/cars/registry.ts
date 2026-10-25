@@ -87,7 +87,7 @@ export const CAR_LIBRARY: CarDef[] = [
     id: "audi",
     name: "AUDI TT RS",
     short: "TT RS",
-    modelUrl: "/models/audi-tt-rs.glb",
+    modelUrl: "/models/audi-tt-rs-2010.glb",
     spec: "QUATTRO · 400 HP",
     tuning: { enginePower: 11.8, drag: 0.177, maxSpeed: 71, grip: 7.6, steerRate: 2.3, maxLatAccel: 24, mass: 0.95 },
   },

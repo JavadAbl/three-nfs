@@ -8,6 +8,7 @@ import { preloadCarIds } from "@/game/cars/registry";
 import {
   preloadGameAssets,
   registerAssetServiceWorker,
+  warmMapAssets,
   type BootProgress,
 } from "@/game/core/AssetPreloader";
 import { mapDef } from "@/game/maps/registry";
@@ -55,6 +56,9 @@ export function GameShell() {
 
   const [raceSession, setRaceSession] = useState<StartRequest | null>(null);
   const launchingRef = useRef(false);
+  // per-map warm overlay — non-null only while a not-yet-cached map's own
+  // assets (ground set / scenery GLB / sky HDR) download behind the launch
+  const [mapWarm, setMapWarm] = useState<BootProgress | null>(null);
 
   // ── boot: asset cache worker + FULL preload behind a game loading bar ──
   // (was: ~20MB of city GLBs + asphalt textures downloading mid-race = the
@@ -125,6 +129,13 @@ export function GameShell() {
             ? [carId, ...lobbyPlayers.map((p) => p.carId).filter((id) => id && id !== carId)]
             : preloadCarIds(carId);
         await Promise.allSettled(ids.map((id) => loadCarModel(id)));
+        // the map's OWN assets (ground set, scenery GLB, day sky) warm now —
+        // not at boot. First launch of a map downloads them behind the NFS
+        // loading bar; every later launch skips instantly (SW + module caches)
+        await warmMapAssets(mapId, (ev) => {
+          setMapWarm(ev.pct >= 100 ? null : ev);
+        });
+        setMapWarm(null);
         launchingRef.current = false;
         if (!canvasRef.current) return; // unmounted while loading
         const game = new Game(
@@ -325,6 +336,9 @@ export function GameShell() {
 
       {/* boot loading gate — sits above everything until assets are ready */}
       {!bootDone && <LoadingScreen progress={boot} />}
+
+      {/* per-map warm gate — first launch of a map pulls only ITS bytes */}
+      {mapWarm && mapWarm.pct < 100 && <LoadingScreen progress={mapWarm} />}
 
       {/* mute + pause quick buttons while racing */}
       {screen === "racing" && (

@@ -1,4 +1,4 @@
-// ─── AssetPreloader: boot-time download of every game asset ──────────────────
+// ─── AssetPreloader: boot-time download of the SHARED core + per-map warm on demand ──────────────────
 // User report: "game freeze when i want to load contents … should preload and
 // have a loading bar like other games, and it should cache assets, so it's not
 // downloading them every game".
@@ -10,17 +10,24 @@
 // that work behind a real loading screen, and the service worker
 // (public/sw.js) keeps the bytes across sessions.
 //
-// The preloader covers, in parallel, with byte-accurate progress:
+// Later user report: "each map has its own assets. if we had 50 maps then it
+// downloads all unnecessary data" — right. So boot now covers ONLY the shared
+// core every race touches:
 //   - 4 car GLBs        (loadCarModel → templates, exactly what races use)
 //   - 4 city set GLBs   (loadCityModels → merged BuildingProtos)
 //   - 3 asphalt maps    (the URLs Track will request, incl. ?v= rev)
 //   - Draco/KTX2 WASM   (decoder warmup through the SW for session 2+)
+// A map's OWN bytes — its scanned ground set, imported scenery GLB, the
+// daytime sky HDR — load via warmMapAssets() the first time that map is
+// launched (same NFS loading bar), then live in the SW bucket + module
+// caches forever. N maps ⇒ players only ever pay for maps they actually
+// drive.
 import * as THREE from "three";
 import { CAR_LIBRARY } from "../cars/registry";
 import { loadCarModel } from "../world/CarModelLoader";
 import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityModels";
 import { ASPHALT_FILES, asphaltCandidates, groundCandidates } from "../world/Track";
-import { ENV_THEMES } from "../maps/registry";
+import { mapDef, resolveEnvTheme } from "../maps/registry";
 import { loadSpaScene } from "../world/SpaScene";
 import { loadDaySkyTexture, SKY_ASSETS } from "../world/DaySky";
 
@@ -148,59 +155,19 @@ const ASPHALT_ASSETS = ASPHALT_FILES.map((f) => ({
   label: "ROAD " + f.replace("asphalt-2k-", "").replace(".jpg", "").toUpperCase(),
   candidates: asphaltCandidates(f),
 }));
-// every theme's ground set warms the preload (user: "each map should has
-// its own ground texture") — first candidate each; the lazy loader in
-// CityEnvironment falls back staging→flat on miss. Themes may SHARE a set
-// (spa reuses the touge's Grass005) — dedupe by key or React flags the
-// doubled children and the file gets downloaded twice.
-const GROUND_ASSETS = [
-  ...new Map(
-    Object.values(ENV_THEMES).flatMap((th) =>
-      th.ground.files.map((f, i) => [
-        `ground:${th.ground.dir}:${f}`,
-        {
-          key: `ground:${th.ground.dir}:${f}`,
-          label: `TERRAIN ${th.id.toUpperCase()} ${["COLOR", "NORMAL", "ROUGH"][i]}`,
-          candidates: groundCandidates(th.ground.dir, f),
-        },
-      ]),
-    ),
-  ).values(),
-];
+// every theme's ground/scenery/sky set is warmed PER MAP by warmMapAssets()
+// below — NOT at boot (user: "if we had 50 maps it downloads all unnecessary
+// data"). Boot stays shared-core only. Themes may SHARE a ground set (spa
+// reuses the touge's Grass005) — warmMapAssets dedupes by theme id.
 
-// imported-scenery GLBs (SPA '92's own model). Keyed by URL — deduped like
-// the ground sets in case a future theme shares a file. The 21 MB spa scene
-// is the single biggest asset in the game, so it needs the loading bar more
-// than anything else; the module cache in SpaScene hands the parsed group to
-// the race for free afterwards. The unit warms the SAME time-of-day variant
-// the race will request (day for a day theme), or the race would re-download
-// + re-parse 21 MB behind the wheel.
-const SCENE_ASSETS = [
-  ...new Map(
-    Object.values(ENV_THEMES)
-      .filter((th) => th.sceneGlb)
-      .map((th) => [
-        "scene:" + th.id,
-        {
-          key: "scene:" + th.id,
-          label: "SCENERY " + th.id.toUpperCase(),
-          url: th.sceneGlb!,
-          day: th.timeOfDay === "day",
-        },
-      ]),
-  ).values(),
-];
-
-/** preload EVERYTHING the game can load, emitting boot progress. Always
- * resolves (units fail soft) — the loading screen must never trap the user. */
+/** preload the SHARED CORE (cars, city sets, asphalt, decoders), emitting
+ * boot progress. Always resolves (units fail soft) — the loading screen must
+ * never trap the user. Per-map bytes go through warmMapAssets() instead. */
 export async function preloadGameAssets(onProgress: Emit): Promise<void> {
   const primaryUrls = [
     ...CAR_ASSETS.map((c) => c.url),
     ...CITY_ASSETS.map((c) => c.url),
     ...ASPHALT_ASSETS.map((a) => a.candidates[0]),
-    ...GROUND_ASSETS.map((a) => a.candidates[0]),
-    ...SKY_ASSETS.map((a) => a.candidates[0]),
-    ...SCENE_ASSETS.map((a) => a.url),
     ...DECODER_URLS,
   ];
   const seeds = await seedSizes(primaryUrls);
@@ -221,9 +188,6 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
   for (const c of CAR_ASSETS) unit("car:" + c.id, c.label, c.url);
   for (const c of CITY_ASSETS) unit("city:" + c.set, c.label, c.url);
   for (const a of ASPHALT_ASSETS) unit(a.key, a.label, a.candidates[0]);
-  for (const a of GROUND_ASSETS) unit(a.key, a.label, a.candidates[0]);
-  for (const a of SKY_ASSETS) unit(a.key, a.label, a.candidates[0]);
-  for (const a of SCENE_ASSETS) unit(a.key, a.label, a.url);
   {
     // one unit for the whole decoder payload (5 small files)
     unit("decoders", "GPU DECODERS");
@@ -341,77 +305,6 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
         }),
     );
   }
-  for (const a of GROUND_ASSETS) {
-    const u = units.find((x) => x.key === a.key)!;
-    jobs.push(
-      fetchWithProgress(a.candidates, (loaded, total) => {
-        u.loaded = loaded;
-        if (!u.total && total) u.total = total;
-        u.state = "loading";
-        setLabel(u, "LOADING");
-        emit();
-      })
-        .then(() => {
-          u.state = "done";
-          u.bakeFrac = 1;
-          emit(true);
-        })
-        .catch(() => {
-          u.state = "error"; // flat ground stays — game is fine
-          emit(true);
-        }),
-    );
-  }
-
-  for (const a of SCENE_ASSETS) {
-    const u = units.find((x) => x.key === a.key)!;
-    jobs.push(
-      loadSpaScene(a.url, (loaded, total) => {
-        u.loaded = loaded;
-        if (!u.total && total) u.total = total;
-        u.state = "loading";
-        setLabel(u, "LOADING");
-        emit();
-      }, a.day)
-        .then(() => {
-          u.state = "done";
-          u.bakeFrac = 1;
-          emit(true);
-        })
-        .catch(() => {
-          u.state = "error"; // race builds on ground + stars — game is fine
-          emit(true);
-        }),
-    );
-  }
-
-  // daytime sky panorama — parsed + uploaded into the DaySky module cache
-  // so races apply it for free; fail-soft (a missing file leaves the flat
-  // palette background)
-  const skyLoaders: Record<string, (cb?: (l: number, t: number) => void) => Promise<unknown>> = {
-    "sky:hdri": loadDaySkyTexture,
-  };
-  for (const a of SKY_ASSETS) {
-    const u = units.find((x) => x.key === a.key)!;
-    jobs.push(
-      skyLoaders[a.key]((loaded, total) => {
-        u.loaded = loaded;
-        if (!u.total && total) u.total = total;
-        u.state = "loading";
-        setLabel(u, "LOADING");
-        emit();
-      })
-        .then(() => {
-          u.state = "done";
-          u.bakeFrac = 1;
-          emit(true);
-        })
-        .catch(() => {
-          u.state = "error";
-          emit(true);
-        }),
-    );
-  }
 
   // decoder payload: one byte pool across the 5 files
   {
@@ -452,4 +345,152 @@ export async function preloadGameAssets(onProgress: Emit): Promise<void> {
   ]);
   activeLabel = "READY";
   emit(true);
+}
+
+// ─── per-map warm: theme ground / scenery / sky on first launch of a map ────
+// The 50-maps future: boot stays flat no matter how many maps ship. A map's
+// own bytes download exactly once — the first time it is launched — behind
+// the same LoadingScreen UI (GameShell re-rendives it with this progress),
+// then the SW bucket + module caches make every later launch of that map
+// instant. Themes sharing a ground set (spa → touge's Grass005) warm under
+// their own id; the shared files are already in the SW bucket by then.
+const warmedThemes = new Set<string>();
+
+/** warm one map's theme assets (ground set + scenery GLB + day sky).
+ * Skips instantly when the theme already warmed this session. Always
+ * resolves — the race's lazy loaders retry anything that failed. */
+export async function warmMapAssets(mapId: string, onProgress?: Emit): Promise<void> {
+  const def = mapDef(mapId);
+  if (!def) return;
+  const theme = resolveEnvTheme(def);
+  if (warmedThemes.has(theme.id)) return;
+
+  // exactly the lazy URLs this theme's race will request
+  const groundUrls = theme.ground.files.map((f) => groundCandidates(theme.ground.dir, f));
+  const primaryUrls = [
+    ...groundUrls.map((c) => c[0]),
+    ...(theme.sceneGlb ? [theme.sceneGlb] : []),
+    ...(theme.timeOfDay === "day" ? SKY_ASSETS.map((a) => a.candidates[0]) : []),
+  ];
+  const seeds = await seedSizes(primaryUrls);
+
+  // one manifest line per warm unit (TERRAIN / SCENERY / SKY)
+  const files: AssetFileState[] = [];
+  const pools: { loaded: number; total: number }[] = [];
+  const mkUnit = (label: string, seedBytes = 0): { f: AssetFileState; pool: { loaded: number; total: number } } => {
+    const f: AssetFileState = { key: label, label, state: "pending", frac: 0 };
+    files.push(f);
+    const pool = { loaded: 0, total: seedBytes };
+    pools.push(pool);
+    return { f, pool };
+  };
+  const terrain = mkUnit(
+    "TERRAIN " + theme.id.toUpperCase(),
+    theme.ground.files.reduce((s, f) => s + (seeds.get(groundCandidates(theme.ground.dir, f)[0]) ?? 0), 0),
+  );
+  const scenery = theme.sceneGlb ? mkUnit("SCENERY " + theme.id.toUpperCase(), seeds.get(theme.sceneGlb) ?? 0) : null;
+  const sky = theme.timeOfDay === "day" ? mkUnit("SKY PANORAMA", SKY_ASSETS.reduce((s, a) => s + (seeds.get(a.candidates[0]) ?? 0), 0)) : null;
+
+  let failed = false;
+  let lastEmit = 0;
+  const emit = (force = false) => {
+    if (!onProgress) return;
+    const now = performance.now();
+    if (!force && now - lastEmit < 90) return;
+    lastEmit = now;
+    let loaded = 0;
+    let total = 0;
+    let doneFrac = 0;
+    for (const p of pools) {
+      loaded += p.loaded;
+      total += p.total;
+    }
+    for (const f of files) {
+      const dl = f.state === "done" ? 1 : f.frac;
+      doneFrac += Math.min(1, dl);
+    }
+    const byteFrac = total > 0 ? loaded / total : 0;
+    const pct = total > 0 ? Math.min(99, Math.round(100 * byteFrac)) : Math.min(99, Math.round((100 * doneFrac) / files.length));
+    onProgress({
+      pct,
+      label: "LOADING " + def.name,
+      mbLoaded: mb(loaded),
+      mbTotal: total > 0 ? mb(total) : "—",
+      files: files.map((f) => ({ ...f })),
+    });
+  };
+  emit(true);
+
+  const jobs: Promise<void>[] = [];
+  const onBytes = (u: { f: AssetFileState; pool: { loaded: number; total: number } }) => (loaded: number, total: number) => {
+    u.pool.loaded = loaded;
+    if (!u.pool.total && total) u.pool.total = total;
+    u.f.state = "loading";
+    u.f.frac = total > 0 ? loaded / total : 0.5;
+    emit();
+  };
+
+  // terrain: 3 texture streams pooled into one unit (fail-soft: the lazy
+  // ground loader retries with staging/flat fallbacks inside the race)
+  jobs.push(
+    (async () => {
+      const parts = await Promise.allSettled(
+        groundUrls.map((candidates) => fetchWithProgress(candidates, onBytes(terrain))),
+      );
+      terrain.f.state = parts.every((p) => p.status === "fulfilled") ? "done" : "error";
+      if (terrain.f.state === "error") failed = true;
+      terrain.f.frac = 1;
+      emit(true);
+    })(),
+  );
+
+  // scenery: parsed + cached by SpaScene's module cache (day variant match)
+  if (scenery && theme.sceneGlb) {
+    jobs.push(
+      loadSpaScene(theme.sceneGlb, onBytes(scenery), theme.timeOfDay === "day")
+        .then(() => {
+          scenery.f.state = "done";
+          scenery.f.frac = 1;
+          emit(true);
+        })
+        .catch(() => {
+          scenery.f.state = "error"; // race builds on ground + stars — fine
+          failed = true;
+          emit(true);
+        }),
+    );
+  }
+
+  // day sky: HDR parsed + uploaded into DaySky's module cache
+  if (sky) {
+    jobs.push(
+      loadDaySkyTexture(onBytes(sky))
+        .then(() => {
+          sky.f.state = "done";
+          sky.f.frac = 1;
+          emit(true);
+        })
+        .catch(() => {
+          sky.f.state = "error"; // flat palette background stays — fine
+          failed = true;
+          emit(true);
+        }),
+    );
+  }
+
+  // same watchdog contract as boot — never trap a launch
+  await Promise.race([
+    Promise.allSettled(jobs),
+    new Promise<void>((r) => setTimeout(r, 45_000)),
+  ]);
+  // full success marks the theme warm (cached parts are instant on retry, so
+  // a partial failure simply re-warms next launch without re-downloading)
+  if (!failed) warmedThemes.add(theme.id);
+  onProgress?.({
+    pct: 100,
+    label: "READY " + def.name,
+    mbLoaded: mb(pools.reduce((s, p) => s + p.loaded, 0)),
+    mbTotal: mb(pools.reduce((s, p) => s + p.total, 0)),
+    files: files.map((f) => ({ ...f })),
+  });
 }

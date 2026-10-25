@@ -4,7 +4,7 @@
 - Environments: .env
 
 ✓ Starting...
-✓ Ready in 616ms
+✓ Ready in 1084ms
 ○ Compiling / ...
 TypeError: Failed to parse URL from /draco/draco_wasm_wrapper.js
     at new Promise (<anonymous>)
@@ -102,7 +102,7 @@ TypeError: Failed to parse URL from /draco/draco_wasm_wrapper.js
     input: '/draco/draco_wasm_wrapper.js'
   }
 }
- GET / 200 in 51ms (compile: 25ms, render: 26ms)
- GET / 200 in 8.9s (compile: 6.3s, render: 2.6s)
-compile: 25ms, render: 26ms)
- GET / 200 in 8.9s (compile: 6.3s, render: 2.6s)
+ GET / 200 in 6.9s (compile: 4.2s, render: 2.7s)
+ GET / 200 in 9.7s (compile: 7.0s, render: 2.7s)
+compile: 4.2s, render: 2.7s)
+ GET / 200 in 9.7s (compile: 7.0s, render: 2.7s)

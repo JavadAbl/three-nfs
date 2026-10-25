@@ -19,3 +19,17 @@
 - sandbox snapshots can be stale — always git fetch + compare before working
 - SwiftShader headless can't visually verify sky; use /skytest harness + user's real browser
 - sw.js asset bucket version — bump if any public/ asset changes
+
+---
+Task ID: 22
+Agent: main
+Task: "does this game cache data?" — verify SW caching with headless 2-visit test
+
+Work Log:
+- Wrote scripts/sw_cache_test.sh: boots dev server, opens game in headless Chromium, polls SW state, reloads, measures transferSize per asset request.
+- Result: SW "CONTROLLING", bucket nfs-assets-v1; visit 2 = 58 asset requests, 58 served from Cache Storage, 0 from network (0.0 MB).
+- Conclusion: the ~25MB game assets (models/textures/HDR/decoders) ARE cached across visits. What re-downloads every visit is the app JS itself — Next DEV server serves chunks with no-cache headers (SW deliberately skips non-asset paths; caching dev chunks would break HMR).
+- Sandbox note: dev server now needs `setsid nohup ... < /dev/null & disown` — plain nohup gets reaped between tool calls. Test script + browser run must share one Bash call.
+
+Stage Summary:
+- Caching works as designed. Remaining per-visit download = dev-mode JS bundles; fixed by production deploy (next build + next start gives hashed immutable chunks), not by SW changes.

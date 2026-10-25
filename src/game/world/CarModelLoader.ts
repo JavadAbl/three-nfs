@@ -78,7 +78,12 @@ const loader = new GLTFLoader();
 // uncompressed GLBs are unaffected)
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath("/draco/");
-dracoLoader.preload();
+// preload() fires a fetch of the wasm wrapper with a relative URL — fine in
+// the browser, but throws ERR_INVALID_URL during SSR module evaluation
+// (Node fetch needs absolute URLs). Only warm it client-side.
+if (typeof window !== "undefined") {
+  dracoLoader.preload();
+}
 loader.setDRACOLoader(dracoLoader);
 // KTX2 GPU-compressed textures (KHR_texture_basisu): decode straight to the
 // GPU's native format (BC7/ASTC/ETC2) — stays compressed in VRAM, ~6-8x less

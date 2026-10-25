@@ -22,16 +22,16 @@ function glbMats(path: string): string[] {
   return [];
 }
 
-/** three states: "victim" = lamp-family (dark in the fleet — glow gate
- * then admits it), "bright" = lamp-family but fleet-bright (glow gate
- * skips — no clone), "guard" = glass-named impostor (NOT_LAMP blocks). */
-const expected: Record<string, "victim" | "bright" | "guard"> = {
-  TTRS_luz: "victim",
-  TTRS_luz2: "victim",
-  headlight: "bright",
-  taillight: "bright",
-  dMAT_Lights_315: "bright",
-  emiss: "bright",
+/** three states: "takeover" = lamp-family lens (dark Sketchfab exports AND
+ * baked-bright rips — splitDarkLamps now takes over BOTH, so glow gates are
+ * gone), "guard" = glass-named impostor (NOT_LAMP blocks). */
+const expected: Record<string, "takeover" | "guard"> = {
+  TTRS_luz: "takeover",
+  TTRS_luz2: "takeover",
+  headlight: "takeover",
+  taillight: "takeover",
+  dMAT_Lights_315: "takeover",
+  emiss: "takeover",
   glass_light: "guard",
 };
 const neverMatch = [

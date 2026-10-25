@@ -4,8 +4,12 @@
 //   2. wheels auto-detected by node name (/wheel/i), axle pairs split L/R,
 //      wrapped in spin/steer pivots
 //   3. paint materials detected (/carpaint/i or /_details$/) for per-player tint
-//   4. dark lamp meshes split at the midline + lit: warm-white front
-//      (headlights), red rear (tail lights)
+//   4. every lamp-family lens lit warm-white front / red rear — dark
+//      meshes AND baked-bright rips (GT-R ships white@2 / red@3, the
+//      Vipers gray bakes), whether they live as own meshes or as
+//      primitives merged inside multi-material bodies
+//   5. lit lamp materials reported per model so Car.ts can drive them by
+//      time-of-day (night on / day off) and brake flare
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
@@ -33,6 +37,12 @@ export interface CarDims {
   topY: number;
 }
 
+/** a lit lamp-lens material + which end of the car it glows on */
+export interface LampMat {
+  mat: THREE.MeshStandardMaterial;
+  front: boolean;
+}
+
 export interface CarModelInstance {
   root: THREE.Group;
   wheels: ModelWheel[];
@@ -40,6 +50,8 @@ export interface CarModelInstance {
   wheelRadius: number;
   /** per-instance cloned tintable materials */
   paintMaterials: THREE.MeshStandardMaterial[];
+  /** per-instance cloned LIT lamp-lens materials — the model's own lamps */
+  lampMats: LampMat[];
 }
 
 interface Template {
@@ -48,6 +60,8 @@ interface Template {
   dims: CarDims;
   wheelRadius: number;
   paintNames: Set<string>;
+  /** lit lamp materials created during the build (shared by clones) */
+  lampMats: LampMat[];
 }
 
 /** how long every model car is normalized to (matches physics tuning) */
@@ -158,13 +172,28 @@ export function instantiateCar(id: string, paintColor?: string): CarModelInstanc
 
   // clone paint materials per-instance (so tinting one car doesn't tint all)
   const paintMaterials: THREE.MeshStandardMaterial[] = [];
+  // clone lit lamp materials per-instance too — each car's day/night state
+  // and brake flare must be independent of its same-model rivals
+  const lampMaterials: LampMat[] = [];
+  const lampFrontOf = new Map<THREE.Material, boolean>();
+  for (const { mat, front } of tpl.lampMats) lampFrontOf.set(mat, front);
   const cloneMap = new Map<THREE.Material, THREE.Material>();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const replaced = mats.map((m) => {
-      if (!tpl.paintNames.has(m.name ?? "")) return m;
+      if (!tpl.paintNames.has(m.name ?? "")) {
+        const front = lampFrontOf.get(m);
+        if (front === undefined) return m;
+        let c = cloneMap.get(m);
+        if (!c) {
+          c = m.clone();
+          cloneMap.set(m, c);
+          lampMaterials.push({ mat: c as THREE.MeshStandardMaterial, front });
+        }
+        return c;
+      }
       let c = cloneMap.get(m);
       if (!c) {
         c = m.clone();
@@ -200,7 +229,7 @@ export function instantiateCar(id: string, paintColor?: string): CarModelInstanc
     }
   });
 
-  return { root, wheels, dims: { ...tpl.dims }, wheelRadius: tpl.wheelRadius, paintMaterials };
+  return { root, wheels, dims: { ...tpl.dims }, wheelRadius: tpl.wheelRadius, paintMaterials, lampMats: lampMaterials };
 }
 
 export function applyPaint(mats: THREE.MeshStandardMaterial[], color: string) {
@@ -346,31 +375,16 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     }
   });
 
-  // ── night-light boost ──
-  // Rips/exporters often bake light meshes with a faint gray emissive
-  // (e.g. SRT10 "Lights_315" @ 0.35) while other cars ship full-bright
-  // light mats. Lift the dim ones so every car's lights visibly glow at
-  // night like its rivals; already-bright materials are left untouched.
-  wrapper.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) {
-      const sm = m as THREE.MeshStandardMaterial;
-      if (!sm || !sm.emissive) continue;
-      if (!/light|tail|lamp|emiss|glow/i.test(sm.name ?? "")) continue;
-      const s = sm.emissive.r + sm.emissive.g + sm.emissive.b;
-      if (s >= 0.05 && s < 1.5) sm.emissive.multiplyScalar(2.2);
-    }
-  });
-
   // ── dark-lamp split & glow ──
   // Sketchfab OBJ exports merge ALL lamp geometry per material into one
   // mesh with emissive baked to 0 ("TTRS_luz" = head + tail lenses in a
-  // single buffer), so the car shows dead-dark lamps at night while the
-  // game rips glow. Split spanning lamp meshes at the z-midline and inject
-  // head/tail emissive so the lamp lenses themselves light up.
-  splitDarkLamps(wrapper);
+  // single buffer), and game rips like the GT-R hide head/tail materials
+  // as two primitives of a 25-material merged "body" mesh — both leave the
+  // car with dead-dark lamps at night. Every dark lamp-family mesh (and
+  // every dark lamp primitive inside merged bodies) is lit here; the lit
+  // materials are reported so Car.ts drives them per time-of-day/brakes.
+  const lampMats: LampMat[] = [];
+  splitDarkLamps(wrapper, lampMats);
 
   // shadows for the whole car
   wrapper.traverse((o) => {
@@ -381,7 +395,7 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
     }
   });
 
-  return { url: id, wrapper, dims, wheelRadius, paintNames };
+  return { url: id, wrapper, dims, wheelRadius, paintNames, lampMats };
 }
 
 // ─── wheel rigging ──────────────────────────────────────────────────────────
@@ -888,6 +902,12 @@ function splitMeshByPlane(mesh: THREE.Mesh, axis: "x" | "z", splitAt: number): T
 }
 
 // ─── dark-lamp split & glow ─────────────────────────────────────────────────
+/** resting glow baked into lit lamp materials — Car.ts re-applies these per
+ * time-of-day (night on / day off) and flares the tails on braking, so the
+ * numbers live here, exported, beside the lens colors they belong with */
+export const LAMP_HEAD_INTENSITY = 2.6;
+export const LAMP_TAIL_INTENSITY = 4.0;
+
 /** lamp-family material names (multilingual: Sketchfab models carry Spanish
  * "luz", German "lampe"/"Leuchte", French "phare"/"feux"). Tokens are
  * letter-boundary-guarded: "dMAT_Details" contains "tail" but mid-word, so
@@ -904,27 +924,74 @@ const HEAD_EMISSIVE = new THREE.Color(1, 0.93, 0.72);
 /** stop-lamp red for tail lenses */
 const TAIL_EMISSIVE = new THREE.Color(1, 0.03, 0.015);
 
-/** Light DARK lamp-family meshes: spanning meshes are split at the z
- * midline (front half = headlight white, rear half = tail red), single-ended
- * meshes are lit whole. Meshes that already glow (GT-R/Vipers) and glass
- * impostors are never touched, so existing cars render exactly as before. */
-function splitDarkLamps(wrapper: THREE.Group): void {
-  const victims: THREE.Mesh[] = [];
+/** geometry draw-range group — mirrors three's BufferGeometry.Group but with
+ * a non-optional materialIndex (three types it optional, which cannot be
+ * used as a material-array index) */
+interface GeoGroup {
+  start: number;
+  count: number;
+  materialIndex: number;
+}
+
+/** true when `m` is a lamp-family lens material. Both dark lenses and
+ * baked-bright rips qualify — the fleet must end up UNIFORM: GT-R ships
+ * headlight=white@2 / taillight=red@3, the Vipers gray bakes, Sketchfab
+ * OBJ exports emissive=0; all of them get taken over. Glass impostors
+ * ("glass_light" windshields) never qualify. */
+function isLampMat(m: THREE.Material | null | undefined): boolean {
+  const sm = m as THREE.MeshStandardMaterial | null;
+  if (!sm || !sm.emissive) return false;
+  const name = sm.name ?? "";
+  return !NOT_LAMP_MAT.test(name) && LAMP_MAT.test(name);
+}
+
+/** clone `base` into a lit lens material: warm-white front / stop-red rear */
+function makeLitLampMat(base: THREE.MeshStandardMaterial, front: boolean): THREE.MeshStandardMaterial {
+  const lit = base.clone();
+  lit.name = `${base.name}_${front ? "head" : "rear"}`;
+  lit.emissive.copy(front ? HEAD_EMISSIVE : TAIL_EMISSIVE);
+  // these lenses are the car's ONLY lamp visuals at night — the old floating
+  // glow-quads/lamp-box impostors are gone, so the real geometry must carry
+  // the glow alone
+  lit.emissiveIntensity = front ? LAMP_HEAD_INTENSITY : LAMP_TAIL_INTENSITY;
+  return lit;
+}
+
+/** Light EVERY lamp-family lens so the geometry itself becomes the lamp:
+ * dark Sketchfab exports get their first glow, baked-bright rips get
+ * normalized into the same look — nobody skips, nothing double-glows.
+ * Two shapes exist in the wild —
+ *  - single-material lamp meshes (Audi "TTRS_luz", the Vipers' light kits,
+ *    the GT-R's primitive-split "headlight"/"taillight" meshes): spanning
+ *    meshes are split at the z midline (front half = headlight white,
+ *    rear half = tail red), single-ended meshes are lit whole;
+ *  - lamp primitives merged INSIDE multi-material bodies (a 25-slot body
+ *    mesh): each group is classified by its own triangle z-extent and its
+ *    slot swapped for a lit clone; a group spanning BOTH ends is extracted
+ *    into a standalone mesh, split at the midline, and surgically dropped
+ *    from the parent mesh.
+ * Glass impostors are never touched. Lit materials are reported through
+ * `out` (Car.ts drives them by time-of-day
+ * and brake state). Coordinates are mesh-local — Sketchfab/OBJ-style exports
+ * bake identity transforms, so local z ≈ the car's z midline. */
+function splitDarkLamps(wrapper: THREE.Group, out: LampMat[]): void {
+  // pass 1 — scan only: the fixes below add/remove SIBLING nodes and
+  // mutating a graph mid-traverse skips nodes, so collect victims first
+  const singles: THREE.Mesh[] = [];
+  const merged: THREE.Mesh[] = [];
   wrapper.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh || mesh.geometry.groups.length > 0) return;
+    if (!mesh.isMesh) return;
     const mat = mesh.material;
-    if (Array.isArray(mat) || !mat) return; // multi-material meshes: leave alone
-    const sm = mat as THREE.MeshStandardMaterial;
-    const name = sm.name ?? "";
-    if (NOT_LAMP_MAT.test(name) || !LAMP_MAT.test(name)) return;
-    if (!sm.emissive) return;
-    const glow = (sm.emissive.r + sm.emissive.g + sm.emissive.b) * (sm.emissiveIntensity ?? 1);
-    if (glow >= 0.05) return; // already lit — don't double-bake
-    victims.push(mesh);
+    if (Array.isArray(mat)) {
+      if (mesh.geometry.groups.length > 0 && mat.some((m) => isLampMat(m))) merged.push(mesh);
+    } else if (mat && mesh.geometry.groups.length === 0 && isLampMat(mat)) {
+      singles.push(mesh);
+    }
   });
 
-  for (const mesh of victims) {
+  // pass 2a — single-material lamp meshes
+  for (const mesh of singles) {
     const geo = mesh.geometry;
     geo.computeBoundingBox();
     const bb = geo.boundingBox!;
@@ -942,15 +1009,103 @@ function splitDarkLamps(wrapper: THREE.Group): void {
       piece.geometry.computeBoundingBox();
       const pbb = piece.geometry.boundingBox!;
       const front = (pbb.min.z + pbb.max.z) / 2 >= 0;
-      const lit = (piece.material as THREE.MeshStandardMaterial).clone();
-      lit.name = `${(piece.material as THREE.Material).name}_${front ? "head" : "rear"}`;
-      lit.emissive.copy(front ? HEAD_EMISSIVE : TAIL_EMISSIVE);
-      // boosted (was 2.2/3.2): these lenses are now the car's ONLY lamp
-      // visuals at night — the old floating glow-quads/lamp-box impostors
-      // in Car.ts are gone, so the real geometry must carry the glow alone
-      lit.emissiveIntensity = front ? 2.6 : 4.0;
+      // always a fresh clone per piece: a shared baked material (SRT10
+      // "Lights_315" sits on BOTH ends' kits) must split into head + tail
+      const lit = makeLitLampMat(piece.material as THREE.MeshStandardMaterial, front);
       piece.material = lit;
+      out.push({ mat: lit, front });
     }
+  }
+
+  // pass 2b — lamp materials hidden as primitives inside merged bodies
+  for (const mesh of merged) {
+    const geo = mesh.geometry;
+    const idx = geo.index;
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const mats = mesh.material as THREE.Material[];
+    const swap = new Map<string, THREE.MeshStandardMaterial>();
+    const drop: GeoGroup[] = [];
+
+    for (const g of geo.groups as GeoGroup[]) {
+      const sm = mats[g.materialIndex] as THREE.MeshStandardMaterial | undefined;
+      if (!isLampMat(sm)) continue;
+      // z-extent of just this primitive's triangles
+      let zmin = Infinity;
+      let zmax = -Infinity;
+      const end = g.start + g.count;
+      for (let i = g.start; i < end; i++) {
+        const z = pos.getZ(idx ? idx.getX(i) : i);
+        if (z < zmin) zmin = z;
+        if (z > zmax) zmax = z;
+      }
+      if (zmin === Infinity) continue;
+
+      if (zmin < -0.02 && zmax > 0.02) {
+        // head + tail share ONE material inside a merged body — pull the
+        // primitive out into its own mesh, split it at the midline, lit the
+        // halves, then drop the range from the parent so it isn't drawn twice
+        drop.push(g);
+        const tris: number[] = [];
+        for (let i = g.start; i < end; i++) tris.push(idx ? idx.getX(i) : i);
+        const tmp = new THREE.Mesh(extractTriangles(geo, tris), sm);
+        mesh.parent?.add(tmp); // splitMeshByPlane parents halves to tmp's parent
+        for (const piece of splitMeshByPlane(tmp, "z", 0)) {
+          piece.geometry.computeBoundingBox();
+          const pbb = piece.geometry.boundingBox!;
+          const front = (pbb.min.z + pbb.max.z) / 2 >= 0;
+          const key = `${sm!.uuid}|${front}`;
+          let lit = swap.get(key);
+          if (!lit) {
+            lit = makeLitLampMat(sm!, front);
+            swap.set(key, lit);
+            out.push({ mat: lit, front });
+          }
+          piece.material = lit;
+        }
+        tmp.removeFromParent();
+        tmp.geometry.dispose();
+        continue;
+      }
+
+      const front = (zmin + zmax) / 2 >= 0;
+      const key = `${sm!.uuid}|${front}`;
+      let lit = swap.get(key);
+      if (!lit) {
+        lit = makeLitLampMat(sm!, front);
+        swap.set(key, lit);
+        out.push({ mat: lit, front });
+      }
+      mats[g.materialIndex] = lit; // whole primitive sits at one end
+    }
+
+    if (!drop.length) continue;
+    // surgical rebuild: the new index is the surviving groups only (kept in
+    // order, so material slots and draw order are preserved); attributes stay
+    // shared with the template, the old geometry simply goes unreferenced
+    const keep = (geo.groups as GeoGroup[]).filter((g) => !drop.includes(g));
+    const flat: number[] = [];
+    for (const r of keep) {
+      const end = r.start + r.count;
+      for (let i = r.start; i < end; i++) flat.push(idx ? idx.getX(i) : i);
+    }
+    if (!flat.length) {
+      mesh.removeFromParent(); // nothing but lamp geometry — replaced by pieces
+      continue;
+    }
+    const ng = new THREE.BufferGeometry();
+    for (const name of Object.keys(geo.attributes)) ng.setAttribute(name, geo.attributes[name]);
+    ng.morphAttributes = geo.morphAttributes;
+    ng.setIndex(
+      pos.count > 65535
+        ? new THREE.Uint32BufferAttribute(flat, 1)
+        : new THREE.Uint16BufferAttribute(flat, 1),
+    );
+    let off = 0;
+    for (const r of keep) {
+      ng.addGroup(off, r.count, r.materialIndex);
+      off += r.count;
+    }
+    mesh.geometry = ng;
   }
 }
 

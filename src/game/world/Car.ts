@@ -3,7 +3,12 @@ import * as THREE from "three";
 import { DEFAULT_CAR_TUNING, type CarTuning } from "../cars/registry";
 import type { Track, TrackLocation } from "./Track";
 import type { CarControls } from "../core/Input";
-import { type CarModelInstance, type ModelWheel } from "./CarModelLoader";
+import {
+  LAMP_HEAD_INTENSITY,
+  LAMP_TAIL_INTENSITY,
+  type CarModelInstance,
+  type ModelWheel,
+} from "./CarModelLoader";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "./ProceduralMuscle";
 
 export type CarKind = "player" | "ai" | "remote";
@@ -89,6 +94,15 @@ export class Car {
   private wheelRadius = 0.38;
   private wheelSpin = 0;
   private brakeLights!: THREE.Mesh;
+  /** the model's own lit lamp-lens materials (GLB path) — CarModelLoader lit
+   * them at template time; we re-apply per time-of-day (night glow / day
+   * dark until braking) and flare the tails while braking. Per-instance
+   * clones, so one car's brake flash never lights up its same-model rivals.
+   * Empty on procedural cars (their lamp boxes are their own lamps). */
+  private lampHead: THREE.MeshStandardMaterial[] = [];
+  private lampTail: THREE.MeshStandardMaterial[] = [];
+  /** resting tail-lamp intensity — night LAMP_TAIL_INTENSITY / day 0 */
+  private lampTailBase = 0;
   private nitroFlames: THREE.Mesh[] = [];
   private headBeamL?: THREE.SpotLight;
   private headBeamR?: THREE.SpotLight;
@@ -140,11 +154,21 @@ export class Car {
 
     // NO fake lamp furniture on model cars: the old floating head/tail lamp
     // boxes and the additive glow quads (the "wrapper pages" hovering over
-    // the real lenses) are gone — every model's OWN lamp meshes are the lamps
-    // now (Audi via CarModelLoader.splitDarkLamps emissive, GT-R/Vipers ship
-    // baked emissive lamp materials). Real illumination still comes from the
+    // the real lenses) are gone — every model's OWN lamp lenses are the lamps
+    // now. CarModelLoader lights the lens geometry at template time (single
+    // lamp meshes AND lamp primitives merged inside multi-material bodies);
+    // here we drive those materials by time-of-day: night maps glow, day
+    // maps run dark until braking. Real illumination still comes from the
     // SpotLight beams + sodium fill in attachHeadlightsAndLabel; the brake
-    // bar below flashes on braking only.
+    // bar below (plus the real tail lenses) flashes on braking only.
+    for (const { mat, front } of m.lampMats) {
+      this.owned.push(mat);
+      (front ? this.lampHead : this.lampTail).push(mat);
+    }
+    const headI = nightLights ? LAMP_HEAD_INTENSITY : 0;
+    this.lampTailBase = nightLights ? LAMP_TAIL_INTENSITY : 0;
+    for (const s of this.lampHead) s.emissiveIntensity = headI;
+    for (const s of this.lampTail) s.emissiveIntensity = this.lampTailBase;
     let glowTex: THREE.Texture | null = null;
     if (nightLights) {
       glowTex = radialGlowTexture(); // underglow's texture
@@ -642,6 +666,10 @@ export class Car {
     // brake lights
     const braking = this.controls.brake > 0.05;
     (this.brakeLights.material as THREE.MeshBasicMaterial).opacity = braking ? 0.95 : 0;
+    // real tail-lens flare while braking (day cars sit dark until the stop,
+    // night cars double up) — the lens geometry itself brightens, no impostor
+    const tailI = braking ? LAMP_TAIL_INTENSITY * 2 : this.lampTailBase;
+    for (const s of this.lampTail) s.emissiveIntensity = tailI;
 
     // nitro flames flicker
     for (const f of this.nitroFlames) {

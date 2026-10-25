@@ -18,7 +18,7 @@
  * straight through untouched — dev-server safe.
  */
 const CACHE_VERSION = "nfs-assets-v1";
-const ASSET_PREFIXES = ["/models/", "/textures/", "/draco/", "/ktx2/", "/staging/"];
+const ASSET_PREFIXES = ["/models/", "/textures/", "/draco/", "/ktx2/", "/audio/", "/staging/"];
 
 self.addEventListener("install", () => {
   // take over as soon as the new worker is ready

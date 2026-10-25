@@ -4,8 +4,9 @@
 // silence for the engine (synth UI blips still work) if the staged assets
 // can't be fetched/decoded, so a missing file never crashes the race.
 //
-// Staging files live at /audio/staging/ — deliberately OUTSIDE the service
-// worker's ASSET_PREFIXES so audition swaps are heard on plain reload.
+// Audio assets live at /audio/ — accepted & committed, cached by the service
+// worker like the models, so replays work offline after the first fetch.
+// CC-BY / CC-BY-SA attribution: see public/audio/CREDITS.md.
 
 export type AudioFamily = "4cyl-turbo" | "v6-tt" | "v10";
 
@@ -21,7 +22,7 @@ export function familyForCar(carId?: string): AudioFamily {
   return FAMILY_BY_CAR[carId ?? ""] ?? "4cyl-turbo";
 }
 
-const STAGE = "/audio/staging";
+const STAGE = "/audio";
 
 /** rpm anchor points for the 4 ladder layers */
 const ANCHORS = [0.06, 0.3, 0.62, 1.0];

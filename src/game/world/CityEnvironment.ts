@@ -183,6 +183,9 @@ export class CityEnvironment {
   private makeStars(): THREE.Points {
     const N = this.theme.starCount;
     const positions = new Float32Array(N * 3);
+    const colors = new Float32Array(N * 3);
+    const sizes = new Float32Array(N);
+    const c = new THREE.Color();
     for (let i = 0; i < N; i++) {
       // dome distribution
       const theta = Math.random() * Math.PI * 2;
@@ -191,16 +194,52 @@ export class CityEnvironment {
       positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = r * Math.cos(phi);
       positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+      // magnitude: power curve — most stars faint, a few bright heroes;
+      // a uniform dot matrix is what the old fixed size + opacity read as
+      const b = 0.25 + Math.pow(Math.random(), 3.2) * 0.75;
+      // colour temperature spread: rare warm giants, cool blue-whites,
+      // mostly near-white main sequence — the stellar census the eye expects
+      const temp = Math.random();
+      if (temp < 0.08) c.setHSL(0.05, 0.6, b * 0.85); // rare warm giants
+      else if (temp < 0.35) c.setHSL(0.6, 0.25, b); // cool blue-white
+      else c.setHSL(0.6, 0.04, b); // near-white main sequence
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+      // size tracks brightness — heroes get bigger, faint stars stay tight
+      sizes[i] = 1.2 + b * 2.6;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({
-      color: 0xdfe6ee,
-      size: 2.2,
-      sizeAttenuation: true,
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+    // PointsMaterial can't vary size per point — tiny shader so bright stars
+    // read as glowing discs with a hot core, faint ones stay sub-pixel tight
+    const mat = new THREE.ShaderMaterial({
       transparent: true,
-      opacity: 0.75,
-      fog: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTex: { value: starSprite() } },
+      vertexShader: /* glsl */ `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        void main() {
+          vColor = color;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * (900.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uTex;
+        varying vec3 vColor;
+        void main() {
+          float a = texture2D(uTex, gl_PointCoord).a;
+          if (a < 0.02) discard;
+          gl_FragColor = vec4(vColor, a);
+        }
+      `,
     });
     return new THREE.Points(geo, mat);
   }
@@ -546,6 +585,28 @@ export class CityEnvironment {
       for (const x of mats) if (x.userData.shared !== true) x.dispose();
     });
   }
+}
+
+/** 32px star sprite: small hot white core inside a soft cool falloff — with
+ *  additive blending bright heroes bloom while faint stars stay tight dots.
+ *  (The old PointsMaterial rendered squares once a star grew past ~2px.) */
+function starSprite(): THREE.CanvasTexture {
+  const s = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = s;
+  const ctx = canvas.getContext("2d")!;
+  const core = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, 5);
+  core.addColorStop(0, "rgba(255,255,255,1)");
+  core.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, s, s);
+  const halo = ctx.createRadialGradient(s / 2, s / 2, 2, s / 2, s / 2, s / 2);
+  halo.addColorStop(0, "rgba(210,225,255,0.55)");
+  halo.addColorStop(0.5, "rgba(190,210,255,0.18)");
+  halo.addColorStop(1, "rgba(180,200,255,0)");
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, s, s);
+  return new THREE.CanvasTexture(canvas);
 }
 
 /** grid of lit windows baked to a canvas texture — v2: 4× the resolution of

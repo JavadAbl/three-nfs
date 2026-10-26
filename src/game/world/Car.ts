@@ -445,19 +445,35 @@ export class Car {
   }
 
   private addLabel(topY = 1.25) {
+    // v2: 512×128 (4× the old 256×64) — the old canvas read as pixel mush once
+    // the sprite stretched past a few metres; this keeps text crisp at race
+    // distance. Soft rounded plate, thin car-colour keyline + drop shadow.
+    const W = 512;
+    const H = 128;
     const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 64;
+    canvas.width = W;
+    canvas.height = H;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "rgba(10,10,12,0.75)";
-    roundRect(ctx, 4, 8, 248, 48, 10);
+    ctx.fillStyle = "rgba(10,10,12,0.78)";
+    roundRect(ctx, 8, 16, W - 16, H - 32, 20);
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 12;
     ctx.fill();
-    ctx.font = "bold 30px 'Arial Black', sans-serif";
-    ctx.fillStyle = this.color;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 4;
+    roundRect(ctx, 10, 18, W - 20, H - 36, 18);
+    ctx.stroke();
+    ctx.font = "bold 60px 'Arial Black', sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.name.slice(0, 14).toUpperCase(), 128, 33);
+    ctx.shadowColor = "rgba(0,0,0,0.85)";
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = this.color;
+    ctx.fillText(this.name.slice(0, 14).toUpperCase(), W / 2, H / 2 + 2);
+    ctx.shadowBlur = 0;
     const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
     );

@@ -106,15 +106,36 @@ export class ParticlePool {
 }
 
 function puffTexture(): THREE.Texture {
-  const size = 64;
+  // v2: the old 64px single radial gradient read as a flat ghost blob. Real
+  // tyre smoke is billowy: this bakes 5 overlapping offset radial lobes over
+  // a 128px canvas so the silhouette is lumpy instead of perfectly round,
+  // then subtracts a few darker holes for the interior wisps the eye uses
+  // to read "volume". Cheaper than per-pixel noise and just as convincing
+  // at drift-camera distance.
+  const size = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 2, size / 2, size / 2, size / 2);
-  g.addColorStop(0, "rgba(255,255,255,0.55)");
-  g.addColorStop(0.6, "rgba(255,255,255,0.18)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
+  const cx = size / 2;
+  const cy = size / 2;
+  const lobe = (x: number, y: number, r: number, a: number): void => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  // main body + asymmetric lobes break the circular symmetry
+  lobe(cx, cy, size * 0.42, 0.5);
+  lobe(cx - 18, cy - 10, size * 0.3, 0.32);
+  lobe(cx + 15, cy + 12, size * 0.28, 0.3);
+  lobe(cx + 8, cy - 22, size * 0.22, 0.26);
+  lobe(cx - 12, cy + 20, size * 0.2, 0.24);
+  // interior wisps: destination-out soft holes give the puff inner structure
+  ctx.globalCompositeOperation = "destination-out";
+  lobe(cx - 14, cy + 6, size * 0.14, 0.5);
+  lobe(cx + 16, cy - 8, size * 0.12, 0.45);
+  lobe(cx + 2, cy + 18, size * 0.1, 0.4);
+  ctx.globalCompositeOperation = "source-over";
   return new THREE.CanvasTexture(canvas);
 }

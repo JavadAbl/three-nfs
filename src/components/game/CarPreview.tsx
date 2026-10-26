@@ -100,24 +100,6 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
     rendererRef.current = renderer;
     sceneRef.current = scene;
     cameraRef.current = camera;
-    // TEMP DEBUG: dump every additive glow plane alive in this scene
-    (window as unknown as Record<string, unknown>).__dumpGlow = () => {
-      const planes: unknown[] = [];
-      scene.traverse((o) => {
-        const m = o as THREE.Mesh;
-        const mat = m.material as THREE.MeshBasicMaterial;
-        if (m.isMesh && mat?.blending === THREE.AdditiveBlending && m.geometry?.type === "PlaneGeometry") {
-          planes.push({
-            y: +m.position.y.toFixed(2),
-            hex: `#${mat.color.getHexString()}`,
-            visible: m.visible,
-            w: m.geometry.parameters?.width,
-            h: m.geometry.parameters?.height,
-          });
-        }
-      });
-      return JSON.stringify({ count: planes.length, refMat: `#${underglowRef.current?.mat.color.getHexString()}`, planes });
-    };
 
     // ── drag-to-rotate + idle auto-spin ──
     const spin = { angle: 0.7, dragging: false, auto: 0.28 };
@@ -260,12 +242,7 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
   // ── live neon recolor (AUTO tracks the paint; explicit picks override) ──
   useEffect(() => {
     const u = underglowRef.current;
-    if (u) {
-      u.mat.color.copy(neonColorFor(neonId, color));
-      // TEMP DEBUG
-      console.log(`[glow-debug] neonId=${neonId} color=${color} → mat=#${u.mat.color.getHexString()}`);
-      (window as unknown as Record<string, unknown>).__glowMat = u.mat;
-    }
+    if (u) u.mat.color.copy(neonColorFor(neonId, color));
   }, [neonId, color]);
 
   return <div ref={hostRef} className={className} aria-label="Car preview" role="img" />;

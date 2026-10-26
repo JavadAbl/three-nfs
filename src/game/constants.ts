@@ -117,8 +117,8 @@ export const CAR_COLORS = [
 ] as const;
 
 /** Neon underglow tube choices offered in the garage (night maps).
- *  "auto" = paint-matched glow (the classic behavior: dark paints clamp to
- *  ice-cyan); the rest are explicit tube colors. id "" never matches a pick. */
+ *  "auto" = paint-matched glow (dark paints keep their hue, lightness lifted);
+ *  the rest are explicit tube colors. id "" never matches a pick. */
 export const NEON_COLORS = [
   { id: "auto", name: "AUTO (paint)", value: "" },
   { id: "magenta", name: "Hot Magenta", value: "#ff2d95" },

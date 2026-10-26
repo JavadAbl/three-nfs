@@ -108,7 +108,8 @@ export class RaceManager {
               totalTimeMs: s.totalTimeMs,
               bestLapMs: s.bestLapMs,
             });
-          } else if (car.kind !== "remote") {
+          } else {
+            // (remote cars never reach here — they `continue` at the top of the loop)
             this.onEvent({ type: "lap", car, lap: s.lapsDone, lapTimeMs: lapMs, isBest });
           }
         }

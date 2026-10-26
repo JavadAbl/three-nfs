@@ -656,36 +656,91 @@ export class Track {
 // ─── procedural textures ─────────────────────────────────────────────────────
 
 function makeAsphaltTexture(): THREE.Texture {
-  const size = 128;
+  // v2: 256px + SEAMLESS multi-octave value noise (the old 128px white-noise
+  // grain read as TV static and tiled hard at 2×2 repeat). Lattice noise with
+  // wrapped indices keeps the texture edge-matched; a fine speckle octave,
+  // sparse aggregate highlights and a few faint tar-repair streaks give the
+  // tarmac structure the eye expects.
+  const size = 256;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, size, size);
-  // asphalt grain
+  // seamless value-noise octave: values on an n×n lattice, smoothstep-bilinear
+  // sampled with wrapped indices so pixel(0) == pixel(size)
+  const lattice = (n: number): number[] => Array.from({ length: n * n }, () => Math.random());
+  const sampleOct = (lat: number[], n: number, x: number, y: number): number => {
+    const fx = (x / size) * n;
+    const fy = (y / size) * n;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    const tx = fx - ix;
+    const ty = fy - iy;
+    const sx = tx * tx * (3 - 2 * tx);
+    const sy = ty * ty * (3 - 2 * ty);
+    const v = (i: number, j: number): number => lat[(((j % n) + n) % n) * n + (((i % n) + n) % n)];
+    const a = v(ix, iy) + (v(ix + 1, iy) - v(ix, iy)) * sx;
+    const b = v(ix, iy + 1) + (v(ix + 1, iy + 1) - v(ix, iy + 1)) * sx;
+    return a + (b - a) * sy;
+  };
+  const coarse = lattice(8); // ~32px patches: tarmac tone drift
+  const fine = lattice(32); // ~8px clumps: aggregate grouping
   const img = ctx.getImageData(0, 0, size, size);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const n = 232 + Math.random() * 23;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = n;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      // big smooth tone drift ±6, clumped grain ±5, pixel speckle ±9
+      let n = 238 + (sampleOct(coarse, 8, x, y) - 0.5) * 12 + (sampleOct(fine, 32, x, y) - 0.5) * 10;
+      n += Math.random() * 18 - 9;
+      // sparse bright aggregate stones (~1.5% of pixels)
+      if (Math.random() < 0.015) n += 14;
+      // faint tar repair seams: a few short streaks in the noise field
+      if (Math.abs(sampleOct(fine, 32, (x + 128) % size, y) - 0.5) < 0.012) n -= 16;
+      const c = Math.max(0, Math.min(255, n));
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = c;
+    }
   }
   ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(2, 2);
+  tex.anisotropy = 8; // road is seen at grazing angles from every camera
   return tex;
 }
 
 function makeCheckeredTexture(): THREE.Texture {
+  // v2: the checker plane floats 6 cm above the road with transparent:true —
+  // so paint it the way real zebra paint looks on tarmac: semi-opaque cells
+  // (the PBR asphalt grain shows through), transparent gutters between cells
+  // (the road itself is the grout), per-cell tone jitter and chipped corners.
+  // A fully opaque canvas here renders transparent:true useless and the line
+  // reads as a flat pasted-on zebra strip.
   const cells = 8;
-  const cell = 16;
+  const cell = 32;
   const canvas = document.createElement("canvas");
   canvas.width = cells * cell;
   canvas.height = cell * 2;
   const ctx = canvas.getContext("2d")!;
   for (let y = 0; y < 2; y++) {
     for (let x = 0; x < cells; x++) {
-      ctx.fillStyle = (x + y) % 2 === 0 ? "#e8e8e8" : "#101010";
-      ctx.fillRect(x * cell, y * cell, cell, cell);
+      const light = (x + y) % 2 === 0;
+      const tone = light ? 222 : 30;
+      const jitter = Math.round(Math.random() * 12 - 6);
+      ctx.fillStyle = `rgb(${tone + jitter},${tone + jitter},${tone + jitter})`;
+      ctx.globalAlpha = light ? 0.88 : 0.92; // let the asphalt grain read through
+      ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+      ctx.globalAlpha = 1;
+      // worn corners: chip 3-6 px of paint off random corners (transparent
+      // nicks — the road texture shows through the alpha)
+      const chips = 1 + Math.floor(Math.random() * 3);
+      for (let c = 0; c < chips; c++) {
+        const cw = 3 + Math.random() * 4;
+        const ch = 3 + Math.random() * 4;
+        const cx = x * cell + (Math.random() < 0.5 ? 1 : cell - 1 - cw);
+        const cy = y * cell + (Math.random() < 0.5 ? 1 : cell - 1 - ch);
+        ctx.clearRect(cx, cy, cw, ch);
+      }
     }
   }
   return new THREE.CanvasTexture(canvas);

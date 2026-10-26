@@ -548,29 +548,54 @@ export class CityEnvironment {
   }
 }
 
-/** grid of lit windows baked to a canvas texture */
+/** grid of lit windows baked to a canvas texture — v2: 4× the resolution of
+ *  the old 12×24 grid, per-window colour temperature (warm tungsten vs cool
+ *  fluorescent overlays), brightness spread, half-drawn "blinds" windows,
+ *  a soft glow bleed around each lit pane and the occasional bright
+ *  penthouse window, so facades read as interiors instead of a dot matrix */
 function windowTexture(windowColor: string, litRatio: number): THREE.Texture {
-  const cols = 12;
-  const rows = 24;
-  const cw = 12;
-  const ch = 10;
+  const cols = 20;
+  const rows = 40;
+  const cw = 16;
+  const ch = 14;
   const canvas = document.createElement("canvas");
   canvas.width = cols * cw;
   canvas.height = rows * ch;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#000000";
+  // unlit facade: not pure black — a hint of glass reflection so dark panes
+  // still catch the underglow when the camera sweeps
+  ctx.fillStyle = "#05060a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // per-window inset (mullion frame) — panes smaller than the cell
+  const px = 3;
+  const py = 2.5;
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      if (Math.random() < litRatio) {
-        const bright = 0.35 + Math.random() * 0.65;
-        ctx.fillStyle = windowColor;
-        ctx.globalAlpha = bright;
-        ctx.fillRect(x * cw + 2, y * ch + 2, cw - 5, ch - 5);
-        ctx.globalAlpha = 1;
-      }
+      if (Math.random() >= litRatio) continue;
+      // brightness: mostly mid, few dim, few showcase-bright
+      const r = Math.random();
+      const bright = r < 0.12 ? 0.25 + Math.random() * 0.25 : r > 0.9 ? 0.9 + Math.random() * 0.1 : 0.45 + Math.random() * 0.4;
+      ctx.globalAlpha = bright;
+      ctx.fillStyle = windowColor;
+      // blinds / half-drawn curtains: ~1 in 5 lit windows is partial
+      const half = Math.random() < 0.2;
+      const w = cw - px * 2 - (half ? Math.floor((cw - px * 2) * Math.random() * 0.5) : 0);
+      const h = ch - py * 2 - (half ? Math.floor((ch - py * 2) * Math.random() * 0.5) : 0);
+      // glow bleed: one soft shadow pass per pane (baked once — free at runtime)
+      ctx.shadowColor = windowColor;
+      ctx.shadowBlur = 5;
+      ctx.fillRect(x * cw + px, y * ch + py, w, h);
+      ctx.shadowBlur = 0;
+      // temperature variety: warm tungsten or cool fluorescent overlay
+      const t = Math.random();
+      if (t < 0.35) ctx.fillStyle = "rgba(255,186,110,0.5)";
+      else if (t < 0.6) ctx.fillStyle = "rgba(140,205,255,0.4)";
+      else continue;
+      ctx.fillRect(x * cw + px, y * ch + py, w, h);
+      ctx.globalAlpha = 1;
     }
   }
   const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace; // emissive map: decode as colour, not linear
   return tex;
 }

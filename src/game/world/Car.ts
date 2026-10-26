@@ -229,7 +229,7 @@ export class Car {
     // the player's garage neon pick (if any) overrides the paint match.
     // Night-only: neon under daylight paint is the wrong kind of toy.
     if (nightLights) {
-      const glow = makeUnderglow(neonColorFor(this.neonId, this.color), d.width + 1.0, d.length + 1.3);
+      const glow = makeUnderglow(neonColorFor(this.neonId, this.color), d.width + 0.7, d.length + 0.9);
       this.owned.push(glow.mat, glow.texture);
       this.underglowMesh = glow.mesh;
       this.underglowMat = glow.mat;

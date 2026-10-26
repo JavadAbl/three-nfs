@@ -2,19 +2,24 @@
 // One source for the glow plane so the garage turntable shows exactly what
 // ships at night: same radial falloff texture, same additive blend, same
 // z-fight guards. neonColorFor resolves the player's neon pick — "auto"
-// keeps the classic paint-matched glow (dark paints clamp to ice-cyan).
+// keeps the paint-matched glow (dark paints keep their hue, just brighter).
 import * as THREE from "three";
 import { NEON_COLORS } from "../constants";
 
 /** rest opacity of the glow plane (pulse oscillates around ~0.66) */
 export const NEON_BASE_OPACITY = 0.7;
 
-/** paint-matched glow (the classic look): true blacks/charcoal/navy shift
- *  toward ice-cyan — a black car with a black glow is invisible */
+/** paint-matched glow (the classic look): dark paints keep their hue and get
+ *  their lightness lifted so the tube still reads — a black car glows soft
+ *  white, a dark red car glows red (never a mismatched cyan) */
 function paintGlow(paint: string): THREE.Color {
   const c = new THREE.Color(paint);
   const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-  if (lum < 0.16) c.lerp(new THREE.Color(0x2bd9ff), 0.8);
+  if (lum < 0.16) {
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    c.setHSL(hsl.h, hsl.s, Math.max(hsl.l, 0.55));
+  }
   return c;
 }
 

@@ -6,8 +6,8 @@
 import * as THREE from "three";
 import { NEON_COLORS } from "../constants";
 
-/** rest opacity of the glow plane (pulse oscillates around ~0.83) */
-export const NEON_BASE_OPACITY = 0.85;
+/** rest opacity of the glow plane (pulse oscillates around ~0.66) */
+export const NEON_BASE_OPACITY = 0.7;
 
 /** paint-matched glow (the classic look): true blacks/charcoal/navy shift
  *  toward ice-cyan — a black car with a black glow is invisible */
@@ -33,7 +33,7 @@ export function radialGlowTexture(): THREE.CanvasTexture {
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d")!;
   const g = ctx.createRadialGradient(size / 2, size / 2, 4, size / 2, size / 2, size / 2);
-  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0, "rgba(255,255,255,0.9)");
   g.addColorStop(0.5, "rgba(255,255,255,0.25)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
@@ -84,5 +84,5 @@ export function makeUnderglow(color: THREE.Color, width: number, length: number)
  *  reads as a real tube. ~1.1 Hz, ±0.09, phase spreads the fleet so cars
  *  never pulse in lockstep (mechanical) */
 export function neonPulseOpacity(t: number, phase = 0): number {
-  return NEON_BASE_OPACITY - 0.05 + 0.11 * Math.sin(t * 6.9 + phase);
+  return NEON_BASE_OPACITY - 0.04 + 0.09 * Math.sin(t * 6.9 + phase);
 }

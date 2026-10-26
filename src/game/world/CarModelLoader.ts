@@ -955,13 +955,22 @@ function makeLitLampMat(base: THREE.MeshStandardMaterial, front: boolean): THREE
   const lit = base.clone();
   lit.name = `${base.name}_${front ? "head" : "rear"}`;
   lit.emissive.copy(front ? HEAD_EMISSIVE : TAIL_EMISSIVE);
-  // DROP any baked emissiveMap: the Vipers' bakes carry tail-only glow —
-  // black texels at the headlamp UVs multiplied the warm-white emissive to
-  // nothing (live A/B 2026-10-26: map on → head lens luma ~78, 0 bright px;
-  // map off → ~103 + bright core). Uniform lens glow, no dependence on the
-  // bake, fleet-consistent with the mapless GT-R/Audi lenses.
-  lit.emissiveMap = null;
-  lit.needsUpdate = true; // shader was compiled WITH a map — recompile without
+  // TEXTURE-DRIVEN glow, never a flat wash: modulate the emissive by a lamp
+  // texture so only the real lens/reflector texels light up (live VLM read
+  // 2026-10-26: a map-less emissive renders as "bright white stickers",
+  // fogs glowing like the heads — the exact look the user rejected).
+  //  - rear: trust the artist's bake when one exists (the Vipers' bakes
+  //    carry proper tail-lens glow); mapless cars follow their baseColor
+  //    atlas — the Audi's "TTRS_luz" lays red tail strips / chrome head
+  //    projectors out as UV islands, so the glow follows the lens shapes.
+  //  - front: the Vipers' bakes are TAIL-ONLY — black texels at the head
+  //    lamp UVs multiplied the warm-white emissive to nothing, so fronts
+  //    follow the baseColor map instead (the ACR even ships
+  //    emissiveMap === map, proving the pattern).
+  // Mapless lenses (GT-R's textureless lamp mats) stay flat — nothing to
+  // modulate with.
+  lit.emissiveMap = (front ? base.map ?? base.emissiveMap : base.emissiveMap ?? base.map) ?? null;
+  lit.needsUpdate = true; // map presence changed vs the compiled shader — recompile
   // these lenses are the car's ONLY lamp visuals at night — the old floating
   // glow-quads/lamp-box impostors are gone, so the real geometry must carry
   // the glow alone

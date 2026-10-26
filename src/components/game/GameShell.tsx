@@ -42,6 +42,7 @@ export function GameShell() {
   const mode = useGameStore((s) => s.mode);
   const playerName = useGameStore((s) => s.playerName);
   const carColor = useGameStore((s) => s.carColor);
+  const neonId = useGameStore((s) => s.neonId);
   const carId = useGameStore((s) => s.carId);
   const muted = useGameStore((s) => s.muted);
   const lobbyPlayers = useGameStore((s) => s.lobby.players);
@@ -148,6 +149,7 @@ export function GameShell() {
             mapId,
             laps,
             net: m === "online" ? netRef.current : null,
+            neonId,
           },
         {
           onHud: setHud,
@@ -187,7 +189,7 @@ export function GameShell() {
       setRaceSession({ mode: m, laps });
       })();
     },
-    [disposeGame, playerName, carColor, carId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
+    [disposeGame, playerName, carColor, neonId, carId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
   );
 
   // ── pause / resume sync ──

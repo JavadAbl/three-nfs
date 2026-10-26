@@ -30,7 +30,7 @@ export function MainMenu({
   onStart: (mode: "quick" | "trial") => void;
   onOpenBrowser: () => void;
 }) {
-  const { playerName, setPlayerName, carColor, setCarColor, carId, setCarId, mapId, setMapId } = useGameStore();
+  const { playerName, setPlayerName, carColor, setCarColor, neonId, setNeonId, carId, setCarId, mapId, setMapId } = useGameStore();
   const [records, setRecords] = useState<LapRecord[]>([]);
   const [stage, setStage] = useState<"mode" | "setup">("mode");
   const [pendingMode, setPendingMode] = useState<"quick" | "trial">("quick");
@@ -193,6 +193,8 @@ export function MainMenu({
                     onCarId={setCarId}
                     color={carColor}
                     onColor={setCarColor}
+                    neonId={neonId}
+                    onNeonId={setNeonId}
                     name={playerName}
                     onName={setPlayerName}
                   />

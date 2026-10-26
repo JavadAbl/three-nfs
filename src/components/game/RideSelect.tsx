@@ -4,7 +4,7 @@
 import { motion } from "framer-motion";
 import { CarPreview } from "./CarPreview";
 import { CARS, carStats, carEntry } from "@/game/cars/registry";
-import { CAR_COLORS } from "@/game/constants";
+import { CAR_COLORS, NEON_COLORS, type NeonId } from "@/game/constants";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, User } from "lucide-react";
 
@@ -13,13 +13,16 @@ interface RideSelectProps {
   onCarId: (id: string) => void;
   color: string;
   onColor: (c: string) => void;
+  /** neon underglow pick (night maps); omit to hide the neon row */
+  neonId?: NeonId;
+  onNeonId?: (id: NeonId) => void;
   /** show the driver-name input (wizard step) — hidden in the lobby modal */
   name?: string;
   onName?: (n: string) => void;
   compact?: boolean;
 }
 
-export function RideSelect({ carId, onCarId, color, onColor, name, onName, compact }: RideSelectProps) {
+export function RideSelect({ carId, onCarId, color, onColor, neonId, onNeonId, name, onName, compact }: RideSelectProps) {
   const stats = carStats(carId);
   const entry = carEntry(carId);
   const idx = CARS.findIndex((c) => c.id === carId);
@@ -29,7 +32,7 @@ export function RideSelect({ carId, onCarId, color, onColor, name, onName, compa
     <div className={`flex gap-4 ${compact ? "min-h-0" : "flex-1 min-h-0"} w-full`}>
       {/* ── turntable ── */}
       <div className="relative flex-1 min-w-0 rounded-xl border border-zinc-800/80 bg-gradient-to-b from-zinc-950/40 to-black/50 overflow-hidden">
-        <CarPreview carId={carId} color={color} className="absolute inset-0" />
+        <CarPreview carId={carId} color={color} neonId={neonId} className="absolute inset-0" />
 
         {/* name / spec plate */}
         <div className="absolute top-3 left-3 pointer-events-none">
@@ -102,6 +105,47 @@ export function RideSelect({ carId, onCarId, color, onColor, name, onName, compa
             ))}
           </div>
         </div>
+
+        {/* neon underglow (night maps) — AUTO follows the paint above */}
+        {onNeonId && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold tracking-[0.3em] text-zinc-500">NEON</span>
+              <span
+                className="text-[10px] font-bold tracking-wider"
+                style={{ color: NEON_COLORS.find((n) => n.id === neonId)?.value || color }}
+              >
+                {NEON_COLORS.find((n) => n.id === neonId)?.name ?? "AUTO (paint)"}
+              </span>
+            </div>
+            <div className="grid grid-cols-7 gap-1.5">
+              {NEON_COLORS.map((n) =>
+                n.value ? (
+                  <button
+                    key={n.id}
+                    onClick={() => onNeonId(n.id)}
+                    aria-label={`Neon ${n.name}`}
+                    className={`swatch ${neonId === n.id ? "swatch-active" : ""}`}
+                    style={{
+                      backgroundColor: n.value,
+                      boxShadow: neonId === n.id ? `0 0 10px ${n.value}` : undefined,
+                    }}
+                  />
+                ) : (
+                  <button
+                    key={n.id}
+                    onClick={() => onNeonId("auto")}
+                    aria-label="Neon auto, paint matched"
+                    className={`swatch text-[8px] font-black tracking-tight text-zinc-400 ${!neonId || neonId === "auto" ? "swatch-active" : ""}`}
+                    style={{ backgroundColor: "#1c1c22" }}
+                  >
+                    AUTO
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        )}
 
         {onName && (
           <div className="flex items-center gap-2">

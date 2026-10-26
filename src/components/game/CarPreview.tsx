@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { loadCarModel, instantiateCar, applyPaint, registerKTX2Renderer } from "@/game/world/CarModelLoader";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "@/game/world/ProceduralMuscle";
 import { carEntry } from "@/game/cars/registry";
+import { makeUnderglow, neonColorFor, neonPulseOpacity, type Underglow } from "@/game/world/NeonGlow";
 
 interface CarHandle {
   root: THREE.Group;
@@ -17,12 +18,15 @@ interface CarHandle {
   procedural: boolean;
 }
 
-export function CarPreview({ carId, color, className }: { carId: string; color: string; className?: string }) {
+export function CarPreview({ carId, color, neonId, className }: { carId: string; color: string; neonId?: string; className?: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const carRef = useRef<CarHandle | null>(null);
+  /** showroom neon — same factory as the race underglow, so what you pick in
+   *  the garage is exactly what glows at night */
+  const underglowRef = useRef<Underglow | null>(null);
   /** latest paint color (async builds read this to avoid stale closures) */
   const colorRef = useRef(color);
   colorRef.current = color;
@@ -87,6 +91,12 @@ export function CarPreview({ carId, color, className }: { carId: string; color: 
     halo.position.y = 0.01;
     scene.add(halo);
 
+    // neon underglow — pulses in the tick below, recolors on pick (effect)
+    const underglow = makeUnderglow(neonColorFor(undefined, colorRef.current), 3.4, 5.6);
+    underglow.mesh.position.y = 0.06; // just above the disc, under the halo
+    scene.add(underglow.mesh);
+    underglowRef.current = underglow;
+
     rendererRef.current = renderer;
     sceneRef.current = scene;
     cameraRef.current = camera;
@@ -131,8 +141,10 @@ export function CarPreview({ carId, color, className }: { carId: string; color: 
       last = now;
       if (!spin.dragging) spin.angle += spin.auto * dt;
       if (carRef.current) carRef.current.root.rotation.y = spin.angle;
-      // gentle halo pulse
-      (halo.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.18 * Math.sin(clock.getElapsedTime() * 2.2);
+      // gentle halo pulse + neon breath (same rhythm as the race underglow)
+      const t = clock.getElapsedTime();
+      (halo.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.18 * Math.sin(t * 2.2);
+      underglow.mat.opacity = neonPulseOpacity(t, 0.6);
       renderer.render(scene, camera);
     };
     tick();
@@ -151,6 +163,8 @@ export function CarPreview({ carId, color, className }: { carId: string; color: 
       (floor.material as THREE.Material).dispose();
       halo.geometry.dispose();
       (halo.material as THREE.Material).dispose();
+      underglow.dispose();
+      underglowRef.current = null;
       renderer.dispose();
       if (el.parentElement) el.parentElement.removeChild(el);
       rendererRef.current = null;
@@ -224,6 +238,12 @@ export function CarPreview({ carId, color, className }: { carId: string; color: 
     const car = carRef.current;
     if (car) applyPaint(car.paint, color);
   }, [color]);
+
+  // ── live neon recolor (AUTO tracks the paint; explicit picks override) ──
+  useEffect(() => {
+    const u = underglowRef.current;
+    if (u) u.mat.color.copy(neonColorFor(neonId, color));
+  }, [neonId, color]);
 
   return <div ref={hostRef} className={className} aria-label="Car preview" role="img" />;
 }

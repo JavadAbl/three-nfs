@@ -5,6 +5,7 @@ import type { HudState, GameMode, RaceResultEntry } from "@/game/core/Game";
 import type { NetPlayer } from "@/game/net/NetClient";
 import { CAR_LIBRARY } from "@/game/cars/registry";
 import { DEFAULT_MAP_ID, resolveMapId } from "@/game/maps/registry";
+import { resolveNeonId, type NeonId } from "@/game/constants";
 
 export type Screen = "menu" | "browser" | "lobby" | "countdown" | "racing" | "paused" | "results";
 
@@ -13,6 +14,8 @@ interface GameStore {
   mode: GameMode;
   playerName: string;
   carColor: string;
+  /** neon underglow pick (NEON_COLORS id; "auto" = paint-matched) */
+  neonId: NeonId;
   carId: string;
   mapId: string;
   muted: boolean;
@@ -39,6 +42,7 @@ interface GameStore {
   setMode: (m: GameMode) => void;
   setPlayerName: (n: string) => void;
   setCarColor: (c: string) => void;
+  setNeonId: (id: NeonId) => void;
   setCarId: (id: string) => void;
   setMapId: (id: string) => void;
   setMuted: (m: boolean) => void;
@@ -52,6 +56,7 @@ interface GameStore {
 
 const LS_NAME = "three-nfs:name";
 const LS_COLOR = "three-nfs:color";
+const LS_NEON = "three-nfs:neon";
 const LS_CAR = "three-nfs:car";
 const LS_MAP = "three-nfs:map";
 
@@ -68,16 +73,17 @@ function resolvePersistedCar(raw: string | null): string {
 }
 
 function loadPersisted() {
-  if (typeof window === "undefined") return { name: "", color: "#f59e0b", car: "gtr", map: DEFAULT_MAP_ID };
+  if (typeof window === "undefined") return { name: "", color: "#f59e0b", neon: "auto" as NeonId, car: "gtr", map: DEFAULT_MAP_ID };
   try {
     return {
       name: window.localStorage.getItem(LS_NAME) ?? "",
       color: window.localStorage.getItem(LS_COLOR) ?? "#f59e0b",
+      neon: resolveNeonId(window.localStorage.getItem(LS_NEON)),
       car: resolvePersistedCar(window.localStorage.getItem(LS_CAR)),
       map: resolveMapId(window.localStorage.getItem(LS_MAP)),
     };
   } catch {
-    return { name: "", color: "#f59e0b", car: "gtr", map: DEFAULT_MAP_ID };
+    return { name: "", color: "#f59e0b", neon: "auto" as NeonId, car: "gtr", map: DEFAULT_MAP_ID };
   }
 }
 
@@ -110,6 +116,7 @@ export const useGameStore = create<GameStore>((set) => {
     mode: "quick",
     playerName: persisted.name,
     carColor: persisted.color,
+    neonId: persisted.neon,
     carId: persisted.car,
     mapId: persisted.map,
     muted: false,
@@ -132,6 +139,12 @@ export const useGameStore = create<GameStore>((set) => {
         window.localStorage.setItem(LS_COLOR, c);
       } catch {}
       set({ carColor: c });
+    },
+    setNeonId: (id) => {
+      try {
+        window.localStorage.setItem(LS_NEON, id);
+      } catch {}
+      set({ neonId: id });
     },
     setCarId: (id) => {
       try {

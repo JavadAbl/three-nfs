@@ -31,7 +31,7 @@ export function OnlineLobby({
   onLeaveRoom: () => void;
   onKicked: () => void;
 }) {
-  const { carId, setCarId, carColor, setCarColor, lobby, setLobby } = useGameStore();
+  const { carId, setCarId, carColor, setCarColor, neonId, setNeonId, lobby, setLobby } = useGameStore();
   const { toast } = useToast();
   const [rideModal, setRideModal] = useState(false);
   const startedRef = useRef(false);
@@ -307,6 +307,8 @@ export function OnlineLobby({
               onCarId={changeCar}
               color={carColor}
               onColor={changeColor}
+              neonId={neonId}
+              onNeonId={setNeonId}
             />
             <p className="text-[10px] text-zinc-600 text-center">
               Car and paint broadcast to the room instantly — the grid updates for everyone.

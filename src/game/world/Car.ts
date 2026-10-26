@@ -11,6 +11,7 @@ import {
 } from "./CarModelLoader";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "./ProceduralMuscle";
 import { headPalette, DEFAULT_HEAD_STYLE, type HeadlampStyle } from "./LampStyle";
+import { makeUnderglow, neonColorFor, neonPulseOpacity, radialGlowTexture } from "./NeonGlow";
 
 export type CarKind = "player" | "ai" | "remote";
 
@@ -117,6 +118,15 @@ export class Car {
   /** neon underglow plane (night maps only) — visibility is runtime-togglable
    * via setUnderglow; null on day maps and cars built without one */
   private underglowMesh?: THREE.Mesh;
+  /** underglow material — syncVisual pulses its opacity (tube shimmer) */
+  private underglowMat?: THREE.MeshBasicMaterial;
+  /** the player's garage neon pick ("auto" = paint-matched classic glow);
+   * rivals/remotes always auto — neon is personal flair, not a fleet uniform */
+  private neonId?: string;
+  /** underglow pulse state — per-car random phase so the fleet never
+   * breathes in lockstep */
+  private glowClock = 0;
+  private glowPhase = Math.random() * Math.PI * 2;
   private label?: THREE.Sprite;
   private rollVisual = 0;
   /** resources owned by this instance (model cars share template resources) */
@@ -130,12 +140,14 @@ export class Car {
     color: string,
     name = "",
     model?: CarModelInstance,
-    tuning?: CarTuning
+    tuning?: CarTuning,
+    neonId?: string
   ) {
     this.kind = kind;
     this.color = color;
     this.name = name;
     this.model = model;
+    this.neonId = neonId;
     if (tuning) {
       this.tuning = tuning;
       this.nitro = tuning.nitroCapacity;
@@ -180,11 +192,6 @@ export class Car {
     this.lampTailBase = nightLights ? LAMP_TAIL_INTENSITY : 0;
     for (const s of this.lampHead) s.emissiveIntensity = headI;
     for (const s of this.lampTail) s.emissiveIntensity = this.lampTailBase;
-    let glowTex: THREE.Texture | null = null;
-    if (nightLights) {
-      glowTex = radialGlowTexture(); // underglow's texture
-      this.owned.push(glowTex);
-    }
     // brake bar — hidden at rest (the per-frame update drives opacity),
     // flashes red across the tail only while actually braking
     this.brakeLights = new THREE.Mesh(
@@ -218,32 +225,15 @@ export class Car {
       this.bodyGroup.add(flame);
     }
 
-    // underglow — polygonOffset + clearance keeps it from z-fighting the
-    // road when the body pitches/rolls over crests (looked like noise);
-    // neon-clamped so even black paint throws a visible glow. Night-only:
-    // neon under daylight paint is the wrong kind of toy.
+    // underglow — neon-clamped so even black paint throws a visible glow;
+    // the player's garage neon pick (if any) overrides the paint match.
+    // Night-only: neon under daylight paint is the wrong kind of toy.
     if (nightLights) {
-      const glowMat = new THREE.MeshBasicMaterial({
-        map: glowTex!,
-        color: neonGlowColor(this.color),
-        transparent: true,
-        opacity: 0.7,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -3,
-        polygonOffsetUnits: -3,
-      });
-      this.owned.push(glowMat);
-      const underglow = new THREE.Mesh(
-        new THREE.PlaneGeometry(d.width + 0.7, d.length + 0.9),
-        glowMat
-      );
-      underglow.rotation.x = -Math.PI / 2;
-      underglow.position.y = 0.09;
-      underglow.renderOrder = 2;
-      this.underglowMesh = underglow;
-      this.bodyGroup.add(underglow);
+      const glow = makeUnderglow(neonColorFor(this.neonId, this.color), d.width + 0.7, d.length + 0.9);
+      this.owned.push(glow.mat, glow.texture);
+      this.underglowMesh = glow.mesh;
+      this.underglowMat = glow.mat;
+      this.bodyGroup.add(glow.mesh);
     }
 
     this.attachHeadlightsAndLabel(d);
@@ -387,9 +377,8 @@ export class Car {
 
     // tail bloom sprites (see model path — matches emissive rivals); night
     // only, same rule as every other lamp
-    let glowTex: THREE.Texture | null = null;
     if (nightLights) {
-      glowTex = radialGlowTexture();
+      const glowTex = radialGlowTexture();
       const tailGlowMat = new THREE.MeshBasicMaterial({
         map: glowTex,
         color: 0xff2a1a,
@@ -425,27 +414,15 @@ export class Car {
     }
 
     // underglow (NFS night vibe) — offset material avoids road z-fighting;
-    // neon-clamped so dark paints still glow (see model path); night only
+    // neon-clamped so dark paints still glow (see model path); night only.
+    // Player's garage neon pick overrides the paint match, same as models.
     let underglow: THREE.Mesh | null = null;
     if (nightLights) {
-      underglow = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.2, 6.0),
-        new THREE.MeshBasicMaterial({
-          map: glowTex!,
-          color: neonGlowColor(this.color),
-          transparent: true,
-          opacity: 0.7,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: -3,
-          polygonOffsetUnits: -3,
-        })
-      );
-      underglow.rotation.x = -Math.PI / 2;
-      underglow.position.y = 0.09;
-      underglow.renderOrder = 2;
+      const glow = makeUnderglow(neonColorFor(this.neonId, this.color), 4.2, 6.0);
+      this.owned.push(glow.mat, glow.texture);
+      underglow = glow.mesh;
       this.underglowMesh = underglow;
+      this.underglowMat = glow.mat;
     }
 
     // wheels — shared builder (tire + gold rim), slots + front flags from
@@ -739,6 +716,14 @@ export class Car {
     // killed the whole game loop
     if (this.headBeamL) this.headBeamL.intensity = this.headBeamForced;
     if (this.headBeamR) this.headBeamR.intensity = this.headBeamForced;
+
+    // neon underglow breathes (~1.1 Hz, ±0.09) — a static plane reads as a
+    // glow decal; the shimmer reads as a real tube. Per-car random phase
+    // keeps the fleet organic; toggle off = mesh invisible = skipped.
+    if (this.underglowMat && this.underglowMesh?.visible) {
+      this.glowClock += dt || 0.016;
+      this.underglowMat.opacity = neonPulseOpacity(this.glowClock, this.glowPhase);
+    }
   }
 
   /** Reset onto the road centre facing forward */
@@ -824,34 +809,6 @@ export class RemoteCar {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-/**
- * underglow neon color — additive blending means a dark paint (black, navy)
- * throws an invisible glow; clamp dark paints toward neon cyan so every
- * car reads as "lit" from the chase cam NFS-style
- */
-function neonGlowColor(paint: string): THREE.Color {
-  const c = new THREE.Color(paint);
-  const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-  // 0.16: only true blacks/charcoal/navy get the cyan shift — bright
-  // saturated paints (racing red, lime) keep their own glow colour
-  if (lum < 0.16) c.lerp(new THREE.Color(0x2bd9ff), 0.8);
-  return c;
-}
-
-function radialGlowTexture(): THREE.Texture {
-  const size = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 4, size / 2, size / 2, size / 2);
-  g.addColorStop(0, "rgba(255,255,255,0.9)");
-  g.addColorStop(0.5, "rgba(255,255,255,0.25)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(canvas);
-}
-
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);

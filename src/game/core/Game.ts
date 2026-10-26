@@ -64,6 +64,9 @@ export interface GameOptions {
   mapId?: string;
   laps?: number;
   net?: NetClient | null;
+  /** player's neon underglow pick (constants NEON_COLORS id; "auto"/unset
+   *  = paint-matched classic glow). Rivals always run auto. */
+  neonId?: string;
 }
 
 export interface GameCallbacks {
@@ -380,7 +383,8 @@ export class Game {
           this.opts.carColor,
           this.opts.playerName,
           model,
-          resolveCarTuning(carId)
+          resolveCarTuning(carId),
+          this.opts.neonId
         );
       } else {
         const aiId = aiPool[i % aiPool.length];

@@ -116,5 +116,26 @@ export const CAR_COLORS = [
   { name: "Mint", value: "#14b8a6" },
 ] as const;
 
+/** Neon underglow tube choices offered in the garage (night maps).
+ *  "auto" = paint-matched glow (the classic behavior: dark paints clamp to
+ *  ice-cyan); the rest are explicit tube colors. id "" never matches a pick. */
+export const NEON_COLORS = [
+  { id: "auto", name: "AUTO (paint)", value: "" },
+  { id: "magenta", name: "Hot Magenta", value: "#ff2d95" },
+  { id: "cyan", name: "Ice Cyan", value: "#2bd9ff" },
+  { id: "lime", name: "Acid Lime", value: "#8dff2a" },
+  { id: "violet", name: "Violet Haze", value: "#b44dff" },
+  { id: "amber", name: "Neon Amber", value: "#ffae00" },
+  { id: "red", name: "Neon Red", value: "#ff3352" },
+] as const;
+
+export type NeonId = (typeof NEON_COLORS)[number]["id"];
+
+/** map an arbitrary/persisted string onto a valid neon id (auto fallback) */
+export function resolveNeonId(raw: string | null | undefined): NeonId {
+  const id = raw ?? "auto";
+  return NEON_COLORS.some((n) => n.id === id) ? (id as NeonId) : "auto";
+}
+
 // Circuit control points now live in src/game/maps/registry.ts (MAP_LIBRARY)
 // — the registry is the single source of truth for every map.

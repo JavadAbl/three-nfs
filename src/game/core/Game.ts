@@ -307,6 +307,24 @@ export class Game {
     // ── cars ──
     this.setupCars();
 
+    // ── dev/compare probe handle (inert to normal play) ──
+    // window.__nightFx lets the headless compare probe flip the whole
+    // fleet's headlamp style (halogen ⇄ xenon) and the neon underglow at
+    // runtime — same frame, no reload, so A/B shots stay perfectly aligned.
+    // Removed again in quit().
+    {
+      const game = this;
+      (window as unknown as { __nightFx?: object }).__nightFx = {
+        game,
+        setXenon: (on: boolean) => {
+          for (const c of game.allCars) c.setHeadStyle(on ? "xenon" : "halogen");
+        },
+        setUnderglow: (on: boolean) => {
+          for (const c of game.allCars) c.setUnderglow(on);
+        },
+      };
+    }
+
     // ── input & audio hooks ──
     this.input.attach();
     this.input.bindControls(this.player.controls);
@@ -549,6 +567,7 @@ export class Game {
     }
     for (const rc of this.remotes.values()) rc.dispose();
     this.remotes.clear();
+    delete (window as unknown as { __nightFx?: object }).__nightFx;
     this.renderer.dispose();
   }
 

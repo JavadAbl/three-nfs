@@ -10,6 +10,7 @@ import {
   type ModelWheel,
 } from "./CarModelLoader";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "./ProceduralMuscle";
+import { headPalette, type HeadlampStyle } from "./LampStyle";
 
 export type CarKind = "player" | "ai" | "remote";
 
@@ -106,6 +107,15 @@ export class Car {
   private nitroFlames: THREE.Mesh[] = [];
   private headBeamL?: THREE.SpotLight;
   private headBeamR?: THREE.SpotLight;
+  /** rival fake-beam cone material (kept for the runtime style swap) */
+  private headConeMat?: THREE.MeshBasicMaterial;
+  /** syncVisual re-applies this to the beams every frame (legacy "hot beams"
+   * tune) — follows the active headlamp style so a xenon swap is not
+   * flattened back to the halogen brightness */
+  private headBeamForced = 95;
+  /** neon underglow plane (night maps only) — visibility is runtime-togglable
+   * via setUnderglow; null on day maps and cars built without one */
+  private underglowMesh?: THREE.Mesh;
   private label?: THREE.Sprite;
   private rollVisual = 0;
   /** resources owned by this instance (model cars share template resources) */
@@ -231,6 +241,7 @@ export class Car {
       underglow.rotation.x = -Math.PI / 2;
       underglow.position.y = 0.09;
       underglow.renderOrder = 2;
+      this.underglowMesh = underglow;
       this.bodyGroup.add(underglow);
     }
 
@@ -269,6 +280,7 @@ export class Car {
         target.position.set(0, 0, d.frontZ + 16);
         this.bodyGroup.add(target, beam);
         beam.target = target;
+        this.headBeamL = beam; // single beam — reused slot so style swaps reach it
 
         const coneMat = new THREE.MeshBasicMaterial({
           color: 0xfff0c0,
@@ -278,6 +290,7 @@ export class Car {
           depthWrite: false,
         });
         this.owned.push(coneMat);
+        this.headConeMat = coneMat;
         const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 16, 8, 1, true), coneMat);
         cone.rotation.x = Math.PI / 2;
         cone.position.set(0, 0.5, d.frontZ + 9.5);
@@ -296,6 +309,35 @@ export class Car {
     // (headlight bloom sprites removed — same "wrapper page" impostors as
     // the tail glow quads; the model's own lit lens meshes flare on their own
     // now, boosted in CarModelLoader.splitDarkLamps to carry the night look)
+  }
+
+  // ─── runtime night-style swap (dev compare / tuning affordance) ─────────
+  /** live halogen ⇄ xenon swap: lens emissive tint/intensity, player beam
+   * SpotLight params and the rival cone re-tint in place — no rebuild, so a
+   * frame never mixes styles. Lamp materials are per-instance clones, so
+   * this car only changes its own lenses (fleet consistency is the caller's
+   * choice — see the __nightFx hook in Game). */
+  setHeadStyle(style: HeadlampStyle): void {
+    const p = headPalette(style);
+    this.headBeamForced = p.syncIntensity;
+    for (const s of this.lampHead) {
+      s.emissive.copy(p.lens);
+      s.emissiveIntensity = p.lensIntensity;
+    }
+    for (const b of [this.headBeamL, this.headBeamR]) {
+      if (!b) continue;
+      b.color.setHex(p.beamColor);
+      b.intensity = p.beamIntensity;
+      b.distance = p.beamDistance;
+      b.angle = p.beamAngle;
+      b.penumbra = p.beamPenumbra;
+    }
+    this.headConeMat?.color.setHex(p.coneColor);
+  }
+
+  /** hide/show the neon underglow plane (night maps only; no-op by day) */
+  setUnderglow(on: boolean): void {
+    if (this.underglowMesh) this.underglowMesh.visible = on;
   }
 
   // ─── procedural fallback path (original stacked-box muscle car) ─────────
@@ -392,6 +434,7 @@ export class Car {
       underglow.rotation.x = -Math.PI / 2;
       underglow.position.y = 0.09;
       underglow.renderOrder = 2;
+      this.underglowMesh = underglow;
     }
 
     // wheels — shared builder (tire + gold rim), slots + front flags from
@@ -679,7 +722,12 @@ export class Car {
         f.scale.set(1, s, 1);
       }
     }
-    if (this.headBeamL) this.headBeamL.intensity = this.headBeamR!.intensity = 95;
+    // brake-beam force: guard BOTH lights — rivals carry only headBeamL
+    // (single center beam), the old `headBeamR!.intensity` chained write
+    // threw "Cannot set properties of undefined" every rival frame and
+    // killed the whole game loop
+    if (this.headBeamL) this.headBeamL.intensity = this.headBeamForced;
+    if (this.headBeamR) this.headBeamR.intensity = this.headBeamForced;
   }
 
   /** Reset onto the road centre facing forward */

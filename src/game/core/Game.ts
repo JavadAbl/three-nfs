@@ -309,9 +309,10 @@ export class Game {
 
     // ── dev/compare probe handle (inert to normal play) ──
     // window.__nightFx lets the headless compare probe flip the whole
-    // fleet's headlamp style (halogen ⇄ xenon) and the neon underglow at
-    // runtime — same frame, no reload, so A/B shots stay perfectly aligned.
-    // Removed again in quit().
+    // fleet's headlamp style (xenon default ⇄ halogen classic) and the neon
+    // underglow at runtime — same frame, no reload, so A/B shots stay
+    // perfectly aligned. Cars already spawn in DEFAULT_HEAD_STYLE; this only
+    // overrides it live. Removed again in quit().
     {
       const game = this;
       (window as unknown as { __nightFx?: object }).__nightFx = {

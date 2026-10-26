@@ -10,7 +10,7 @@ import {
   type ModelWheel,
 } from "./CarModelLoader";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "./ProceduralMuscle";
-import { headPalette, type HeadlampStyle } from "./LampStyle";
+import { headPalette, DEFAULT_HEAD_STYLE, type HeadlampStyle } from "./LampStyle";
 
 export type CarKind = "player" | "ai" | "remote";
 
@@ -110,8 +110,9 @@ export class Car {
   /** rival fake-beam cone material (kept for the runtime style swap) */
   private headConeMat?: THREE.MeshBasicMaterial;
   /** syncVisual re-applies this to the beams every frame (legacy "hot beams"
-   * tune) — follows the active headlamp style so a xenon swap is not
-   * flattened back to the halogen brightness */
+   * tune) — follows the active headlamp style; seeded with the halogen value
+   * and immediately overwritten by the DEFAULT_HEAD_STYLE apply at spawn on
+   * night maps (day maps have no beams, so the seed never shows) */
   private headBeamForced = 95;
   /** neon underglow plane (night maps only) — visibility is runtime-togglable
    * via setUnderglow; null on day maps and cars built without one */
@@ -303,6 +304,12 @@ export class Car {
       const fill = new THREE.PointLight(0xffe2b8, 6, 11, 1.8);
       fill.position.set(0, d.topY + 0.55, -0.2);
       this.bodyGroup.add(fill);
+
+      // fleet default — the constants above are the halogen seeds; one live
+      // swap right here brings every night car (player, AI, remote and the
+      // procedural fallback below) to LampStyle.DEFAULT_HEAD_STYLE with zero
+      // duplicated values. Day maps skip beams AND this (lenses stay dark).
+      this.setHeadStyle(DEFAULT_HEAD_STYLE);
     }
     if (this.kind === "remote") this.addLabel(d.topY);
 
@@ -351,8 +358,12 @@ export class Car {
     const shell = buildMuscleBody(this.color);
     this.bodyGroup.add(shell.root);
 
-    // lights — day maps get dark lens boxes instead of lit lamps
-    const headMat = new THREE.MeshBasicMaterial({ color: nightLights ? 0xfff2cf : 0x4d5157 });
+    // lights — day maps get dark lens boxes instead of lit lamps; night
+    // boxes take the default palette's lens tint so procedural cars match
+    // the model fleet (beams already styled via attachHeadlightsAndLabel)
+    const headMat = new THREE.MeshBasicMaterial({
+      color: nightLights ? headPalette(DEFAULT_HEAD_STYLE).lens : new THREE.Color(0x4d5157),
+    });
     const headL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.08), headMat);
     headL.position.set(0.62, 0.48, 2.58);
     const headR = headL.clone();

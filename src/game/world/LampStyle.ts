@@ -1,14 +1,20 @@
 // ─── LampStyle: runtime night-lamp palettes (halogen ⇄ xenon) ────────────────
-// The shipped look is warm halogen (matches CarModelLoader.HEAD_EMISSIVE and
-// the beam constants Car.attachHeadlightsAndLabel builds with). Xenon is the
-// HID alternative: cool 6000K blue-white lens tint, a tighter projector cone
-// with a longer throw. Car.setHeadStyle swaps the whole fleet live (lens
-// emissive tint/intensity + SpotLight params + rival cone tint) — no rebuild,
-// so compare screenshots never mix styles inside one frame.
+// Xenon is the fleet default (user call after the 1ecf785 compare set: cool
+// 6000K HID won over warm halogen). The halogen palette stays a first-class
+// citizen — the runtime A/B toggle (window.__nightFx) and any future
+// per-car/per-map styling read from the same two objects, so no value is
+// duplicated. Car.setHeadStyle swaps the whole fleet live (lens emissive
+// tint/intensity + SpotLight params + rival cone tint) — no rebuild, so
+// compare screenshots never mix styles inside one frame.
 import * as THREE from "three";
 import { LAMP_HEAD_INTENSITY } from "./CarModelLoader";
 
 export type HeadlampStyle = "halogen" | "xenon";
+
+/** the fleet's night headlamp style at spawn — applied once in
+ * Car.attachHeadlightsAndLabel, so every car (player, AI, remote, procedural
+ * fallback) enters the world already styled; no caller has to remember. */
+export const DEFAULT_HEAD_STYLE: HeadlampStyle = "xenon";
 
 export interface HeadlampPalette {
   /** lens emissive tint (raw linear triple, same convention as HEAD_EMISSIVE) */
@@ -28,8 +34,9 @@ export interface HeadlampPalette {
   syncIntensity: number;
 }
 
-/** warm halogen — the shipped look, byte-for-byte the same values the
- *  constructors build with (swapping back must be a true no-op visually) */
+/** warm halogen — the classic look; kept as the A/B alternative. Byte-for-byte
+ *  the values the constructors build with (so a swap back to halogen is a
+ *  true no-op visually) */
 export const HALOGEN: HeadlampPalette = {
   lens: new THREE.Color(1, 0.93, 0.72),
   lensIntensity: LAMP_HEAD_INTENSITY,

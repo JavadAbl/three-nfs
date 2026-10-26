@@ -955,6 +955,13 @@ function makeLitLampMat(base: THREE.MeshStandardMaterial, front: boolean): THREE
   const lit = base.clone();
   lit.name = `${base.name}_${front ? "head" : "rear"}`;
   lit.emissive.copy(front ? HEAD_EMISSIVE : TAIL_EMISSIVE);
+  // DROP any baked emissiveMap: the Vipers' bakes carry tail-only glow —
+  // black texels at the headlamp UVs multiplied the warm-white emissive to
+  // nothing (live A/B 2026-10-26: map on → head lens luma ~78, 0 bright px;
+  // map off → ~103 + bright core). Uniform lens glow, no dependence on the
+  // bake, fleet-consistent with the mapless GT-R/Audi lenses.
+  lit.emissiveMap = null;
+  lit.needsUpdate = true; // shader was compiled WITH a map — recompile without
   // these lenses are the car's ONLY lamp visuals at night — the old floating
   // glow-quads/lamp-box impostors are gone, so the real geometry must carry
   // the glow alone

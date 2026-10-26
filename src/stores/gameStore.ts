@@ -56,7 +56,9 @@ interface GameStore {
 
 const LS_NAME = "three-nfs:name";
 const LS_COLOR = "three-nfs:color";
-const LS_NEON = "three-nfs:neon";
+/** v2 — bumped to orphan tube picks stuck from early swatch testing; a
+ *  lingering non-auto pick made the glow ignore every paint change */
+const LS_NEON = "three-nfs:neon2";
 const LS_CAR = "three-nfs:car";
 const LS_MAP = "three-nfs:map";
 
@@ -137,8 +139,12 @@ export const useGameStore = create<GameStore>((set) => {
     setCarColor: (c) => {
       try {
         window.localStorage.setItem(LS_COLOR, c);
+        window.localStorage.setItem(LS_NEON, "auto");
       } catch {}
-      set({ carColor: c });
+      // repainting is a restyle — the glow goes back to paint-matched so the
+      // underglow always tracks the new color (re-pick a tube color after, if
+      // that's the look you want)
+      set({ carColor: c, neonId: "auto" });
     },
     setNeonId: (id) => {
       try {

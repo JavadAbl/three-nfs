@@ -304,7 +304,7 @@ export class Game {
     this.scene.add(this.particles.points);
     // daytime maps dress the sky: the HDR panorama becomes background + IBL
     if (this.day) {
-      this.daySky = new DaySky(this.scene, this.renderer);
+      this.daySky = new DaySky(this.scene, this.renderer, this.mapId);
     }
 
     // ── cars ──
@@ -651,6 +651,8 @@ export class Game {
         }
       }
       this.particles.update(dt);
+      // island maps: drift the sea (no-op everywhere else)
+      this.city.update(dt);
     }
 
     // ── camera & lights ──

@@ -29,7 +29,7 @@ import { citySetUrls, loadCityModels, type CityLoadEvent } from "../world/CityMo
 import { ASPHALT_FILES, asphaltCandidates, groundCandidates } from "../world/Track";
 import { mapDef, resolveEnvTheme } from "../maps/registry";
 import { loadSpaScene } from "../world/SpaScene";
-import { loadDaySkyTexture, SKY_ASSETS } from "../world/DaySky";
+import { loadDaySkyTexture, skyAssetsFor } from "../world/DaySky";
 
 /** decoder + transcoder payloads the loaders fetch on first use — warming them
  * through the service worker means session 2+ starts with zero downloads. */
@@ -367,10 +367,12 @@ export async function warmMapAssets(mapId: string, onProgress?: Emit): Promise<v
 
   // exactly the lazy URLs this theme's race will request
   const groundUrls = theme.ground.files.map((f) => groundCandidates(theme.ground.dir, f));
+  // the map's OWN day sky (spa bake ≠ island bake — same rig, different weather)
+  const skyAssets = skyAssetsFor(mapId);
   const primaryUrls = [
     ...groundUrls.map((c) => c[0]),
     ...(theme.sceneGlb ? [theme.sceneGlb] : []),
-    ...(theme.timeOfDay === "day" ? SKY_ASSETS.map((a) => a.candidates[0]) : []),
+    ...(theme.timeOfDay === "day" ? skyAssets.map((a) => a.candidates[0]) : []),
   ];
   const seeds = await seedSizes(primaryUrls);
 
@@ -389,7 +391,7 @@ export async function warmMapAssets(mapId: string, onProgress?: Emit): Promise<v
     theme.ground.files.reduce((s, f) => s + (seeds.get(groundCandidates(theme.ground.dir, f)[0]) ?? 0), 0),
   );
   const scenery = theme.sceneGlb ? mkUnit("SCENERY " + theme.id.toUpperCase(), seeds.get(theme.sceneGlb) ?? 0) : null;
-  const sky = theme.timeOfDay === "day" ? mkUnit("SKY PANORAMA", SKY_ASSETS.reduce((s, a) => s + (seeds.get(a.candidates[0]) ?? 0), 0)) : null;
+  const sky = theme.timeOfDay === "day" ? mkUnit("SKY PANORAMA", skyAssets.reduce((s, a) => s + (seeds.get(a.candidates[0]) ?? 0), 0)) : null;
 
   let failed = false;
   let lastEmit = 0;
@@ -464,7 +466,7 @@ export async function warmMapAssets(mapId: string, onProgress?: Emit): Promise<v
   // day sky: HDR parsed + uploaded into DaySky's module cache
   if (sky) {
     jobs.push(
-      loadDaySkyTexture(onBytes(sky))
+      loadDaySkyTexture(mapId, onBytes(sky))
         .then(() => {
           sky.f.state = "done";
           sky.f.frac = 1;

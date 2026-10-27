@@ -1,85 +1,93 @@
-// ─── Daytime sky: a real HDR panorama — background + image-based light ─────
-// SPA '92 plays at day (EnvThemeSpec.timeOfDay = "day"). The GLB scene has
-// no sky of its own (verified: no dome/sky meshes or textures in the file),
-// and the previous furniture build (flat palette background + the user's
-// sun-disc GLB + six puff clones) read wrong on two counts (user verdict):
-// "more clouds" and "the sun is just a yellow ball on sky, there are no
-// lightings around it". A photographed sky fixes both at once — real
-// cumulus everywhere, a sun with actual atmospheric glow, and the sky
-// becomes the IBL so ambient light carries the sun's warmth.
+// ─── Daytime sky: real HDR panoramas — background + image-based light ──────
+// Day maps (SPA '92, ISLAND COVE) each raise their own photographed sky
+// (EnvThemeSpec.timeOfDay = "day"). The sky IS the scene background AND the
+// IBL, so ambient light carries the sun's warmth and glossy paint picks up
+// real clouds instead of studio grey.
 //
-// The shipped file is PolyHaven's CC0 "sunflowers_puresky" 2k, preprocessed
-// by scripts/hdr_remap.mjs into a WORLD-ALIGNED bake (v7):
-//  - the photo sun (measured disc centre el 43.0° — scripts/sun_probe.mjs;
-//    the old 48.66° constant was 5.6° high) is baked onto SUN_DIR via a
-//    smooth vertical remap (el_src = 3° + 0.967·atan(3.29·tan(el)); anchors
-//    0°→3°, 15°→43°, 90°→90°) plus a ~-3.1° yaw — so the panorama runs at
-//    IDENTITY rotation and the photo horizon sits at the world horizon on
-//    EVERY azimuth. History: v5/v6 rotated the panorama ~34° at runtime
-//    (setFromUnitVectors(HDR_SUN_DIR, SUN_DIR)) instead, which necessarily
-//    tilts the photo horizon — up to +34° above the terrain on the anti-sun
-//    arc. That first drew a tilted "sea" line (v5), then a fog wedge that
-//    still read lopsided (v6 — one side had clouds down to the silhouette,
-//    the other a ~34° flat haze band; user: "the sky in that position need
-//    rotating. its lopsided"). The bake removes the rotation entirely.
-//  - the remap CUTs the photo's own dark olive rim (its lowest ~3° darkens
-//    lum 0.47→0.20) so no dark line rides the terrain silhouette;
-//  - below the world horizon the rows mirror the sky and melt into the fog
-//    colour (linear 0xb9d2e2) over ~1.2°, flat haze below — the void past
-//    the finite GLB terrain reads as distance, never as a second ground;
-//  - re-encoded with three's own RGBE decode convention (×255, not ×256).
+// Every day panorama ships WORLD-ALIGNED (the v7 bake, scripts/hdr_remap.mjs
+// and its island sibling hdr_remap_island.mjs): the photo sun is baked onto
+// SUN_DIR (el 15°, az 33° — the light rig's own direction) and the photo
+// horizon sits at world el 0 on EVERY azimuth, so the panorama runs at
+// IDENTITY rotation. History: the pre-v7 builds rotated the panorama ~34°
+// at runtime to align the sun, which necessarily tilted the photo horizon —
+// a tilted "sea" line (v5), then a lopsided fog wedge (v6; user: "the sky in
+// that position need rotating. its lopsided"). The bake removes the rotation
+// entirely; below the world horizon the rows mirror the sky and melt into the
+// map's fog colour. Each map's bake melts into ITS OWN palette fog (spa:
+// 0xb9d2e2 hazy morning; island: 0xcfe4ee sea haze) — the void past the
+// finite terrain reads as distance, never as a second ground.
 //
-// SUN PLACEMENT: the visible sun sits exactly at SUN_DIR (el 15°, in-frame
-// mid-wedge — the chase camera sees el 0..28°) by construction of the bake,
-// so the light rig is untouched and shadows match what the player sees. The
-// tilt era actually rendered the sun at el ~12.4° (the constant's 5.6°
-// error compressed away); now seen-sun and light finally coincide.
+// SUN PLACEMENT: the visible sun sits exactly at SUN_DIR in every bake by
+// construction, so the shared light rig is untouched and shadows match what
+// the player sees on both maps.
 //
-// scene.environment gets a PMREM of the same HDR — no rotation: the bake is
+// scene.environment gets a PMREM of the same HDR — no rotation: the bakes are
 // already world-aligned, so IBL highlights agree with the visible sun.
 
 import * as THREE from "three";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 
 /** direction the sun shines from (game space). UNCHANGED from the furniture
- * build — the shadow rig (offset ·263, ortho ±200, bias −0.0005/0.5) was
- * tuned against it. The v7 sky bake puts the photo sun onto THE LIGHT.
- * (500,160,325) → elev 15°, az 33°. */
+ *  build — the shadow rig (offset ·263, ortho ±200, bias −0.0005/0.5) was
+ *  tuned against it. Every day sky bake puts the photo sun onto THE LIGHT.
+ *  (500,160,325) → elev 15°, az 33°. */
 export const SUN_DIR = new THREE.Vector3(500, 160, 325).normalize();
 
-/** file revision — bump when swapping the HDR in place (immutable cache +
- *  SW bucket invalidation, same lesson as ASPHALT_REV). v7: world-aligned
- *  bake (scripts/hdr_remap.mjs) — yaw + vertical remap put the photo sun on
- *  SUN_DIR with the horizon at world el 0 on every azimuth, replacing the
- *  ~34° runtime tilt (whose tilted photo horizon caused the v5 "sea" line
- *  and the v6 lopsided wedge). Below-horizon rows melt to fog haze. */
-const SKY_REV = 7;
+// ── per-map day skies ────────────────────────────────────────────────────────
+// Every day map points at its own world-aligned bake; unknown ids fall back
+// to the spa panorama (a day theme with no DAY_SKIES entry should never
+// happen, but the game stays playable if one is added without a sky).
+/** in-place HDR swap revision (immutable HTTP cache + SW bucket invalidation,
+ *  same lesson as ASPHALT_REV — bump the map's rev when re-baking its file) */
+interface SkySpec {
+  file: string;
+  rev: number;
+}
+const DAY_SKIES: Record<string, SkySpec> = {
+  // v7: world-aligned bake — yaw + vertical remap put the photo sun on
+  // SUN_DIR with the horizon at world el 0 on every azimuth (replacing the
+  // ~34° runtime tilt whose tilted photo horizon caused the v5 "sea" line and
+  // the v6 lopsided wedge). Below-horizon rows melt into spa fog 0xb9d2e2.
+  // 2k on purpose: 4k would cost 4× the bytes + a 67 MB GPU texture; the
+  // PMREM IBL is 256px regardless, so only background sharpness differs.
+  spa: { file: "/models/sky/sunflowers_puresky_2k.hdr", rev: 7 },
+  // v1: Poly Haven CC0 "Illovo Beach" — bright Durban morning, sand + palms
+  // and an open-ocean horizon (chosen by horizon probe: clean sun disc, zero
+  // dark horizon rows). Baked with the same world-align guarantees by
+  // scripts/hdr_remap_island.mjs; below-horizon rows melt into island fog
+  // 0xcfe4ee (sea haze).
+  island: { file: "/models/sky/illovo_beach_2k.hdr", rev: 1 },
+};
+const DEFAULT_SKY: SkySpec = DAY_SKIES.spa;
 
-/** the shipped panorama (v7: world-aligned bake; this file
- * is already EV-normalised — sky ~0.5, sun ~6.4e4 — so no scale was baked).
- * 2k on purpose: 4k would cost 4× the bytes + a 67 MB GPU texture; the PMREM
- * IBL is 256px regardless, so only background sharpness differs. */
-const SKY_HDRI = `/models/sky/sunflowers_puresky_2k.hdr?v=${SKY_REV}`;
+/** the baked panorama URL for a map's day sky */
+export function skyHdriFor(mapId: string): string {
+  const s = DAY_SKIES[mapId] ?? DEFAULT_SKY;
+  return `${s.file}?v=${s.rev}`;
+}
 
-/** AssetPreloader registry — the boot bar byte-fetches this file (SW cache
- * warm) and the parse below then re-reads it cache-hot. */
-export const SKY_ASSETS = [
-  { key: "sky:hdri", label: "DAY SKY", candidates: [SKY_HDRI] },
-] as const;
+/** AssetPreloader registry — the boot bar byte-fetches the map's sky (SW
+ *  cache warm) and the parse below then re-reads it cache-hot. */
+export function skyAssetsFor(mapId: string) {
+  return [{ key: "sky:hdri", label: "DAY SKY", candidates: [skyHdriFor(mapId)] }] as const;
+}
 
-// ── module texture cache (parse once, reuse across races — template pattern) ──
+// ── module texture cache (parse once per map, reuse across races) ────────────
 
-const texCache: { promise?: Promise<THREE.DataTexture | null> } = {};
+const texCache = new Map<string, Promise<THREE.DataTexture | null>>();
 
-/** load + cache the panorama (null on failure — the race stays fully
- * playable on the flat palette background). Progress feeds the boot bar. */
+/** load + cache the panorama for a map (null on failure — the race stays
+ *  fully playable on the flat palette background). Progress feeds the boot bar. */
 export function loadDaySkyTexture(
+  mapId: string,
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<THREE.DataTexture | null> {
-  if (!texCache.promise) {
-    texCache.promise = new Promise((resolve) => {
+  let p = texCache.get(mapId);
+  if (!p) {
+    const url = skyHdriFor(mapId);
+    p = new Promise((resolve) => {
       new HDRLoader().load(
-        SKY_HDRI,
+        url,
         (tex) => {
           tex.mapping = THREE.EquirectangularReflectionMapping;
           resolve(tex);
@@ -88,13 +96,14 @@ export function loadDaySkyTexture(
           if (onProgress && e.total) onProgress(e.loaded, e.total);
         },
         (err) => {
-          console.warn("[DaySky] HDRI load failed:", err);
+          console.warn(`[DaySky] HDRI load failed (${mapId}):`, err);
           resolve(null);
         },
       );
     });
+    texCache.set(mapId, p);
   }
-  return texCache.promise;
+  return p;
 }
 
 // ── the per-race sky system ────────────────────────────────────────────────
@@ -107,16 +116,21 @@ export class DaySky {
   private envRT: THREE.WebGLRenderTarget | null = null;
   private disposed = false;
 
-  constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
+  constructor(
+    scene: THREE.Scene,
+    renderer: THREE.WebGLRenderer,
+    /** which map's baked sky to raise (see DAY_SKIES) */
+    private readonly mapId: string,
+  ) {
     this.scene = scene;
     this.renderer = renderer;
-    void loadDaySkyTexture().then((tex) => {
+    void loadDaySkyTexture(this.mapId).then((tex) => {
       if (this.disposed || !tex) return;
-      // visible sky: the panorama is pre-baked in world orientation (v7) —
-      // sun on SUN_DIR, horizon at world el 0 on every azimuth — so it runs
-      // with IDENTITY rotation (no backgroundRotation/env rotation needed)
+      // visible sky: every bake is pre-baked in world orientation (sun on
+      // SUN_DIR, horizon at world el 0 on every azimuth) — IDENTITY rotation,
+      // no backgroundRotation/env rotation needed
       this.scene.background = tex;
-      // IBL from the same sky, unrotated — the bake is already world-
+      // IBL from the same sky, unrotated — the bakes are already world-
       // aligned, so glossy paint picks up the sun where the eye sees it
       const pmrem = new THREE.PMREMGenerator(this.renderer);
       this.envRT = pmrem.fromEquirectangular(tex);
@@ -126,7 +140,7 @@ export class DaySky {
   }
 
   /** per-frame: nothing — the background is camera-invariant. Kept as a
-   * no-op so call sites need no special-casing. */
+   *  no-op so call sites need no special-casing. */
   update(_dt: number, _camera: THREE.Camera): void {
     /* intentionally empty */
   }

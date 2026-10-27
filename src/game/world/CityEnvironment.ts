@@ -5,6 +5,7 @@ import { groundCandidates } from "./Track";
 import { ENV_THEMES, type EnvThemeSpec } from "../maps/registry";
 import { loadCityModels, type BuildingProto } from "./CityModels";
 import { loadSpaScene } from "./SpaScene";
+import { IslandEnvironment } from "./IslandEnvironment";
 
 // Per-map ground sets live in EnvThemeSpec.ground (maps/registry):
 // downtown = worn concrete plaza, harbor = packed gravel yard,
@@ -23,6 +24,8 @@ export class CityEnvironment {
   private boxMeshes: THREE.InstancedMesh[] = [];
   /** true once the real building models have replaced the boxes */
   modelsUpgraded = false;
+  /** island builds (water scroll) — null on city maps */
+  private islandEnv: IslandEnvironment | null = null;
   private disposed = false;
 
   /** builds the world furniture from a map's environment theme */
@@ -32,7 +35,12 @@ export class CityEnvironment {
     this.group.add(this.makeGround(track));
     // stars are night furniture — a day sky shows the sun + clouds (DaySky)
     if (!this.day) this.group.add(this.makeStars());
-    if (theme.sceneGlb) {
+    if (theme.island) {
+      // island map (ISLAND COVE): the sea, palms, rocks, islets and buoys ARE
+      // the environment — no city grid, no imported scenery
+      this.islandEnv = new IslandEnvironment(track, theme.island);
+      this.group.add(this.islandEnv.group);
+    } else if (theme.sceneGlb) {
       // imported-scenery map (SPA '92): the model's own forests, fencing,
       // tire walls and pit buildings ARE the environment — no procedural
       // boxes, no city-set scatter (nothing to upgrade out of either)
@@ -44,6 +52,12 @@ export class CityEnvironment {
     }
     if (theme.containers) this.buildContainers(track, theme.containers);
     if (theme.cranes) this.buildCranes(track, theme.cranes);
+  }
+
+  /** per-frame: island water drift (no-op on city maps) — called by Game's
+   *  update loop so the sea animates without touching any other system */
+  update(dt: number): void {
+    this.islandEnv?.update(dt);
   }
 
   /** add the theme's imported scenery GLB (cached + tuned by SpaScene.ts).
@@ -575,6 +589,13 @@ export class CityEnvironment {
 
   dispose() {
     this.disposed = true;
+    // island build owns its textures/prototypes — dispose once, then detach so
+    // the traverse below doesn't double-release the same geometries
+    if (this.islandEnv) {
+      this.islandEnv.dispose();
+      this.group.remove(this.islandEnv.group);
+      this.islandEnv = null;
+    }
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       // prototype geometries/materials are cached for the app lifetime —

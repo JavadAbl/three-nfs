@@ -5,6 +5,7 @@
 // envTheme / geometry overrides). No other file should list map ids.
 import { PALETTE } from "../constants";
 import { SPA_POINTS, SPA_TERRAIN, SPA_GROUND_EXTENT } from "./spa_generated";
+import { ISLAND_POINTS, ISLAND_TERRAIN, ISLAND_GROUND_EXTENT } from "./island_generated";
 
 /** off-road base terrain: a coarse height grid rasterized from a scanned
  *  real-world model (see spa_generated.ts). terrainHeightAt() bilinearly
@@ -60,6 +61,20 @@ export interface GroundSpec {
   roughReps: number;
 }
 
+/** island dressing — replaces the city grid entirely (IslandEnvironment) */
+export interface IslandSpec {
+  /** sea level: the water plane's y (terrain crosses it at the waterline) */
+  waterLevel: number;
+  /** palms ringed along the corridor + scattered inland (3 instanced protos) */
+  palms: number;
+  /** shoreline + corridor rocks (3 instanced displaced-icosahedron protos) */
+  rocks: number;
+  /** far horizon islets on the water (fogged silhouettes with palms) */
+  islets: number;
+  /** channel buoys bobbing in the shallows */
+  buoys: number;
+}
+
 /** city furniture knobs — one named theme per environment style */
 export interface EnvThemeSpec {
   id: string;
@@ -101,6 +116,9 @@ export interface EnvThemeSpec {
    * world/SpaScene.ts): procedural boxes AND the city-model scatter are
    * skipped — the file's forests/barriers/buildings ARE the environment */
   sceneGlb?: string;
+  /** tropical island build: water plane + palms + rocks + islets + buoys
+   *  INSTEAD of any city (IslandEnvironment.ts) */
+  island?: IslandSpec;
   /** the theme's own scanned ground set */
   ground: GroundSpec;
 }
@@ -277,6 +295,46 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
       reps: 144,
       normalReps: 204,
       roughReps: 178,
+    },
+  },
+  // sun-drenched tropical island (ISLAND COVE): no city at all — the ground
+  // IS the island (Coast Sand 04 scan, Poly Haven CC0 2k: coarse beach sand
+  // with pebble + shell debris), ringed by an animated sea at waterLevel 0,
+  // palm clusters along the corridor, shoreline rocks, far islets on the
+  // horizon and channel buoys. Plays at day with its own world-aligned sky
+  // bake (illovo_beach_2k, scripts/hdr_remap_island.mjs) — the photo sun
+  // sits on the SAME SUN_DIR as the light rig, so sand + sea stay sunlit.
+  island: {
+    id: "island",
+    timeOfDay: "day",
+    // city knobs are unused by the island branch (buildings never spawn) —
+    // zero-ish values keep the type satisfied without implying furniture
+    range: 0,
+    spacing: 1,
+    clearance: 26,
+    jitter: 0,
+    minHeight: 0,
+    heightSpan: 0,
+    minWidth: 0,
+    widthSpan: 0,
+    groundColor: 0xc2b190,
+    buildingColors: [0x000000, 0x000000, 0x000000],
+    windowWarm: "#ffd9a0",
+    windowCool: "#c8dce8",
+    windowAccent: "#a3e4c4",
+    neonColors: [],
+    starCount: 0,
+    neonCount: 0,
+    island: { waterLevel: 0, palms: 110, rocks: 90, islets: 6, buoys: 14 },
+    // day branch runs the sand scan natural (color 0xffffff): bright beach
+    ground: {
+      dir: "island",
+      files: ["island-2k-color.jpg", "island-2k-normal.jpg", "island-2k-rough.jpg"],
+      tint: 0xc2b190,
+      emissive: 0,
+      reps: 100,
+      normalReps: 141,
+      roughReps: 124,
     },
   },
 };
@@ -465,6 +523,34 @@ export const MAP_LIBRARY: MapDef[] = [
     defaultLaps: 2,
     groundExtent: SPA_GROUND_EXTENT,
     baseTerrain: SPA_TERRAIN,
+  },
+  // The holiday map: a 3.35 km coastal loop around a palm island — flowing
+  // beach sweepers, an ess chicane, the headland crest over the θ≈120° kink,
+  // all above an animated tropical sea (baked terrain from
+  // scripts/island_gen.mjs; water/palms/rocks/islets/buoys by
+  // IslandEnvironment.ts). Day map — its own Poly Haven "Illovo Beach" sky
+  // bake shares the spa light rig (same SUN_DIR), so the sun the player
+  // sees is the sun that casts the shadows.
+  {
+    id: "island",
+    name: "ISLAND COVE",
+    description: "Tropical day loop · 3.4 km coastal sweepers",
+    envTheme: "island",
+    palette: {
+      // bright sea-haze day: pale fog, light dry tarmac, warm sand ground
+      asphalt: 0x45484e,
+      fog: 0xcfe4ee,
+      sky: 0x87b6e2,
+      ground: 0xc2b190,
+      finishPrimary: 0xff7a5c,
+    },
+    points: ISLAND_POINTS,
+    roadHalfWidth: 8.5,
+    samples: 1400,
+    checkpoints: 18,
+    defaultLaps: 3,
+    groundExtent: ISLAND_GROUND_EXTENT,
+    baseTerrain: ISLAND_TERRAIN,
   },
 ];
 

@@ -16,7 +16,13 @@
 //   flora: palms (bent trunks, droop fronds, coconuts) plus three more
 //     instanced species for variety — conifers on the mountain slopes,
 //     lowland ferns and shrubs, grass tufts ringing the corridor.
-//   rocks: displaced flat-shaded icosahedra, half-buried along the shore.
+//   rocks: displaced flat-shaded icosahedra, half-buried along the shore,
+//     dressed with the ambientCG Rock057 1K scan (warm layered sandstone).
+//   meadow: a terrain-conforming moss drape (ambientCG Moss003 1K — dark
+//     forest-floor ground cover) over the interior plateau, so the island
+//     reads sand → moss → rock as it climbs toward the peaks.
+//   scans: all five ambientCG CC0 1K sets (Rock057/063, Bark013, Moss003/004)
+//     live in public/textures/props/<name>/ (color sRGB + GL normal + rough).
 //   buoys: little channel markers bobbing on the SAME wave function the
 //     water shader displaces with — they ride the sea, not float above it.
 import * as THREE from "three";
@@ -412,7 +418,8 @@ function palmPrototype(seed: number): THREE.BufferGeometry {
   const segs = 7;
   const lean = (rng() - 0.5) * 0.5; // radians total
   const leanAz = rng() * Math.PI * 2;
-  const parts: THREE.BufferGeometry[] = [];
+  const trunkParts: THREE.BufferGeometry[] = [];
+  const crownParts: THREE.BufferGeometry[] = [];
   let y = 0;
   let offset = new THREE.Vector2(0, 0);
   for (let i = 0; i < segs; i++) {
@@ -421,12 +428,14 @@ function palmPrototype(seed: number): THREE.BufferGeometry {
     const ring = i % 2 === 0 ? 1.0 : 0.82; // ring scars
     const segLen = height / segs;
     const g = new THREE.CylinderGeometry(rBase * 0.9 * ring, rBase * ring, segLen, 7, 1);
-    paint(g, 0x8a7963, 0.25, rng);
+    // near-white: the Bark013 scan supplies the colour, vertex paint only
+    // shades (a coloured tint × map would double-darken the bark)
+    paint(g, 0xd8cfc0, 0.18, rng);
     // lean: each segment drifts along the lean direction, tilt accumulates
     const dx = Math.cos(leanAz) * Math.sin(lean) * segLen * t;
     const dz = Math.sin(leanAz) * Math.sin(lean) * segLen * t;
     g.translate(dx, y + segLen / 2, dz);
-    parts.push(g);
+    trunkParts.push(g);
     y += segLen;
     offset.set(dx, dz);
   }
@@ -444,7 +453,7 @@ function palmPrototype(seed: number): THREE.BufferGeometry {
     m.multiply(new THREE.Matrix4().makeRotationX(tilt));
     f.applyMatrix4(m);
     f.translate(crown.x, crown.y, crown.z);
-    parts.push(f);
+    crownParts.push(f);
   }
   // coconut cluster under the crown
   for (let c = 0; c < 3; c++) {
@@ -453,11 +462,17 @@ function palmPrototype(seed: number): THREE.BufferGeometry {
     const a = rng() * Math.PI * 2;
     const r = 0.14 + rng() * 0.1;
     g.translate(crown.x + Math.cos(a) * r, crown.y - 0.18 - rng() * 0.1, crown.z + Math.sin(a) * r);
-    parts.push(g);
+    crownParts.push(g);
   }
-  // all sources are indexed with identical attribute sets — merge indexed
-  const merged = mergeGeometries(parts, false);
-  parts.forEach((p) => p.dispose());
+  // two material groups: trunk (bark scan) vs crown (vertex-coloured fronds)
+  // — merged with useGroups so one InstancedMesh carries both materials
+  const trunkGeo = mergeGeometries(trunkParts, false) as THREE.BufferGeometry;
+  const crownGeo = mergeGeometries(crownParts, false) as THREE.BufferGeometry;
+  trunkParts.forEach((p) => p.dispose());
+  crownParts.forEach((p) => p.dispose());
+  const merged = mergeGeometries([trunkGeo, crownGeo], true);
+  trunkGeo.dispose();
+  crownGeo.dispose();
   if (!merged) throw new Error("palm merge failed");
   return merged;
 }
@@ -515,6 +530,8 @@ export class IslandEnvironment {
   private textures: THREE.Texture[] = [];
   /** interior mountain footprints — conifers ring them */
   private mountainPeaks: { x: number; z: number; r: number }[] = [];
+  /** shared rock-scanned material for interior mountains + horizon islets */
+  private mtnMat: THREE.MeshStandardMaterial | null = null;
   /** buoy state for the per-frame bob */
   private buoys: { x: number; z: number; s: number; spin: number }[] = [];
   private buoyInst: THREE.InstancedMesh | null = null;
@@ -528,11 +545,28 @@ export class IslandEnvironment {
     const rng = makeRng(4242);
     this.group.add(this.makeWater());
     this.buildMountains(rng);
+    this.buildMeadow();
     this.buildPalms(rng);
     this.buildFlora(rng);
     this.buildRocks(rng);
     this.buildIslets(rng);
     this.buildBuoys(rng);
+  }
+
+  /** load an ambientCG props PBR trio (color sRGB + GL normal + roughness)
+   *  from /textures/props/<dir>/ — registered in this.textures for disposal */
+  private loadPbr(dir: string, rx = 1, ry = 1): { color: THREE.Texture; normal: THREE.Texture; rough: THREE.Texture } {
+    const L = new THREE.TextureLoader();
+    const mk = (suffix: string, srgb: boolean) => {
+      const t = L.load(`/textures/props/${dir}/1k-${suffix}.jpg`);
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry);
+      t.anisotropy = 4;
+      this.textures.push(t);
+      return t;
+    };
+    return { color: mk("color", true), normal: mk("normal", false), rough: mk("rough", false) };
   }
 
   /** coarse road points for corridor-distance checks (every 8th sample) */
@@ -663,12 +697,20 @@ export class IslandEnvironment {
     ];
     const road = this.roadPoints();
     const hw = this.track.halfWidth;
+    // ambientCG Rock063 1K — grey fractured boulders; the altitude vertex
+    // bands (green skirt → rock) multiply over the scan for a mossy base
+    const scan = this.loadPbr("rock063", 3, 2);
     const mat = new THREE.MeshStandardMaterial({
+      map: scan.color,
+      normalMap: scan.normal,
+      roughnessMap: scan.rough,
+      normalScale: new THREE.Vector2(0.9, 0.9),
       vertexColors: true,
-      roughness: 0.95,
-      metalness: 0.0,
+      roughness: 1,
+      metalness: 0,
       flatShading: true,
     });
+    this.mtnMat = mat;
     for (let i = 0; i < Math.min(defs.length, this.spec.mountains); i++) {
       const d = defs[i];
       if (this.corridorDist(d.x, d.z, road) < hw + d.r + 24) continue; // never swallow the road
@@ -680,6 +722,37 @@ export class IslandEnvironment {
       this.group.add(m);
       this.mountainPeaks.push({ x: d.x, z: d.z, r: d.r });
     }
+  }
+
+  /** interior moss meadow: a drape conformed to the terrain over the
+   *  central plateau (r 340 — road stays on the sand ring past r 400),
+   *  carrying the ambientCG Moss003 forest-floor scan. polygonOffset
+   *  keeps it clear of the ground mesh it sits 7 cm above. */
+  private buildMeadow(): void {
+    const moss = this.loadPbr("moss003", 26, 26);
+    const geo = new THREE.RingGeometry(0.01, 340, 56, 26);
+    geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      pos.setY(i, this.track.terrainHeightAt(x, z) + 0.07);
+    }
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({
+      map: moss.color,
+      normalMap: moss.normal,
+      roughnessMap: moss.rough,
+      normalScale: new THREE.Vector2(0.8, 0.8),
+      roughness: 1,
+      metalness: 0,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.receiveShadow = true;
+    this.group.add(m);
   }
 
   /** understory scatter: conifers (mountain slopes + inland), ferns, shrubs
@@ -694,7 +767,16 @@ export class IslandEnvironment {
     const makeInstanced = (
       protoSeeds: number[],
       builder: (s: number) => THREE.BufferGeometry,
-      opts: { count: number; corridor: number; minH: number; maxR: number; doubleSide: boolean; castShadow?: boolean },
+      opts: {
+        count: number;
+        corridor: number;
+        minH: number;
+        maxR: number;
+        doubleSide: boolean;
+        castShadow?: boolean;
+        /** optional PBR scan (dir, repeat-x, repeat-y) applied × vertex colours */
+        pbr?: [string, number, number];
+      },
       place: (rng: () => number) => { x: number; z: number } | null,
     ) => {
       const protos = protoSeeds.map(builder);
@@ -704,6 +786,13 @@ export class IslandEnvironment {
         metalness: 0.0,
         side: opts.doubleSide ? THREE.DoubleSide : THREE.FrontSide,
       });
+      if (opts.pbr) {
+        const scan = this.loadPbr(opts.pbr[0], opts.pbr[1], opts.pbr[2]);
+        mat.map = scan.color;
+        mat.normalMap = scan.normal;
+        mat.roughnessMap = scan.rough;
+        mat.normalScale = new THREE.Vector2(0.6, 0.6);
+      }
       const mats: THREE.Matrix4[][] = protoSeeds.map(() => []);
       const tints: THREE.Color[][] = protoSeeds.map(() => []);
       let placed = 0;
@@ -757,7 +846,7 @@ export class IslandEnvironment {
     makeInstanced(
       [711, 722],
       fernPrototype,
-      { count: this.spec.ferns, corridor: 5, minH: 0.5, maxR: 560, doubleSide: true },
+      { count: this.spec.ferns, corridor: 5, minH: 0.5, maxR: 560, doubleSide: true, pbr: ["moss004", 1, 1] },
       (r) => {
         if (r() < 0.55) {
           const s = this.track.samples[Math.floor(r() * this.track.samples.length)];
@@ -775,7 +864,7 @@ export class IslandEnvironment {
     makeInstanced(
       [811, 822],
       shrubPrototype,
-      { count: this.spec.shrubs, corridor: 5, minH: 0.45, maxR: 580, doubleSide: false },
+      { count: this.spec.shrubs, corridor: 5, minH: 0.45, maxR: 580, doubleSide: false, pbr: ["moss004", 2, 2] },
       (r) => {
         const a = r() * Math.PI * 2;
         const d = 110 + r() * 440;
@@ -799,12 +888,24 @@ export class IslandEnvironment {
 
   private buildPalms(rng: () => number): void {
     const protos = [palmPrototype(101), palmPrototype(202), palmPrototype(303)];
-    const mat = new THREE.MeshStandardMaterial({
+    // material pair matching the palm's two geometry groups:
+    //   [0] trunk → ambientCG Bark013 scan (deep vertical furrows)
+    //   [1] crown → plain vertex-coloured fronds
+    const bark = this.loadPbr("bark013", 2, 1);
+    const barkMat = new THREE.MeshStandardMaterial({
+      map: bark.color,
+      normalMap: bark.normal,
+      roughnessMap: bark.rough,
+      roughness: 0.95,
+      metalness: 0,
+    });
+    const leafMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       roughness: 0.82,
       metalness: 0.0,
       side: THREE.DoubleSide,
     });
+    const mat: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] = [barkMat, leafMat];
     const N = this.spec.palms;
     const road = this.roadPoints();
     const hw = this.track.halfWidth;
@@ -858,10 +959,16 @@ export class IslandEnvironment {
 
   private buildRocks(rng: () => number): void {
     const protos = [rockPrototype(11), rockPrototype(12), rockPrototype(13)];
+    // ambientCG Rock057 1K — warm layered sandstone; instance tints still
+    // give every boulder its own shade (wet rocks near the surf run darker)
+    const scan = this.loadPbr("rock057", 1.5, 1);
     const mat = new THREE.MeshStandardMaterial({
+      map: scan.color,
+      normalMap: scan.normal,
+      roughnessMap: scan.rough,
       vertexColors: true,
-      roughness: 0.95,
-      metalness: 0.0,
+      roughness: 1,
+      metalness: 0,
       flatShading: true,
     });
     const N = this.spec.rocks;
@@ -930,12 +1037,14 @@ export class IslandEnvironment {
     for (let k = 0; k < this.spec.islets; k++) {
       protos.push(mountainPrototype(3100 + k * 17, 60 + rng() * 30, 26 + rng() * 18));
     }
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.95,
-      flatShading: true,
-      fog: true,
-    });
+    const mat =
+      this.mtnMat ??
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.95,
+        flatShading: true,
+        fog: true,
+      });
     const treeGeo = coniferPrototype(990);
     const treeMat = new THREE.MeshStandardMaterial({
       vertexColors: true,

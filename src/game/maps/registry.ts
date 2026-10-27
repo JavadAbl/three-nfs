@@ -69,10 +69,20 @@ export interface IslandSpec {
   palms: number;
   /** shoreline + corridor rocks (3 instanced displaced-icosahedron protos) */
   rocks: number;
-  /** far horizon islets on the water (fogged silhouettes with palms) */
+  /** far horizon mountain-islands on the water (fogged ridged silhouettes) */
   islets: number;
   /** channel buoys bobbing in the shallows */
   buoys: number;
+  /** interior mountain count (ridged multi-peak masses in the island core) */
+  mountains: number;
+  /** conifers ringing the mountain slopes + inland scatter */
+  conifers: number;
+  /** lowland fern rosettes */
+  ferns: number;
+  /** dry-lowland shrubs */
+  shrubs: number;
+  /** grass tufts fringing the corridor */
+  tufts: number;
 }
 
 /** city furniture knobs — one named theme per environment style */
@@ -325,7 +335,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [],
     starCount: 0,
     neonCount: 0,
-    island: { waterLevel: 0, palms: 110, rocks: 90, islets: 6, buoys: 14 },
+    island: { waterLevel: 0, palms: 110, rocks: 90, islets: 6, buoys: 14, mountains: 3, conifers: 150, ferns: 120, shrubs: 140, tufts: 220 },
     // day branch runs the sand scan natural (color 0xffffff): bright beach
     ground: {
       dir: "island",

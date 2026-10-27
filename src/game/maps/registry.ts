@@ -75,6 +75,8 @@ export interface IslandSpec {
   buoys: number;
   /** interior mountain count (heightfield massifs in the island core) */
   mountains: number;
+  /** coastal headland massifs — a mountain ring along the waterline */
+  coastMountains: number;
   /** conifers — groves clumped on the massif slopes + inland scatter */
   conifers: number;
   /** lowland fern rosettes */
@@ -335,7 +337,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [],
     starCount: 0,
     neonCount: 0,
-    island: { waterLevel: 0, palms: 160, rocks: 90, islets: 6, buoys: 14, mountains: 3, conifers: 2500, ferns: 420, shrubs: 420, tufts: 380 },
+    island: { waterLevel: 0, palms: 160, rocks: 90, islets: 6, buoys: 14, mountains: 3, coastMountains: 7, conifers: 8400, ferns: 420, shrubs: 420, tufts: 380 },
     // day branch runs the sand scan natural (color 0xffffff): bright beach
     ground: {
       dir: "island",

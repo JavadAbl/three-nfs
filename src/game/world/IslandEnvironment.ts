@@ -648,8 +648,8 @@ export class IslandEnvironment {
   /** the sea shader's uniforms (uTime advances every update) + baked textures */
   private waterUniforms!: Record<string, THREE.IUniform>;
   private textures: THREE.Texture[] = [];
-  /** interior massif records — conifers grow ON their height fields, so each
-   *  carries its field closure + base Y (geometry and placement share it) */
+  /** interior + coastal massif records — conifers grow ON their height fields,
+   *  so each carries its field closure + base Y (geometry and placement share it) */
   private mountainPeaks: {
     x: number;
     z: number;
@@ -714,6 +714,19 @@ export class IslandEnvironment {
       if (d < best) best = d;
     }
     return Math.sqrt(best);
+  }
+
+  /** true when (x,z) sits on a massif's flared skirt (field surface above
+   *  ~25 cm) — used to keep scatter props out of the mountains: anything
+   *  placed at terrain height there ends up buried inside the heightfield */
+  private insideMassif(x: number, z: number, pad = 1.25): boolean {
+    for (const pk of this.mountainPeaks) {
+      const dx = x - pk.x;
+      const dz = z - pk.z;
+      const rr = pk.r * pad;
+      if (dx * dx + dz * dz < rr * rr && pk.field(dx, dz) > 0.25) return true;
+    }
+    return false;
   }
 
   private makeWater(): THREE.Mesh {
@@ -815,10 +828,10 @@ export class IslandEnvironment {
     return mesh;
   }
 
-  /** central mountain range in the island interior — the island's landmark.
-   *  v2: heightfield massifs ~3× the old cones (summits ~200 m), clustered
-   *  as one range. If a flank would crowd the corridor the def shrinks until
-   *  it clears (never skipped, never swallows the road). */
+  /** central mountain range in the island interior + a coastal headland ring
+   *  along the waterline. v2: heightfield massifs ~3× the old cones (summits
+   *  ~200 m), clustered as one range. If a flank would crowd the corridor the
+   *  def shrinks until it clears (never skipped, never swallows the road). */
   private buildMountains(rng: () => number): void {
     // r/h picked for drama: the main massif's summit rides ~200 m over a
     // ~900 m island — a proper volcanic-island skyline, not a speed bump
@@ -831,6 +844,22 @@ export class IslandEnvironment {
     // (579: 112% ragged, 3 summits · 546: 93%, 3 · 544: 120%, one crag) so no
     // massif reads as a smooth lone cone
     const seeds = [579, 546, 544];
+    // coastal headland ring — the mountains continue down to the sea. Slots
+    // picked by scripts/coast_range.mjs: 7 azimuths evenly spaced around the
+    // island, each refined against the road corridor (≥ 24 m clear at scale
+    // 1) and the terrain grid, with distinct crest-ragged seeds so no two
+    // headlands share a silhouette. Centres ride the waterline, so the
+    // seaward flanks drop straight into the surf as cliffs.
+    const coastDefs: { x: number; z: number; r: number; h: number }[] = [
+      { x: 686, z: 0, r: 105, h: 82 }, // az 0°
+      { x: 59, z: 675, r: 88, h: 69 }, // az 85°
+      { x: -347, z: 601, r: 145, h: 110 }, // az 120° — with az 145 forms a cliff wall
+      { x: -562, z: 393, r: 112, h: 87 }, // az 145°
+      { x: -389, z: -555, r: 80, h: 64 }, // az 235°
+      { x: -178, z: -663, r: 116, h: 89 }, // az 255°
+      { x: 651, z: -174, r: 82, h: 65 }, // az 345°
+    ];
+    const coastSeeds = [544, 579, 626, 542, 538, 685, 527];
     const road = this.roadPoints();
     const hw = this.track.halfWidth;
     // massif material PAIR (geometry groups split each mesh at the forest
@@ -863,8 +892,14 @@ export class IslandEnvironment {
       }),
     ];
     this.mtnMats = mats;
-    for (let i = 0; i < Math.min(defs.length, this.spec.mountains); i++) {
-      const d = defs[i];
+    // interior range + coastal ring share one build path (same shrink guard,
+    // same material pair, same grove system via mountainPeaks)
+    const all: { x: number; z: number; r: number; h: number; seed: number }[] = [];
+    for (let i = 0; i < Math.min(defs.length, this.spec.mountains); i++)
+      all.push({ ...defs[i], seed: seeds[i] });
+    for (let i = 0; i < Math.min(coastDefs.length, this.spec.coastMountains); i++)
+      all.push({ ...coastDefs[i], seed: coastSeeds[i] });
+    for (const d of all) {
       // adaptive shrink: clear the corridor by 24 m or scale down until it
       // does (the field's flared skirt makes a near miss harmless anyway)
       let scale = 1;
@@ -875,8 +910,8 @@ export class IslandEnvironment {
         scale *= 0.94;
       const r = d.r * scale;
       const h = d.h * scale;
-      const field = massifField(seeds[i], r, h);
-      const geo = peakGeometry(seeds[i], r, h);
+      const field = massifField(d.seed, r, h);
+      const geo = peakGeometry(d.seed, r, h);
       const m = new THREE.Mesh(geo, mats);
       const baseY = this.track.terrainHeightAt(d.x, d.z) - 1.5;
       m.position.set(d.x, baseY, d.z);
@@ -972,6 +1007,9 @@ export class IslandEnvironment {
       while (placed < opts.count && guard++ < opts.count * 40) {
         const spot = place(rng);
         if (!spot) continue;
+        // keep scatter off the massifs: grove spots carry y (they stand ON
+        // the height fields) — everything else would bury inside the mountain
+        if (spot.y === undefined && this.insideMassif(spot.x, spot.z)) continue;
         if (this.corridorDist(spot.x, spot.z, road) < hw + opts.corridor) continue;
         const y = spot.y ?? this.track.terrainHeightAt(spot.x, spot.z);
         if (y < opts.minH) continue;
@@ -1121,6 +1159,7 @@ export class IslandEnvironment {
         z = Math.sin(a) * r;
       }
       if (this.corridorDist(x, z, road) < hw + 5.5) continue; // never on the road
+      if (this.insideMassif(x, z)) continue; // palms belong to the beach, not the cliffs
       const y = this.track.terrainHeightAt(x, z);
       if (y < 0.55) continue; // in the water / surf zone
       const p = placed % protos.length;
@@ -1186,6 +1225,7 @@ export class IslandEnvironment {
         z = s.pos.z + s.normal.z * side * dist;
       }
       if (this.corridorDist(x, z, road) < hw + 3) continue;
+      if (this.insideMassif(x, z)) continue; // no boulders swallowed by the massifs
       const y = this.track.terrainHeightAt(x, z);
       if (y < -0.3) continue; // fully at sea — the islets cover that look
       const p = placed % protos.length;
@@ -1302,18 +1342,25 @@ export class IslandEnvironment {
     const N = this.spec.buoys;
     const inst = new THREE.InstancedMesh(geo, mat, N);
     const q = new THREE.Quaternion();
-    for (let k = 0; k < N; k++) {
+    let placed = 0;
+    let guard = 0;
+    while (placed < N && guard++ < N * 40) {
       const a = rng() * Math.PI * 2;
       const r = 690 + rng() * 320; // the shallows just past the waterline
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      if (this.insideMassif(x, z)) continue; // never inside a headland cliff
       const s = 0.8 + rng() * 0.5;
       const spin = rng() * Math.PI * 2;
-      this.buoys.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, s, spin });
+      this.buoys.push({ x, z, s, spin });
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), spin);
       inst.setMatrixAt(
-        k,
-        new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * r, this.spec.waterLevel - 0.16, Math.sin(a) * r), q, new THREE.Vector3(s, s, s)),
+        placed,
+        new THREE.Matrix4().compose(new THREE.Vector3(x, this.spec.waterLevel - 0.16, z), q, new THREE.Vector3(s, s, s)),
       );
+      placed++;
     }
+    inst.count = placed; // guard may run dry inside the headland ring
     inst.instanceMatrix.needsUpdate = true;
     this.group.add(inst);
     this.buoyInst = inst;

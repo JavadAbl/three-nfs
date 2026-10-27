@@ -51,12 +51,14 @@ const DAY_SKIES: Record<string, SkySpec> = {
   // 2k on purpose: 4k would cost 4× the bytes + a 67 MB GPU texture; the
   // PMREM IBL is 256px regardless, so only background sharpness differs.
   spa: { file: "/models/sky/sunflowers_puresky_2k.hdr", rev: 7 },
-  // v1: Poly Haven CC0 "Illovo Beach" — bright Durban morning, sand + palms
-  // and an open-ocean horizon (chosen by horizon probe: clean sun disc, zero
-  // dark horizon rows). Baked with the same world-align guarantees by
-  // scripts/hdr_remap_island.mjs; below-horizon rows melt into island fog
-  // 0xcfe4ee (sea haze).
-  island: { file: "/models/sky/illovo_beach_2k.hdr", rev: 1 },
+  // v2: Poly Haven CC0 "Drakensberg Solitary Mountain (Pure Sky)" — clear
+  // afternoon sky, sun remapped onto SUN_DIR by scripts/hdr_remap_island.mjs,
+  // below-horizon rows melt into island fog 0xcfe4ee (sea haze). v1's
+  // "Illovo Beach Balcony" was abandoned: shot FROM a balcony, the building's
+  // roof/walls/railing were baked across 252° of the panorama and read as a
+  // giant floating structure over the circuit. The puresky source has the
+  // ground masked to pure sky — structure-free on every azimuth.
+  island: { file: "/models/sky/island_cove_sky_2k.hdr", rev: 2 },
 };
 const DEFAULT_SKY: SkySpec = DAY_SKIES.spa;
 

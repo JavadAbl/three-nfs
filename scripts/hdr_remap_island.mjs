@@ -1,7 +1,11 @@
-// ─── Bake the ISLAND world-aligned sky (v1) ─────────────────────────────────
+// ─── Bake the ISLAND world-aligned sky (v2) ─────────────────────────────────
 // Generalised sibling of hdr_remap.mjs (the sunflowers v7 bake) for Poly
-// Haven's CC0 "Secluded Beach" 2k (bright morning cove, Smugglers Cove
-// collection — sand, rocks, ocean: the island map's own weather).
+// Haven's CC0 "Drakensberg Solitary Mountain (Pure Sky)" 2k — the v1 bake
+// used "Illovo Beach Balcony", whose baked-in balcony building (roof, walls,
+// railing across 252° of the panorama) read as a giant floating structure
+// over the circuit. The puresky variant masks the ground to pure sky and has
+// a structure-free horizon on every azimuth (verified: contamination
+// detector + VLM find only sun glow, no hard silhouettes).
 //
 // Same geometry fix, same guarantees — the photo sun is baked ONTO the game
 // SUN_DIR (el 15.02°, u 0.5918 — the light rig is untouched, so shadows match
@@ -10,11 +14,10 @@
 // colour (sea haze 0xcfe4ee — the palette's fog, not spa's 0xb9d2e2).
 //
 // Differences from the sunflowers bake:
-//  - sun probe band widened 20-70° → 8-85° (a morning beach sun can sit low)
+//  - sun probe band widened 20-70° → 8-85° (an afternoon sun can sit low)
 //  - the "proven constant" azimuth cross-check is dropped (that was the old
 //    sunflowers HDR_SUN_DIR constant; here the MEASURED disc is the truth)
-//  - CUT 2° (secluded_beach was shot at the waterline — its horizon rows are
-//    clean, no olive rim to skip, and a lower cut keeps the sea horizon crisp)
+//  - CUT 2° (a lower cut keeps the sea horizon crisp)
 //
 // Usage: node scripts/hdr_remap_island.mjs [source.hdr]
 //   source defaults to scripts/sky_src_island.hdr (the pristine download).
@@ -23,7 +26,7 @@ import { pathToFileURL } from "node:url";
 import zlib from "node:zlib";
 
 const IN_PATH = process.argv[2] ?? "../scripts/sky_src_island.hdr";
-const OUT_PATH = "../public/models/sky/illovo_beach_2k.hdr";
+const OUT_PATH = "../public/models/sky/island_cove_sky_2k.hdr";
 const STRIP_DIR = "../download/";
 const D2R = Math.PI / 180;
 

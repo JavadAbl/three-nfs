@@ -10,3 +10,7 @@ tool-results/
 worklog.md
 scripts/audio_dl/
 tsconfig.tsbuildinfo
+scripts/sky_src_island.hdr
+scripts/sky_candidates/
+scripts/island_sky_*.png
+scripts/new_src_*.png

@@ -73,9 +73,9 @@ export interface IslandSpec {
   islets: number;
   /** channel buoys bobbing in the shallows */
   buoys: number;
-  /** interior mountain count (ridged multi-peak masses in the island core) */
+  /** interior mountain count (heightfield massifs in the island core) */
   mountains: number;
-  /** conifers ringing the mountain slopes + inland scatter */
+  /** conifers — groves clumped on the massif slopes + inland scatter */
   conifers: number;
   /** lowland fern rosettes */
   ferns: number;
@@ -312,7 +312,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
   // with pebble + shell debris), ringed by an animated sea at waterLevel 0,
   // palm clusters along the corridor, shoreline rocks, far islets on the
   // horizon and channel buoys. Plays at day with its own world-aligned sky
-  // bake (illovo_beach_2k, scripts/hdr_remap_island.mjs) — the photo sun
+  // bake (island_cove_sky_2k, scripts/hdr_remap_island.mjs) — the photo sun
   // sits on the SAME SUN_DIR as the light rig, so sand + sea stay sunlit.
   island: {
     id: "island",
@@ -335,7 +335,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [],
     starCount: 0,
     neonCount: 0,
-    island: { waterLevel: 0, palms: 110, rocks: 90, islets: 6, buoys: 14, mountains: 3, conifers: 150, ferns: 120, shrubs: 140, tufts: 220 },
+    island: { waterLevel: 0, palms: 160, rocks: 90, islets: 6, buoys: 14, mountains: 3, conifers: 2500, ferns: 420, shrubs: 420, tufts: 380 },
     // day branch runs the sand scan natural (color 0xffffff): bright beach
     ground: {
       dir: "island",

@@ -8,14 +8,19 @@
 //     an animated foam line at the waterline), fresnel sky blend, and a
 //     two-lobe sun specular: a tight pow-260 disc with per-cell sparkle hash
 //     (sun glitter riding the crests) over a broad pow-24 streak.
-//   mountains: ridged multi-peak prototypes (displaced cones with altitude
-//     colour bands: scrub green → rock) — a central mass in the island
-//     interior replaces the old empty plateau, and greener clones stand on
-//     the horizon islets instead of the old faceted domes that read as
-//     pyramids/buildings.
+//   mountains: heightfield massifs (v2) — a radial-disc mesh displaced by a
+//     deterministic field (irregular outline + concave pow-1.62 flanks +
+//     ridged fbm arêtes + seeded sub-summit bumps + gully octaves), so the
+//     skyline reads as a broken mountain RANGE instead of the old displaced
+//     cones that read as pyramids/buildings. Summits ride ~200 m on a ~900 m
+//     island; altitude+slope vertex bands (lush skirt → rock cliffs → pale
+//     crest) multiply the ambientCG Rock063 scan. The same field closure
+//     that builds each mesh also stands the conifer groves on its surface,
+//     and greener clones of the generator build the horizon islets.
 //   flora: palms (bent trunks, droop fronds, coconuts) plus three more
-//     instanced species for variety — conifers on the mountain slopes,
-//     lowland ferns and shrubs, grass tufts ringing the corridor.
+//     instanced species for density — conifer GROVES gaussian-clumped on the
+//     massif slopes, lowland ferns and shrubs, grass tufts ringing the
+//     corridor.
 //   rocks: displaced flat-shaded icosahedra, half-buried along the shore,
 //     dressed with the ambientCG Rock057 1K scan (warm layered sandstone).
 //   meadow: a terrain-conforming moss drape (ambientCG Moss003 1K — dark
@@ -196,66 +201,181 @@ function h2(a: number, b: number): number {
   return s - Math.floor(s);
 }
 
-/** one ridged peak: cone displaced per (angle-ring, height-ring) with a
- *  3-lobe ridge + hash jitter, vertex-coloured by altitude — scrub green
- *  skirt → rock shoulders → pale crest. flatShading does the facet work. */
-function peakGeometry(seed: number, r: number, h: number): THREE.BufferGeometry {
-  const g = new THREE.ConeGeometry(r, h, 26, 9);
-  g.translate(0, h / 2, 0);
-  const pos = g.attributes.position as THREE.BufferAttribute;
-  const cols = new Float32Array(pos.count * 3);
-  const skirt = new THREE.Color(0x4f6d33);
-  const mid = new THREE.Color(0x8a8272);
-  const crest = new THREE.Color(0xa79d8b);
-  const phase = seed * 1.37;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const rr = Math.hypot(x, z);
-    if (rr > 0.01) {
-      const ang = Math.atan2(z, x);
-      const ty = Math.min(1, Math.max(0, y / h));
-      const ridge = Math.sin(ang * 3 + phase) * 0.14 + Math.sin(ang * 7 + phase * 2) * 0.06;
-      const d = 0.82 + ridge * (1 - ty * 0.7) + h2(Math.round(ang * 100), Math.round(ty * 9)) * 0.22;
-      pos.setX(i, x * d);
-      pos.setZ(i, z * d);
-    }
-    const ty = Math.min(1, Math.max(0, pos.getY(i) / h));
-    let c: THREE.Color;
-    if (ty < 0.3) c = skirt.clone().lerp(mid, ty / 0.3);
-    else if (ty < 0.62) c = mid.clone().lerp(crest, (ty - 0.3) / 0.32);
-    else c = crest.clone();
-    const j = 0.88 + h2(pos.getX(i), pos.getZ(i)) * 0.24;
-    cols[i * 3] = c.r * j;
-    cols[i * 3 + 1] = c.g * j;
-    cols[i * 3 + 2] = c.b * j;
-  }
-  g.setAttribute("color", new THREE.BufferAttribute(cols, 3));
-  g.computeVertexNormals();
-  return g;
+/** deterministic 2-D value noise on the h2 lattice (quintic-ish smooth) */
+function vnoise(x: number, z: number): number {
+  const xi = Math.floor(x), zi = Math.floor(z);
+  const xf = x - xi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
+  const a = h2(xi, zi), b = h2(xi + 1, zi), c = h2(xi, zi + 1), d = h2(xi + 1, zi + 1);
+  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
 }
 
-/** a mountain as one merged geometry: main peak + 1-3 satellite sub-peaks
- *  leaning off it — a lone cone reads as a volcano, a cluster reads as a
- *  range. Deterministic per seed. */
-function mountainPrototype(seed: number, baseR: number, height: number): THREE.BufferGeometry {
-  const rng = makeRng(seed);
-  const parts = [peakGeometry(seed, baseR, height)];
-  const sats = 1 + Math.floor(rng() * 3);
-  for (let k = 0; k < sats; k++) {
-    const r = baseR * (0.4 + rng() * 0.25);
-    const h = height * (0.45 + rng() * 0.3);
-    const a = rng() * Math.PI * 2;
-    const d = baseR * (0.7 + rng() * 0.5);
-    const g = peakGeometry(seed * 3 + k + 7, r, h);
-    g.translate(Math.cos(a) * d, 0, Math.sin(a) * d);
-    parts.push(g);
+/** ridged fbm — crests where |noise-0.5| folds, arêtes + sub-ridges. 0..1 */
+function ridged(x: number, z: number, octaves: number): number {
+  let amp = 0.5, f = 1, sum = 0, norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * (1 - Math.abs(2 * vnoise(x * f, z * f) - 1));
+    norm += amp;
+    amp *= 0.55;
+    f *= 2.13;
   }
-  const merged = mergeGeometries(parts, false);
-  parts.forEach((p) => p.dispose());
-  if (!merged) throw new Error("mountain merge failed");
-  return merged;
+  return sum / norm;
+}
+
+/** a massif's height field: (local x,z) → metres above its base. The SAME
+ *  closure builds the mesh AND places trees on the surface, so geometry and
+ *  placement can never disagree. Deterministic per (seed, r, h) —
+ *    · irregular outline: radial noise on the boundary (no disc silhouette)
+ *    · concave flanks: pow(1-rn, 1.62) profile — steep shoulders, flared skirt
+ *    · ridged fbm rides the profile for arêtes and broken skylines
+ *    · 2-4 seeded sub-summit bumps → a range, never a lone pyramid
+ *    · a slower octave carves gully channels down the flanks            */
+function massifField(seed: number, r: number, h: number): (lx: number, lz: number) => number {
+  const rng = makeRng(seed);
+  const ph1 = rng() * Math.PI * 2;
+  const ph2 = rng() * Math.PI * 2;
+  const lobes = 3 + Math.floor(rng() * 3); // 3-5 silhouette lobes
+  const ns = 3 + Math.floor(rng() * 3); // 3-5 sub-summits
+  const subs: { x: number; z: number; hh: number; s: number }[] = [];
+  for (let k = 0; k < ns; k++) {
+    const a = rng() * Math.PI * 2;
+    const d = r * (0.08 + rng() * 0.45);
+    subs.push({
+      x: Math.cos(a) * d,
+      z: Math.sin(a) * d,
+      hh: 0.35 + rng() * 0.5,
+      s: r * (0.14 + rng() * 0.16),
+    });
+  }
+  const ridgeF = (2.1 / r) * (0.8 + rng() * 0.5); // ridge wavelength ~ r/2
+  const gullyF = (5.4 / r) * (0.8 + rng() * 0.4);
+  return (lx: number, lz: number) => {
+    let rn = Math.hypot(lx, lz) / r;
+    if (rn >= 1.25) return 0;
+    const ang = Math.atan2(lz, lx);
+    // irregular outline — the boundary radius itself is noisy (±25%), killing
+    // the perfect-circle "cone" silhouette that read as a pyramid/building
+    const outline =
+      0.82 +
+      0.15 * Math.sin(ang * lobes + ph1) +
+      0.08 * Math.sin(ang * (lobes * 2 + 1) + ph2) +
+      0.2 * (vnoise(Math.cos(ang) * 3 + seed, Math.sin(ang) * 3) - 0.5);
+    rn /= Math.max(0.55, outline);
+    if (rn >= 1) return 0;
+    const base = Math.pow(1 - rn, 1.62); // concave flanks
+    const ridge = 0.42 + 0.58 * ridged(lx * ridgeF + 9.7, lz * ridgeF - 4.3, 4);
+    const gully = 0.72 + 0.28 * vnoise(lx * gullyF - 7.7, lz * gullyF + 3.1);
+    // craggy crest — a fast octave chops the top so the skyline stays broken
+    const chop = ridged(lx * ridgeF * 4.2 - 3.1, lz * ridgeF * 4.2 + 6.6, 2) * 0.14;
+    let y = 0.5 * base * ridge * gully + chop * base;
+    for (const s of subs) {
+      const d2 = ((lx - s.x) * (lx - s.x) + (lz - s.z) * (lz - s.z)) / (s.s * s.s);
+      y += s.hh * Math.exp(-d2) * Math.pow(base, 0.3);
+    }
+    return Math.min(1.18, y) * h;
+  };
+}
+
+/** one massif as a radial-disc heightfield mesh (rings × segments). Faces are
+ *  split into two geometry groups by the forest line — group 0 (the green
+ *  flanks below the treeline, gentle slopes) is meant to pair with the bright
+ *  Moss004 canopy scan, group 1 (cliffs + upper shoulders) with Rock063 —
+ *  because a single grey rock scan × any vertex tint can never read as
+ *  forest. Vertex colours carry the altitude band variation within each. */
+function peakGeometry(seed: number, r: number, h: number): THREE.BufferGeometry {
+  const field = massifField(seed, r, h);
+  const segs = 96, rings = 40;
+  const pos: number[] = [];
+  const cols: number[] = [];
+  const mid = new THREE.Color(0x8a8272);
+  const crest = new THREE.Color(0xa79d8b);
+
+  /** per-vertex [r,g,b,rockiness] — rockiness drives BOTH the face grouping
+   *  and the rock band's internal altitude blend */
+  const vertAt = (x: number, y: number, z: number) => {
+    const e = r * 0.012;
+    const gx = (field(x + e, z) - field(x - e, z)) / (2 * e);
+    const gz = (field(x, z + e) - field(x, z - e)) / (2 * e);
+    const slope = Math.hypot(gx, gz);
+    const ty = Math.min(1, Math.max(0, y / h));
+    // forest line: lower ~2/3 of the flank counts as woodland unless the
+    // face is a cliff (slope > 0.7); above it, bare rock all the way
+    const rock = Math.min(1, ty / 0.6 + Math.max(0, slope - 0.7) * 1.8);
+    let c: THREE.Color;
+    if (rock < 0.55) {
+      // canopy band — near-white so the bright moss scan shows its own green
+      const j = 0.82 + h2(Math.round(x * 3), Math.round(z * 3)) * 0.22;
+      c = new THREE.Color(0.92 * j, 1.0 * j, 0.86 * j);
+    } else {
+      c = mid.clone().lerp(crest, Math.min(1, (rock - 0.55) * 1.2 + ty * 0.35));
+      const j = 0.9 + h2(Math.round(x * 3), Math.round(z * 3)) * 0.2;
+      c.multiplyScalar(j);
+    }
+    return [c.r, c.g, c.b, rock];
+  };
+
+  // one pass builds positions + the colour/rockiness records
+  const verts: number[][] = [];
+  {
+    const y0 = field(0, 0);
+    pos.push(0, y0, 0);
+    verts.push(vertAt(0, y0, 0));
+    for (let i = 0; i < rings; i++) {
+      const rn = (i + 1) / rings;
+      const rr = rn * r;
+      for (let j = 0; j < segs; j++) {
+        const a = (j / segs) * Math.PI * 2;
+        const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+        const y = field(x, z);
+        pos.push(x, y, z);
+        verts.push(vertAt(x, y, z));
+      }
+    }
+    verts.forEach((v) => cols.push(v[0], v[1], v[2]));
+  }
+
+  // faces as tagged triples (centre fan then ring quads, CCW from +Y)
+  type Face = [number, number, number, boolean];
+  const faces: Face[] = [];
+  for (let j = 0; j < segs; j++)
+    faces.push([0, 1 + ((j + 1) % segs), 1 + j, false]);
+  for (let i = 0; i < rings - 1; i++) {
+    for (let j = 0; j < segs; j++) {
+      const a = 1 + i * segs + j;
+      const b = 1 + i * segs + ((j + 1) % segs);
+      const c = 1 + (i + 1) * segs + j;
+      const d = 1 + (i + 1) * segs + ((j + 1) % segs);
+      faces.push([a, b, c, false]);
+      faces.push([b, d, c, false]);
+    }
+  }
+  // classify each face by the mean rockiness of its corners
+  for (const f of faces) {
+    const rk = (verts[f[0]][3] + verts[f[1]][3] + verts[f[2]][3]) / 3;
+    f[3] = rk >= 0.55;
+  }
+  // stable partition: green faces first, then rock faces
+  const green = faces.filter((f) => !f[3]);
+  const rock = faces.filter((f) => f[3]);
+  const idx: number[] = [];
+  for (const f of green) idx.push(f[0], f[1], f[2]);
+  const nGreen = idx.length;
+  for (const f of rock) idx.push(f[0], f[1], f[2]);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+  geo.setIndex(idx);
+  geo.addGroup(0, nGreen, 0); // green flanks → moss/canopy material
+  geo.addGroup(nGreen, idx.length - nGreen, 1); // rock cliffs → rock material
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** a mountain massif: one heightfield (the sub-summits live INSIDE the field,
+ *  so the skyline breaks naturally instead of a merged-cone look). */
+function mountainPrototype(seed: number, baseR: number, height: number): THREE.BufferGeometry {
+  return peakGeometry(seed, baseR, height);
 }
 
 // ── flora prototypes (palms live below; these are the understory) ────────────
@@ -528,10 +648,18 @@ export class IslandEnvironment {
   /** the sea shader's uniforms (uTime advances every update) + baked textures */
   private waterUniforms!: Record<string, THREE.IUniform>;
   private textures: THREE.Texture[] = [];
-  /** interior mountain footprints — conifers ring them */
-  private mountainPeaks: { x: number; z: number; r: number }[] = [];
-  /** shared rock-scanned material for interior mountains + horizon islets */
-  private mtnMat: THREE.MeshStandardMaterial | null = null;
+  /** interior massif records — conifers grow ON their height fields, so each
+   *  carries its field closure + base Y (geometry and placement share it) */
+  private mountainPeaks: {
+    x: number;
+    z: number;
+    r: number;
+    baseY: number;
+    field: (lx: number, lz: number) => number;
+  }[] = [];
+  /** shared material PAIR (moss canopy, rock) for interior mountains +
+   *  horizon islets — matches peakGeometry's two geometry groups */
+  private mtnMats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] | null = null;
   /** buoy state for the per-frame bob */
   private buoys: { x: number; z: number; s: number; spin: number }[] = [];
   private buoyInst: THREE.InstancedMesh | null = null;
@@ -687,41 +815,77 @@ export class IslandEnvironment {
     return mesh;
   }
 
-  /** central mountain mass in the island interior — the old empty plateau
-   *  becomes the horizon landmark the road circles. */
+  /** central mountain range in the island interior — the island's landmark.
+   *  v2: heightfield massifs ~3× the old cones (summits ~200 m), clustered
+   *  as one range. If a flank would crowd the corridor the def shrinks until
+   *  it clears (never skipped, never swallows the road). */
   private buildMountains(rng: () => number): void {
+    // r/h picked for drama: the main massif's summit rides ~200 m over a
+    // ~900 m island — a proper volcanic-island skyline, not a speed bump
     const defs: { x: number; z: number; r: number; h: number }[] = [
-      { x: 55, z: -70, r: 135, h: 64 },
-      { x: -170, z: -140, r: 90, h: 42 },
-      { x: 190, z: 130, r: 62, h: 27 },
+      { x: 40, z: -55, r: 275, h: 195 }, // dominant massif — the skyline maker
+      { x: -150, z: -120, r: 165, h: 120 }, // western shoulder
+      { x: 135, z: 115, r: 130, h: 88 }, // eastern knuckle
     ];
+    // seeds picked by scripts/seed_score.mjs — crest raggedness + peak count
+    // (579: 112% ragged, 3 summits · 546: 93%, 3 · 544: 120%, one crag) so no
+    // massif reads as a smooth lone cone
+    const seeds = [579, 546, 544];
     const road = this.roadPoints();
     const hw = this.track.halfWidth;
-    // ambientCG Rock063 1K — grey fractured boulders; the altitude vertex
-    // bands (green skirt → rock) multiply over the scan for a mossy base
-    const scan = this.loadPbr("rock063", 3, 2);
-    const mat = new THREE.MeshStandardMaterial({
-      map: scan.color,
-      normalMap: scan.normal,
-      roughnessMap: scan.rough,
-      normalScale: new THREE.Vector2(0.9, 0.9),
-      vertexColors: true,
-      roughness: 1,
-      metalness: 0,
-      flatShading: true,
-    });
-    this.mtnMat = mat;
+    // massif material PAIR (geometry groups split each mesh at the forest
+    // line): [0] green flanks → ambientCG Moss004 (bright canopy — a grey
+    // rock scan × any tint could never read as forest), [1] cliffs + upper
+    // shoulders → ambientCG Rock063 (grey fractured boulders). Vertex
+    // colours carry the band variation inside each group.
+    const moss = this.loadPbr("moss004", 3, 3);
+    const rock = this.loadPbr("rock063", 3, 2);
+    const mats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] = [
+      new THREE.MeshStandardMaterial({
+        map: moss.color,
+        normalMap: moss.normal,
+        roughnessMap: moss.rough,
+        normalScale: new THREE.Vector2(0.7, 0.7),
+        vertexColors: true,
+        roughness: 1,
+        metalness: 0,
+        flatShading: true,
+      }),
+      new THREE.MeshStandardMaterial({
+        map: rock.color,
+        normalMap: rock.normal,
+        roughnessMap: rock.rough,
+        normalScale: new THREE.Vector2(0.9, 0.9),
+        vertexColors: true,
+        roughness: 1,
+        metalness: 0,
+        flatShading: true,
+      }),
+    ];
+    this.mtnMats = mats;
     for (let i = 0; i < Math.min(defs.length, this.spec.mountains); i++) {
       const d = defs[i];
-      if (this.corridorDist(d.x, d.z, road) < hw + d.r + 24) continue; // never swallow the road
-      const geo = mountainPrototype(500 + i * 13, d.r, d.h);
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(d.x, this.track.terrainHeightAt(d.x, d.z) - 1.5, d.z);
+      // adaptive shrink: clear the corridor by 24 m or scale down until it
+      // does (the field's flared skirt makes a near miss harmless anyway)
+      let scale = 1;
+      while (
+        scale > 0.5 &&
+        this.corridorDist(d.x, d.z, road) < hw + d.r * scale + 24
+      )
+        scale *= 0.94;
+      const r = d.r * scale;
+      const h = d.h * scale;
+      const field = massifField(seeds[i], r, h);
+      const geo = peakGeometry(seeds[i], r, h);
+      const m = new THREE.Mesh(geo, mats);
+      const baseY = this.track.terrainHeightAt(d.x, d.z) - 1.5;
+      m.position.set(d.x, baseY, d.z);
       m.castShadow = true;
       m.receiveShadow = true;
       this.group.add(m);
-      this.mountainPeaks.push({ x: d.x, z: d.z, r: d.r });
+      this.mountainPeaks.push({ x: d.x, z: d.z, r, baseY, field });
     }
+    void rng; // massif seeds are fixed — the range must look identical every load
   }
 
   /** interior moss meadow: a drape conformed to the terrain over the
@@ -776,8 +940,16 @@ export class IslandEnvironment {
         castShadow?: boolean;
         /** optional PBR scan (dir, repeat-x, repeat-y) applied × vertex colours */
         pbr?: [string, number, number];
+        /** how deep the base sinks into the ground (default 5 cm) */
+        sink?: number;
+        /** instance scale range [min, span] — default 0.7 + 0.6 */
+        scale?: [number, number];
+        /** crown fatness — multiplies x/z over y (1 = uniform) */
+        fat?: number;
       },
-      place: (rng: () => number) => { x: number; z: number } | null,
+      /** spot.y (metres, world) overrides terrainHeightAt — used to stand trees
+       *  ON the mountain height fields instead of inside them */
+      place: (rng: () => number) => { x: number; z: number; y?: number } | null,
     ) => {
       const protos = protoSeeds.map(builder);
       const mat = new THREE.MeshStandardMaterial({
@@ -801,12 +973,13 @@ export class IslandEnvironment {
         const spot = place(rng);
         if (!spot) continue;
         if (this.corridorDist(spot.x, spot.z, road) < hw + opts.corridor) continue;
-        const y = this.track.terrainHeightAt(spot.x, spot.z);
+        const y = spot.y ?? this.track.terrainHeightAt(spot.x, spot.z);
         if (y < opts.minH) continue;
         const p = placed % protos.length;
-        const s = 0.7 + rng() * 0.6;
+        const s = opts.scale ? opts.scale[0] + rng() * opts.scale[1] : 0.7 + rng() * 0.6;
+        const fat = opts.fat ?? 1;
         q.setFromAxisAngle(up, rng() * Math.PI * 2);
-        mats[p].push(new THREE.Matrix4().compose(new THREE.Vector3(spot.x, y - 0.05, spot.z), q, new THREE.Vector3(s, s, s)));
+        mats[p].push(new THREE.Matrix4().compose(new THREE.Vector3(spot.x, y - (opts.sink ?? 0.05), spot.z), q, new THREE.Vector3(s * fat, s, s * fat)));
         tints[p].push(new THREE.Color().setHSL(0.23 + rng() * 0.09, 0.35 + rng() * 0.3, 0.42 + rng() * 0.14));
         placed++;
       }
@@ -824,17 +997,33 @@ export class IslandEnvironment {
       });
     };
 
-    // conifers: ring each interior mountain at 0.45–0.85·r, plus open inland scatter
+    // conifers: dense groves clumped on the massif height fields (the same
+    // closure that built the geometry places the trees — no floating, no
+    // burying) plus open inland scatter between the groves
+    const groves: { x: number; z: number; s: number; pk: number }[] = [];
+    for (let g = 0; g < this.mountainPeaks.length * 12; g++) {
+      const pk = this.mountainPeaks[g % this.mountainPeaks.length];
+      const a = rng() * Math.PI * 2;
+      const d = pk.r * (0.22 + rng() * 0.66);
+      groves.push({ x: pk.x + Math.cos(a) * d, z: pk.z + Math.sin(a) * d, s: 7 + rng() * 10, pk: g % this.mountainPeaks.length });
+    }
+    const gauss = () => {
+      // Box–Muller — grove scatter reads as woodland, uniform reads as dots
+      const u = Math.max(1e-6, rng());
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(rng() * Math.PI * 2);
+    };
     makeInstanced(
       [611, 622],
       coniferPrototype,
-      { count: this.spec.conifers, corridor: 7, minH: 0.9, maxR: 480, doubleSide: false },
+      { count: this.spec.conifers, corridor: 7, minH: 0.9, maxR: 480, doubleSide: false, sink: 0.3, scale: [2.0, 1.6], fat: 1.3 },
       (r) => {
-        if (this.mountainPeaks.length && r() < 0.7) {
-          const pk = this.mountainPeaks[Math.floor(r() * this.mountainPeaks.length)];
-          const a = r() * Math.PI * 2;
-          const d = pk.r * (0.45 + r() * 0.4);
-          return { x: pk.x + Math.cos(a) * d, z: pk.z + Math.sin(a) * d };
+        if (groves.length && r() < 0.92) {
+          const g = groves[Math.floor(r() * groves.length)];
+          const pk = this.mountainPeaks[g.pk];
+          const x = g.x + gauss() * g.s;
+          const z = g.z + gauss() * g.s;
+          const y = pk.baseY + pk.field(x - pk.x, z - pk.z);
+          return { x, z, y: y > 0 ? y : undefined };
         }
         const a = r() * Math.PI * 2;
         const d = 120 + r() * 330;
@@ -1026,25 +1215,34 @@ export class IslandEnvironment {
     });
   }
 
-  /** far horizon mountain-islands — ridged green peaks with conifer specks
+  /** far horizon mountain-islands — heightfield massifs with conifer specks
    *  (no shadows: they live past the shadow camera's ±200 m box anyway).
-   *  Replaced the old faceted icosahedron domes that read as pyramids. */
+   *  v2 shares the interior massif generator, so the horizon reads as the
+   *  same geology — irregular outlines, concave flanks, broken skylines. */
   private buildIslets(rng: () => number): void {
     const peaks: THREE.Matrix4[] = [];
     const tints: THREE.Color[] = [];
     // each islet gets its own prototype — 6 unique silhouettes
     const protos: THREE.BufferGeometry[] = [];
     for (let k = 0; k < this.spec.islets; k++) {
-      protos.push(mountainPrototype(3100 + k * 17, 60 + rng() * 30, 26 + rng() * 18));
+      protos.push(mountainPrototype(3100 + k * 17, 70 + rng() * 35, 30 + rng() * 26));
     }
     const mat =
-      this.mtnMat ??
-      new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.95,
-        flatShading: true,
-        fog: true,
-      });
+      this.mtnMats ??
+      ([
+        new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.95,
+          flatShading: true,
+          fog: true,
+        }),
+        new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.95,
+          flatShading: true,
+          fog: true,
+        }),
+      ] as [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial]);
     const treeGeo = coniferPrototype(990);
     const treeMat = new THREE.MeshStandardMaterial({
       vertexColors: true,

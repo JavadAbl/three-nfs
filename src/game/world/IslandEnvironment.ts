@@ -17,6 +17,11 @@
 //     crest) multiply the ambientCG Rock063 scan. The same field closure
 //     that builds each mesh also stands the conifer groves on its surface,
 //     and greener clones of the generator build the horizon islets.
+//   ridge: ONE long hill alongside the road — a continuous heightfield ring
+//     swept along the loop's inner side (polar grid that tracks the per-angle
+//     road radius). Steep green face right off the shoulder, gentler inner
+//     shoulder down to the meadow, undulating crest height with saddle
+//     passes; grove anchors strung along the crest grow the conifer woods.
 //   flora: palms (bent trunks, droop fronds, coconuts) plus three more
 //     instanced species for density — conifer GROVES gaussian-clumped on the
 //     massif slopes, lowland ferns and shrubs, grass tufts ringing the
@@ -378,6 +383,242 @@ function mountainPrototype(seed: number, baseR: number, height: number): THREE.B
   return peakGeometry(seed, baseR, height);
 }
 
+// ── the roadside ridge — ONE long hill strung along the road ────────────────
+
+/** shape knobs shared by the field factory and the mesh builder (metres):
+ *  the ridge grows out of the ground TOE metres inside the road centreline,
+ *  climbs its steep seaward face over FSEA metres to the crest, then runs a
+ *  gentler shoulder FIN metres down to the interior meadow. */
+export const RIDGE = { toeOff: 22, flankSea: 86, flankIn: 132 };
+
+/** the ridge's height field: (world x,z) → metres above the terrain. Same
+ *  geology recipe as the massifs (concave flanks + ridged fbm arêtes + crest
+ *  chop) but swept along a ring that parallels the road instead of around a
+ *  single summit —
+ *    · roadR: per-angle road centreline radius (min envelope, smoothed) —
+ *      the whole band adapts to the loop's pinches and bulges, so the hill
+ *      can never crowd the corridor
+ *    · the crest line wobbles radially (±11 m) so it is never a circle
+ *    · the height envelope undulates along the ring: two broad high
+ *      stretches, noise, and two seeded passes (saddles) — it reads as ONE
+ *      long hill with character, never a lumpy necklace and never a gap */
+export function ridgeFieldFactory(
+  roadR: Float32Array,
+  hMax: number,
+  hw: number,
+  /** max interior/ coastal massif height at (x,z) — the ridge tapers into
+   *  any flank that would match it, so the meshes merge as one geology
+   *  instead of slicing each other (their real heightfield closures) */
+  massifHeightAt: (x: number, z: number) => number,
+): {
+  TOE: number;
+  FSEA: number;
+  FIN: number;
+  roadAt: (th: number) => number;
+  crestR: (th: number) => number;
+  field: (x: number, z: number) => number;
+  /** the MESH surface: terrain + field - apron tuck. Tree anchors and the
+   *  geometry must share this, or toe-zone trees float above the tucked
+   *  apron (mesh surfaces 0-0.5 m below the raw field there). */
+  surfaceY: (x: number, z: number, terrainY: number) => number;
+} {
+  const rng = makeRng(620); // fixed — the ridge must look identical every load
+  const phA = rng() * Math.PI * 2;
+  const phB = rng() * 10;
+  const phC = rng() * 10;
+  const passA1 = rng() * Math.PI * 2;
+  const passA2 = rng() * Math.PI * 2;
+  const passW1 = 0.13 + rng() * 0.05;
+  const passW2 = 0.11 + rng() * 0.05;
+  const A = roadR.length;
+  const TOE = hw + RIDGE.toeOff;
+  const { flankSea: FSEA, flankIn: FIN } = RIDGE;
+
+  /** road radius at angle th — linear interp around the ring (seamless) */
+  const roadAt = (th: number): number => {
+    let u = (((th % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * A;
+    const i0 = Math.floor(u) % A;
+    const i1 = (i0 + 1) % A;
+    return roadR[i0] + (roadR[i1] - roadR[i0]) * (u - Math.floor(u));
+  };
+  const wrapDiff = (a: number, b: number): number => {
+    let d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
+  /** height envelope along the ring: 0.34 (a low pass, still a hill) .. 1 */
+  const hEnv = (th: number): number => {
+    const broad = 0.66 + 0.34 * Math.sin(th * 2 + phA); // two highs, two lows
+    const detail = 0.84 + 0.16 * vnoise(Math.cos(th) * 4.7 + phB, Math.sin(th) * 4.7 + phC);
+    const pass =
+      1 -
+      0.34 * Math.exp(-Math.pow(wrapDiff(th, passA1) / passW1, 2)) -
+      0.28 * Math.exp(-Math.pow(wrapDiff(th, passA2) / passW2, 2));
+    return Math.max(0.34, broad * detail * pass);
+  };
+  /** crest-line radius at th (the wobble keeps the crest off a perfect ring) */
+  const crestR = (th: number): number => {
+    const wob = (vnoise(Math.cos(th) * 2.1 + 7.3, Math.sin(th) * 2.1 - 2.9) - 0.5) * 22;
+    return roadAt(th) - (TOE + FSEA + wob);
+  };
+  const fR = 1 / 140; // arête wavelength ~140 m along the ring
+  const fG = 1 / 46; // gully octave
+  const field = (x: number, z: number): number => {
+    const r = Math.hypot(x, z);
+    const th = Math.atan2(z, x);
+    const d = roadAt(th) - r; // metres inward from the centreline
+    if (d <= TOE - 6 || d >= TOE + FSEA + FIN + 12) return 0;
+    const cD = roadAt(th) - crestR(th); // the crest's inward offset from the centreline
+    let rise: number;
+    if (d < cD) {
+      const t = (d - (TOE - 6)) / (cD - (TOE - 6));
+      if (t <= 0) return 0;
+      rise = Math.pow(Math.min(1, t), 1.72); // steep road-side face (35-55°)
+    } else {
+      const t = (TOE + FSEA + FIN + 12 - d) / (FIN + 12);
+      if (t <= 0) return 0;
+      rise = Math.pow(Math.min(1, t), 2.05); // long gentler inner shoulder
+    }
+    const H = hEnv(th);
+    let y = rise * H * hMax * (0.5 + 0.5 * ridged(x * fR + 5.1, z * fR - 3.7, 4)) * (0.8 + 0.2 * vnoise(x * fG - 8.8, z * fG + 6.2));
+    // craggy crest chop, same idea as the massifs — keeps the skyline broken
+    y += rise * H * ridged(x * fR * 4.4 + 1.7, z * fR * 4.4 + 9.9, 2) * 0.13 * hMax;
+    // merge with the interior range: where a massif flank is as tall as the
+    // ridge would be, the ridge fades into it (reads as one range — and the
+    // two heightfield meshes can never slice each other mid-slope)
+    const M = massifHeightAt(x, z);
+    if (M > 0 && y > 0) y *= Math.max(0, Math.min(1, (y - M) / Math.max(8, 0.5 * y)));
+    return y;
+  };
+  // smooth apron tuck: bury the near-zero skirt up to 0.5 m under the
+  // terrain so the ring emerges from the ground with no seam and no fight
+  const tuck = (fy: number): number => 0.5 * Math.max(0, 1 - fy / 0.5);
+  const surfaceY = (x: number, z: number, terrainY: number): number => terrainY + field(x, z) - tuck(field(x, z));
+  return { TOE, FSEA, FIN, roadAt, crestR, field, surfaceY };
+}
+
+/** the ridge's cached node grid — the SAME heights the mesh renders, kept
+ *  so tree placement can bilinear-sample the RENDERED surface instead of the
+ *  analytic field (the chop octave curves faster than any affordable grid
+ *  resolves: field-sampled trees stood up to ~1.3 m over the triangles on
+ *  arête peaks). Grid-sampled trees touch the rendered ground everywhere. */
+interface RidgeGrid {
+  A: number;
+  R: number;
+  dOut: number;
+  dIn: number;
+  y: Float32Array; // node surface heights, row-major [i * A + j]
+}
+
+/** the ridge as ONE closed heightfield mesh: a polar grid around the island
+ *  centre (columns = angle, rows = radial offset from the road), so the ring
+ *  wraps seamlessly — the seam column is shared via modulo indexing (the
+ *  peakGeometry trick) and normals stay continuous. Rows span a small apron
+ *  past both zero-lines; the apron tucks 0.5 m UNDER the terrain so the hill
+ *  surfaces emerge from the ground with no seam and no z-fight (plus a
+ *  polygonOffset material clone, the meadow-drape trick). Faces split into
+ *  the same two groups as the massifs: moss canopy below the forest line,
+ *  Rock063 cliffs above / on the steepest cuts. */
+function ridgeGeometry(
+  factory: ReturnType<typeof ridgeFieldFactory>,
+  hMax: number,
+  hw: number,
+  terrain: (x: number, z: number) => number,
+): { geo: THREE.BufferGeometry; grid: RidgeGrid } {
+  const A = 640; // angular columns — ~4.2 m at the crest ring
+  const R = 60; // radial rows — ~4.3 m across the 258 m band
+  const TOE = hw + RIDGE.toeOff;
+  const { flankSea: FSEA, flankIn: FIN } = RIDGE;
+  const dOut = TOE - 10; // apron start, seaward of the zero-line
+  const dIn = TOE + FSEA + FIN + 28; // apron end, inboard of the zero-line
+  const field = factory.field;
+  const hEnvAt = (th: number): number => {
+    // local crest height for the forest-line banding: the broad sine alone
+    // (passes/noise excluded) — low passes then band fully green, high
+    // sectors grow a rocky crown, exactly the reference scrub-hill look
+    const broad = 0.66 + 0.34 * Math.sin(th * 2);
+    return Math.max(0.34, broad) * hMax;
+  };
+  const mid = new THREE.Color(0x8a8272);
+  const crestC = new THREE.Color(0xa79d8b);
+  const verts: number[][] = [];
+  const pos: number[] = [];
+
+  const vertAt = (x: number, y: number, z: number, fy: number, hC: number) => {
+    const e = 2.4;
+    const gx = (field(x + e, z) - field(x - e, z)) / (2 * e);
+    const gz = (field(x, z + e) - field(x, z - e)) / (2 * e);
+    const slope = Math.hypot(gx, gz);
+    const ty = hC > 1 ? Math.min(1, Math.max(0, fy / hC)) : 0;
+    // forest line tuned greener than the massifs: the reference hill is
+    // mostly scrub-covered, rock only on the steepest cuts and the crown
+    const rock = Math.min(1, ty / 0.72 + Math.max(0, slope - 1.15) * 1.9);
+    let c: THREE.Color;
+    if (rock < 0.55) {
+      const j = 0.82 + h2(Math.round(x * 3), Math.round(z * 3)) * 0.22;
+      c = new THREE.Color(0.92 * j, 1.0 * j, 0.86 * j);
+    } else {
+      c = mid.clone().lerp(crestC, Math.min(1, (rock - 0.55) * 1.2 + ty * 0.35));
+      const j = 0.9 + h2(Math.round(x * 3), Math.round(z * 3)) * 0.2;
+      c.multiplyScalar(j);
+    }
+    return [c.r, c.g, c.b, rock];
+  };
+
+  const grid: RidgeGrid = { A, R, dOut, dIn, y: new Float32Array(A * R) };
+  for (let i = 0; i < R; i++) {
+    const d = dIn + ((dOut - dIn) * i) / (R - 1); // row 0 = innermost, radii grow outward (peakGeometry winding)
+    for (let j = 0; j < A; j++) {
+      const th = (j / A) * Math.PI * 2;
+      const r = factory.roadAt(th) - d;
+      const x = Math.cos(th) * r;
+      const z = Math.sin(th) * r;
+      const fy = field(x, z);
+      const y = factory.surfaceY(x, z, terrain(x, z));
+      grid.y[i * A + j] = y;
+      pos.push(x, y, z);
+      verts.push(vertAt(x, y, z, fy, hEnvAt(th) * 1.35));
+    }
+  }
+  const cols: number[] = [];
+  verts.forEach((v) => cols.push(v[0], v[1], v[2]));
+
+  // faces: ring quads with the seam column shared via modulo (normals weld)
+  type Face = [number, number, number, boolean];
+  const faces: Face[] = [];
+  const vIdx = (i: number, j: number) => i * A + (j % A);
+  for (let i = 0; i < R - 1; i++) {
+    for (let j = 0; j < A; j++) {
+      const a = vIdx(i, j);
+      const b = vIdx(i, j + 1);
+      const c = vIdx(i + 1, j);
+      const dd = vIdx(i + 1, j + 1);
+      faces.push([a, b, c, false]);
+      faces.push([b, dd, c, false]);
+    }
+  }
+  for (const f of faces) {
+    const rk = (verts[f[0]][3] + verts[f[1]][3] + verts[f[2]][3]) / 3;
+    f[3] = rk >= 0.55;
+  }
+  const green = faces.filter((f) => !f[3]);
+  const rock = faces.filter((f) => f[3]);
+  const idx: number[] = [];
+  for (const f of green) idx.push(f[0], f[1], f[2]);
+  const nGreen = idx.length;
+  for (const f of rock) idx.push(f[0], f[1], f[2]);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+  geo.setIndex(idx);
+  geo.addGroup(0, nGreen, 0);
+  geo.addGroup(nGreen, idx.length - nGreen, 1);
+  geo.computeVertexNormals();
+  return { geo, grid };
+}
+
 // ── flora prototypes (palms live below; these are the understory) ────────────
 
 /** conifer: short trunk + three stacked tapering cones, dark mountain green */
@@ -657,6 +898,16 @@ export class IslandEnvironment {
     baseY: number;
     field: (lx: number, lz: number) => number;
   }[] = [];
+  /** the roadside ridge's height field (world x,z → metres above terrain) —
+   *  null while disabled (IslandSpec.roadsideRidge = 0) */
+  private ridgeField: ((x: number, z: number) => number) | null = null;
+  /** the ridge factory (roadAt for the sampler) + the RENDERED node grid —
+   *  grove anchors bilinear-sample the grid so trees stand on the mesh */
+  private ridgeFactory: ReturnType<typeof ridgeFieldFactory> | null = null;
+  private ridgeGrid: RidgeGrid | null = null;
+  /** ridge grove anchors — crest points strung along the ring; their field
+   *  returns the WORLD surface y (terrain + ridge), baseY stays 0 */
+  private ridgeAnchors: { x: number; z: number; r: number; baseY: number; field: (lx: number, lz: number) => number }[] = [];
   /** shared material PAIR (moss canopy, rock) for interior mountains +
    *  horizon islets — matches peakGeometry's two geometry groups */
   private mtnMats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] | null = null;
@@ -673,6 +924,7 @@ export class IslandEnvironment {
     const rng = makeRng(4242);
     this.group.add(this.makeWater());
     this.buildMountains(rng);
+    this.buildRidge();
     this.buildMeadow();
     this.buildPalms(rng);
     this.buildFlora(rng);
@@ -727,6 +979,49 @@ export class IslandEnvironment {
       if (dx * dx + dz * dz < rr * rr && pk.field(dx, dz) > 0.25) return true;
     }
     return false;
+  }
+
+  /** true when (x,z) sits on the roadside ridge's surface (> 25 cm above the
+   *  terrain) — same burial guard as insideMassif, for the ring hill. A cheap
+   *  radial band pre-check keeps calls far from the ring nearly free. */
+  private onRidge(x: number, z: number): boolean {
+    const f = this.ridgeField;
+    if (!f) return false;
+    const r = Math.hypot(x, z);
+    if (r < 120 || r > 640) return false; // the ridge band spans ~r 210-560
+    return f(x, z) > 0.25;
+  }
+
+  /** the RENDERED ridge surface height at (x,z): bilinear over the mesh's own
+   *  node grid (seam-wrapped in angle, clamped across the band). Falls back
+   *  to the raw terrain while no ridge exists. Grove anchors sample THIS so
+   *  trees touch the triangles the player sees — field-sampled trees could
+   *  float up to ~1.3 m over arête peaks the grid under-resolves. */
+  private ridgeSurfaceAt(x: number, z: number): number {
+    const grid = this.ridgeGrid;
+    const fac = this.ridgeFactory;
+    if (!grid || !fac) return this.track.terrainHeightAt(x, z);
+    const r = Math.hypot(x, z);
+    const th = Math.atan2(z, x);
+    let u = ((((th % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)) * grid.A;
+    const j0 = Math.floor(u) % grid.A;
+    const j1 = (j0 + 1) % grid.A;
+    const fu = u - Math.floor(u);
+    const d = fac.roadAt(th) - r; // metres inward from the centreline
+    let v = (grid.dIn - d) / (grid.dIn - grid.dOut);
+    if (v <= 0 || v >= 1) {
+      // outside the band: clamp to the (buried) apron edge ≈ terrain
+      v = Math.max(0, Math.min(1, v));
+    }
+    const vi = v * (grid.R - 1);
+    const i0 = Math.floor(vi);
+    const i1 = Math.min(grid.R - 1, i0 + 1);
+    const fv = vi - i0;
+    const y00 = grid.y[i0 * grid.A + j0];
+    const y10 = grid.y[i1 * grid.A + j0];
+    const y01 = grid.y[i0 * grid.A + j1];
+    const y11 = grid.y[i1 * grid.A + j1];
+    return (y00 * (1 - fu) + y01 * fu) * (1 - fv) + (y10 * (1 - fu) + y11 * fu) * fv;
   }
 
   private makeWater(): THREE.Mesh {
@@ -923,6 +1218,102 @@ export class IslandEnvironment {
     void rng; // massif seeds are fixed — the range must look identical every load
   }
 
+  /** ONE long hill alongside the road: a continuous forested ridge strung
+   *  along the inner side of the loop for the whole lap (the coastal-road
+   *  reference look — steep green hillside right off the shoulder, sea across
+   *  the other side). The band tracks the per-angle road radius, so it hugs
+   *  the road through every pinch and bulge while keeping a fixed toe
+   *  margin; the height envelope undulates along the ring (never gaps —
+   *  saddles only dip to ~1/3) so it reads as a single hill, not beads. */
+  private buildRidge(): void {
+    const hMax = this.spec.roadsideRidge;
+    if (!(hMax > 0)) return;
+    const A = 512;
+    const hw = this.track.halfWidth;
+
+    // per-angle road centreline radius: min envelope over the 1400 samples
+    // with a ±4° window (the inner edge of the loop is the constraint), then
+    // two min-filter passes — min only ever pushes the ridge further in,
+    // never toward the road
+    const roadR = new Float32Array(A).fill(Infinity);
+    {
+      const win = Math.max(1, Math.round((A * 4) / 360));
+      for (const sm of this.track.samples) {
+        const th = Math.atan2(sm.pos.z, sm.pos.x);
+        const c = Math.floor((((th + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)) * A);
+        const r = Math.hypot(sm.pos.x, sm.pos.z);
+        for (let k = -win; k <= win; k++) {
+          const b = (c + k + A) % A;
+          if (r < roadR[b]) roadR[b] = r;
+        }
+      }
+      for (let pass = 0; pass < 2; pass++) {
+        const next = Float32Array.from(roadR);
+        for (let j = 0; j < A; j++) {
+          next[j] = Math.min(roadR[(j - 1 + A) % A], roadR[j], roadR[(j + 1) % A]);
+        }
+        roadR.set(next);
+      }
+    }
+
+    const factory = ridgeFieldFactory(roadR, hMax, hw, (x, z) => {
+      // the REAL massif fields (same closures that built the meshes)
+      let m = 0;
+      for (const pk of this.mountainPeaks) {
+        const dx = x - pk.x;
+        const dz = z - pk.z;
+        const rr = pk.r * 1.25;
+        if (dx * dx + dz * dz < rr * rr) m = Math.max(m, pk.field(dx, dz));
+      }
+      return m;
+    });
+    this.ridgeField = factory.field;
+    this.ridgeFactory = factory;
+    const built = ridgeGeometry(factory, hMax, hw, (x, z) => this.track.terrainHeightAt(x, z));
+    this.ridgeGrid = built.grid;
+    // material pair: same scans as the massifs, cloned with a polygonOffset
+    // so the buried apron edges can never z-fight the ground (meadow trick)
+    let mats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial] | null = null;
+    if (this.mtnMats) {
+      mats = [this.mtnMats[0].clone(), this.mtnMats[1].clone()];
+      for (const m of mats) {
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -2;
+        m.polygonOffsetUnits = -2;
+      }
+    } else {
+      const mk = () =>
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, fog: true });
+      mats = [mk(), mk()];
+    }
+    const mesh = new THREE.Mesh(built.geo, mats);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
+
+    // grove anchors strung along the crest — the conifer system clusters on
+    // them like they do on the massif peaks (their field returns the WORLD
+    // surface y, so trees stand on the ridge whatever the terrain does)
+    const N_ANCH = 16;
+    for (let k = 0; k < N_ANCH; k++) {
+      const th = ((k + 0.5) / N_ANCH) * Math.PI * 2;
+      const r = factory.crestR(th);
+      const ax = Math.cos(th) * r;
+      const az = Math.sin(th) * r;
+      this.ridgeAnchors.push({
+        x: ax,
+        z: az,
+        r: 58, // grove scatter spread — covers crest ± both upper flanks
+        baseY: 0,
+        field: (lx, lz) => {
+          // sample the RENDERED grid — trees stand exactly on the mesh
+          // surface, apron tuck and grid curvature included
+          return this.ridgeSurfaceAt(ax + lx, az + lz);
+        },
+      });
+    }
+  }
+
   /** interior moss meadow: a drape conformed to the terrain over the
    *  central plateau (r 340 — road stays on the sand ring past r 400),
    *  carrying the ambientCG Moss003 forest-floor scan. polygonOffset
@@ -1007,9 +1398,10 @@ export class IslandEnvironment {
       while (placed < opts.count && guard++ < opts.count * 40) {
         const spot = place(rng);
         if (!spot) continue;
-        // keep scatter off the massifs: grove spots carry y (they stand ON
-        // the height fields) — everything else would bury inside the mountain
-        if (spot.y === undefined && this.insideMassif(spot.x, spot.z)) continue;
+        // keep scatter off the massifs AND the roadside ridge: grove spots
+        // carry y (they stand ON the height fields) — everything else would
+        // bury inside the mountain
+        if (spot.y === undefined && (this.insideMassif(spot.x, spot.z) || this.onRidge(spot.x, spot.z))) continue;
         if (this.corridorDist(spot.x, spot.z, road) < hw + opts.corridor) continue;
         const y = spot.y ?? this.track.terrainHeightAt(spot.x, spot.z);
         if (y < opts.minH) continue;
@@ -1035,15 +1427,34 @@ export class IslandEnvironment {
       });
     };
 
-    // conifers: dense groves clumped on the massif height fields (the same
-    // closure that built the geometry places the trees — no floating, no
-    // burying) plus open inland scatter between the groves
+    // conifers: dense groves clumped on the massif height fields AND strung
+    // along the roadside ridge (the same closures that built the geometry
+    // place the trees — no floating, no burying) plus open inland scatter
+    // between the groves
+    const pool: { x: number; z: number; r: number; baseY: number; field: (lx: number, lz: number) => number; ridge?: boolean }[] = [
+      ...this.mountainPeaks.map((p) => ({ ...p, ridge: false })),
+      ...this.ridgeAnchors.map((a) => ({ ...a, ridge: true })),
+    ];
     const groves: { x: number; z: number; s: number; pk: number }[] = [];
-    for (let g = 0; g < this.mountainPeaks.length * 12; g++) {
-      const pk = this.mountainPeaks[g % this.mountainPeaks.length];
-      const a = rng() * Math.PI * 2;
-      const d = pk.r * (0.22 + rng() * 0.66);
-      groves.push({ x: pk.x + Math.cos(a) * d, z: pk.z + Math.sin(a) * d, s: 7 + rng() * 10, pk: g % this.mountainPeaks.length });
+    for (let pi = 0; pi < pool.length; pi++) {
+      const pk = pool[pi];
+      if (pk.ridge) {
+        // ridge clusters strung ALONG the crest arc near this anchor, with a
+        // little radial jitter so some groves ride each upper flank
+        const th0 = Math.atan2(pk.z, pk.x);
+        const n = 12;
+        for (let c = 0; c < n; c++) {
+          const th = th0 + (rng() - 0.5) * ((Math.PI * 2) / 16) * 0.85;
+          const rr = Math.hypot(pk.x, pk.z) + (rng() - 0.5) * 46;
+          groves.push({ x: Math.cos(th) * rr, z: Math.sin(th) * rr, s: 8 + rng() * 9, pk: pi });
+        }
+      } else {
+        for (let c = 0; c < 12; c++) {
+          const a = rng() * Math.PI * 2;
+          const d = pk.r * (0.22 + rng() * 0.66);
+          groves.push({ x: pk.x + Math.cos(a) * d, z: pk.z + Math.sin(a) * d, s: 7 + rng() * 10, pk: pi });
+        }
+      }
     }
     const gauss = () => {
       // Box–Muller — grove scatter reads as woodland, uniform reads as dots
@@ -1053,14 +1464,18 @@ export class IslandEnvironment {
     makeInstanced(
       [611, 622],
       coniferPrototype,
-      { count: this.spec.conifers, corridor: 7, minH: 0.9, maxR: 480, doubleSide: false, sink: 0.3, scale: [2.0, 1.6], fat: 1.3 },
+      { count: this.spec.conifers, corridor: 7, minH: 0.9, maxR: 480, doubleSide: false, sink: 0.45, scale: [2.0, 1.6], fat: 1.3 },
       (r) => {
         if (groves.length && r() < 0.92) {
           const g = groves[Math.floor(r() * groves.length)];
-          const pk = this.mountainPeaks[g.pk];
+          const pk = pool[g.pk];
           const x = g.x + gauss() * g.s;
           const z = g.z + gauss() * g.s;
           const y = pk.baseY + pk.field(x - pk.x, z - pk.z);
+          // cross-field burial guard: the ridge feet brush the massif skirts,
+          // so a tree standing on one field must not land inside the other's
+          if (pk.ridge ? this.insideMassif(x, z) : this.ridgeField && this.ridgeField(x, z) > 0.25)
+            return null;
           return { x, z, y: y > 0 ? y : undefined };
         }
         const a = r() * Math.PI * 2;
@@ -1160,6 +1575,7 @@ export class IslandEnvironment {
       }
       if (this.corridorDist(x, z, road) < hw + 5.5) continue; // never on the road
       if (this.insideMassif(x, z)) continue; // palms belong to the beach, not the cliffs
+      if (this.onRidge(x, z)) continue; // nor on the roadside hill
       const y = this.track.terrainHeightAt(x, z);
       if (y < 0.55) continue; // in the water / surf zone
       const p = placed % protos.length;
@@ -1226,6 +1642,7 @@ export class IslandEnvironment {
       }
       if (this.corridorDist(x, z, road) < hw + 3) continue;
       if (this.insideMassif(x, z)) continue; // no boulders swallowed by the massifs
+      if (this.onRidge(x, z)) continue; // nor buried in the roadside ridge
       const y = this.track.terrainHeightAt(x, z);
       if (y < -0.3) continue; // fully at sea — the islets cover that look
       const p = placed % protos.length;
@@ -1350,6 +1767,7 @@ export class IslandEnvironment {
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
       if (this.insideMassif(x, z)) continue; // never inside a headland cliff
+      if (this.onRidge(x, z)) continue; // (band pre-check — no-op out at sea)
       const s = 0.8 + rng() * 0.5;
       const spin = rng() * Math.PI * 2;
       this.buoys.push({ x, z, s, spin });

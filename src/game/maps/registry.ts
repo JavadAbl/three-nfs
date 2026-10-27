@@ -77,7 +77,10 @@ export interface IslandSpec {
   mountains: number;
   /** coastal headland massifs — a mountain ring along the waterline */
   coastMountains: number;
-  /** conifers — groves clumped on the massif slopes + inland scatter */
+  /** the long roadside ridge: ONE continuous hill strung along the inner
+   *  side of the road for the whole lap (max crest height in metres, 0 = off) */
+  roadsideRidge: number;
+  /** conifers — groves clumped on the massif slopes + ridge + inland scatter */
   conifers: number;
   /** lowland fern rosettes */
   ferns: number;
@@ -337,7 +340,7 @@ export const ENV_THEMES: Record<string, EnvThemeSpec> = {
     neonColors: [],
     starCount: 0,
     neonCount: 0,
-    island: { waterLevel: 0, palms: 160, rocks: 90, islets: 6, buoys: 14, mountains: 3, coastMountains: 7, conifers: 8400, ferns: 420, shrubs: 420, tufts: 380 },
+    island: { waterLevel: 0, palms: 160, rocks: 90, islets: 6, buoys: 14, mountains: 3, coastMountains: 7, roadsideRidge: 100, conifers: 13500, ferns: 420, shrubs: 420, tufts: 380 },
     // day branch runs the sand scan natural (color 0xffffff): bright beach
     ground: {
       dir: "island",

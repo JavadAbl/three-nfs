@@ -12,6 +12,7 @@ import {
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "./ProceduralMuscle";
 import { headPalette, DEFAULT_HEAD_STYLE, type HeadlampStyle } from "./LampStyle";
 import { makeUnderglow, neonColorFor, neonPulseOpacity, radialGlowTexture } from "./NeonGlow";
+import { NitroFlame } from "./NitroFlame";
 
 export type CarKind = "player" | "ai" | "remote";
 
@@ -105,7 +106,7 @@ export class Car {
   private lampTail: THREE.MeshStandardMaterial[] = [];
   /** resting tail-lamp intensity — night LAMP_TAIL_INTENSITY / day 0 */
   private lampTailBase = 0;
-  private nitroFlames: THREE.Mesh[] = [];
+  private nitroFlames: NitroFlame[] = [];
   private headBeamL?: THREE.SpotLight;
   private headBeamR?: THREE.SpotLight;
   /** rival fake-beam cone material (kept for the runtime style swap) */
@@ -208,21 +209,11 @@ export class Car {
     this.brakeLights.position.set(0, d.topY * 0.62, d.rearZ + 0.03);
     this.bodyGroup.add(this.brakeLights);
 
-    // nitro flames
-    const flameMat = new THREE.MeshBasicMaterial({
-      color: 0xffb347,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    });
-    this.owned.push(flameMat);
+    // nitro flames — procedural shader jet (see NitroFlame.ts)
     for (const sx of [1, -1]) {
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.75, 7), flameMat);
-      flame.rotation.x = Math.PI / 2;
-      flame.position.set(sx * w2 * 0.35, 0.32, d.rearZ - 0.35);
-      flame.visible = false;
+      const flame = new NitroFlame(sx * w2 * 0.35, 0.32, d.rearZ - 0.35, { scale: 0.85 });
       this.nitroFlames.push(flame);
-      this.bodyGroup.add(flame);
+      this.bodyGroup.add(flame.root);
     }
 
     // underglow — neon-clamped so even black paint throws a visible glow;
@@ -397,20 +388,11 @@ export class Car {
       }
     }
 
-    // exhaust flames (nitro)
-    const flameMat = new THREE.MeshBasicMaterial({
-      color: 0xffb347,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    });
+    // exhaust flames (nitro) — procedural shader jet (see NitroFlame.ts)
     for (const x of [0.45, -0.45]) {
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.8, 7), flameMat);
-      flame.rotation.x = Math.PI / 2;
-      flame.position.set(x, 0.34, -2.75);
-      flame.visible = false;
+      const flame = new NitroFlame(x, 0.34, -2.75, { scale: 0.85 });
       this.nitroFlames.push(flame);
-      this.bodyGroup.add(flame);
+      this.bodyGroup.add(flame.root);
     }
 
     // underglow (NFS night vibe) — offset material avoids road z-fighting;
@@ -688,6 +670,11 @@ export class Car {
       const back = this.pos.clone().addScaledVector(fwd2, -1.7);
       back.y += 0.25;
       this.smokeRequest = { pos: back, strength: this.drifting ? 1 : 0.45 };
+    } else if (this.nitroActive && Math.random() < 0.35) {
+      // boost smoke — hot exhaust soot billowing off the flames
+      const back = this.pos.clone().addScaledVector(fwd2, -2.3);
+      back.y += 0.2;
+      this.smokeRequest = { pos: back, strength: 0.35 };
     }
 
     this.syncVisual(dt);
@@ -735,14 +722,8 @@ export class Car {
     const tailI = braking ? LAMP_TAIL_INTENSITY * 2 : this.lampTailBase;
     for (const s of this.lampTail) s.emissiveIntensity = tailI;
 
-    // nitro flames flicker
-    for (const f of this.nitroFlames) {
-      f.visible = this.nitroActive;
-      if (this.nitroActive) {
-        const s = 0.8 + Math.random() * 0.6;
-        f.scale.set(1, s, 1);
-      }
-    }
+    // nitro flame jets — shader handles flicker/fade internally
+    for (const f of this.nitroFlames) f.update(dt || 0.016, this.nitroActive);
     // brake-beam force: guard BOTH lights — rivals carry only headBeamL
     // (single center beam), the old `headBeamR!.intensity` chained write
     // threw "Cannot set properties of undefined" every rival frame and
@@ -784,6 +765,8 @@ export class Car {
   }
 
   dispose() {
+    for (const f of this.nitroFlames) f.dispose();
+    this.nitroFlames = [];
     if (this.model) {
       // model cars share template geometry/textures — only dispose own resources
       for (const r of this.owned) r.dispose();

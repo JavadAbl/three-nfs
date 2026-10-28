@@ -12,9 +12,6 @@ import { ParticlePool } from "../world/Particles";
 import { resolveCarCollisions } from "../world/Collisions";
 import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
-import { SpeedBlur } from "./SpeedBlur";
-import { SpeedLines } from "../world/SpeedLines";
-import { neonColorFor } from "../world/NeonGlow";
 import { InputManager } from "./Input";
 import { EngineAudio } from "../audio/EngineAudio";
 import { SampledEngineAudio, familyForCar } from "../audio/SampledEngineAudio";
@@ -117,27 +114,6 @@ export class Game {
   private countdownStep = 0;
   private hudTimer = 0;
   private netTimer = 0;
-  /** radial speed-blur post chain (re-added 2026-10-28, user: "blur and
-   *  special effects on high speed and more on nitro") — ported from the
-   *  pre-9ab8f86 chain with its iGPU lessons intact: RGBA8 post-tonemap
-   *  chain at FULL res (2026-10-28 sharpness fix — the 0.8× scale softened
-   *  textures on engage), engage hysteresis, countdown warm-up. Nitro adds
-   *  chromatic aberration + vignette in the composite pass. */
-  private speedFX!: SpeedBlur;
-  /** view-space wind streaks — periphery speed lines, neon-tinted on nitro */
-  private speedLines!: SpeedLines;
-  /** smoothed blur strength — eased, never snapped, incl. nitro slam */
-  private speedBlurLevel = 0;
-  /** smoothed nitro slam 0..1 — drives CA/vignette, streak colour/length,
-   *  and the boost rumble shake. drama-scaled, so the F7 knob at 0 kills
-   *  the whole speed-FX stack (post chain fully disengages → direct render) */
-  private nitroLevel = 0;
-  /** per-frame speed fraction 0..1 (above 22 m/s) — streak length driver */
-  private speedFrac = 0;
-  /** streak visibility 0..1 — speed ramp + nitro bonus */
-  private streakAlpha = 0;
-  // blur chain engages only when it has visible work (hysteresis seam)
-  private blurActive = false;
   /** last gear band the player was in — drives shift backfire detection */
   private lastGear = "N";
 
@@ -236,12 +212,6 @@ export class Game {
 
     this.camera = new THREE.PerspectiveCamera(74, canvas.clientWidth / canvas.clientHeight, 0.1, 1400);
     this.cameraRig = new CameraRig(this.camera);
-
-    // ── speed FX (re-added 2026-10-28) — blur chain with the warm-up pattern
-    //    + new world-side streaks; streak colour = the car's neon identity ──
-    this.speedFX = new SpeedBlur(this.renderer, this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
-    this.speedLines = new SpeedLines(neonColorFor(this.opts.neonId, this.opts.carColor));
-    this.scene.add(this.speedLines.group);
 
     // ── scene atmosphere (map palette; day maps carry a daylight palette) ──
     const P = resolveMapPalette(map);
@@ -623,8 +593,6 @@ export class Game {
     for (const rc of this.remotes.values()) rc.dispose();
     this.remotes.clear();
     delete (window as unknown as { __nightFx?: object }).__nightFx;
-    this.speedFX.dispose();
-    this.speedLines.dispose();
     this.renderer.dispose();
   }
 
@@ -634,7 +602,6 @@ export class Game {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
-    this.speedFX.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
@@ -717,7 +684,6 @@ export class Game {
       this.camera.position.z += (Math.random() - 0.5) * k * 0.5;
       this.impactShake = Math.max(0, this.impactShake - 3.5 * dt);
     }
-    this.applySpeedShake();
     this.moon.position.set(
       this.player.pos.x + SUN_DIR.x * 263,
       SUN_DIR.y * 263,
@@ -751,96 +717,20 @@ export class Game {
       }
     }
 
-    // ── speed FX: blur ramp + nitro slam + wind streaks, then the post seam ──
-    this.updateSpeedFX(dt);
-    this.speedLines.update(dt, this.camera, Math.abs(this.player.speed), this.speedFrac, this.nitroLevel, this.streakAlpha);
-
     this.renderFrame();
   };
 
   /**
-   * Radial blur strength + nitro slam level from player speed. Ramps in
-   * above ~80 km/h with a gentle ease (mid-corner speeds stay clean,
-   * straights smear), nitro slams it to max with a fast attack; release
-   * eases out slowly. The drama knob (HUD F7) scales the WHOLE speed-FX
-   * stack — 0 disengages the chain entirely, the documented escape hatch
-   * for the iGPU pain that had this removed once (2026-10-22). Nitro level
-   * eases slower than the blur so CA/vignette/streaks linger a beat after
-   * release — the boost "wind-down".
-   */
-  private updateSpeedFX(dt: number) {
-    const drama = THREE.MathUtils.clamp(this.cameraRig.tuning.drama ?? 1, 0, 1);
-    const v = Math.abs(this.player.speed);
-    const maxV = this.player.tuning.maxSpeed;
-    const speedFrac = THREE.MathUtils.clamp((v - 22) / (maxV - 22), 0, 1);
-    this.speedFrac = speedFrac;
-    // 2026-10-28 sharpness pass (user: "dont sharp at all"): targets cut
-    // (speed 0.75→0.5, nitro 0.8+0.5f→0.6+0.4f) so the smear is a corner
-    // streak, not a frame wash — and the engage seam rides up with them
-    // (~150 km/h): less of the race is smeared at all.
-    let target = Math.pow(speedFrac, 1.7) * 0.5;
-    if (this.player.nitroActive) target = Math.max(target, 0.6 + 0.4 * speedFrac);
-    target *= drama;
-    const rate = this.player.nitroActive ? 10 : 2.6;
-    this.speedBlurLevel = THREE.MathUtils.lerp(this.speedBlurLevel, target, 1 - Math.exp(-rate * dt));
-    this.speedFX.setStrength(this.speedBlurLevel);
-    this.nitroLevel = THREE.MathUtils.lerp(
-      this.nitroLevel,
-      (this.player.nitroActive ? 1 : 0) * drama,
-      1 - Math.exp(-(this.player.nitroActive ? 7 : 2.8) * dt),
-    );
-    this.speedFX.setNitro(this.nitroLevel);
-    // streaks: fade in through the 120→230 km/h band, then stack the nitro
-    // bonus — the WHOLE term is drama-scaled (drama 0 ⇒ streaks off too)
-    this.streakAlpha = THREE.MathUtils.clamp(
-      THREE.MathUtils.smoothstep(speedFrac, 0.18, 0.65) * 0.8 * drama + this.nitroLevel * 0.55,
-      0,
-      1,
-    );
-  }
-
-  /** nitro rumble — a few centimetres of continuous camera jitter while the
-   *  boost holds, layered on the impact shake. Amplitude keys off the eased
-   *  nitroLevel so it swells in with the slam and dies out with the wind-down. */
-  private applySpeedShake() {
-    if (this.nitroLevel <= 0.03) return;
-    const k = this.nitroLevel * 0.09;
-    this.camera.position.x += (Math.random() - 0.5) * k;
-    this.camera.position.y += (Math.random() - 0.5) * k * 0.6;
-    this.camera.position.z += (Math.random() - 0.5) * k;
-  }
-
-  /**
-   * Render direct to canvas while the blur has nothing VISIBLE to do, through
-   * the mixed-res chain when it does. The engage seam (s > 0.05 ≈ 150+ km/h)
-   * sits where the smear first becomes perceptible — below it the chain would
-   * burn an HDR MSAA target + 3 quad passes for an invisible ~2% edge smear,
-   * which on iGPUs read as the "frame dropped a few seconds after launch"
-   * report. (Engaged frames render the chain at FULL resolution since the
-   *  2026-10-28 sharpness fix — textures stay crisp through the smear; only
-   *  the periphery smear buffer is half-res. See SpeedBlur.) Wide
-   * hysteresis (engage 0.05 / release 0.02) so a speed hovering at the seam
-   * can't flap between paths frame to frame. OutputPass owns ACES + sRGB in
-   * both paths, so they stay pixel-identical at the seam.
-   *
-   * Re-added 2026-10-28 (user directive) — removal history + perf iterations:
-   * 9ab8f86 (remove), c70864f (mixed-res), 78e19d6 (warm-up), 5e319d8 (encode
-   * after tonemap). If the effect is ever pulled again, this is the seam.
+   * Single render seam. The speed-blur post chain was REMOVED by user
+   * request (2026-10-22, "remove blur") after a run of iGPU pain (steady
+   * FPS drops + first-engage compile stall) — this is now a plain direct
+   * render; the renderer's own ACES + sRGB pipeline is unchanged, so colors
+   * are identical to the old disengaged path. If a post effect is ever
+   * re-added, do it here and mind the first-use compile stall (see
+   * SpeedBlur in git history for the warm-up pattern).
    */
   private renderFrame() {
-    const s = this.speedFX.strength;
-    // First-engage freeze fix: the chain's programs + GPU storages only
-    // materialize on their first real use, which used to be the first frame
-    // above ~150 km/h — a 1-2 s mid-drive stall ("game freezes when the
-    // blur starts"). One off-screen warm-up step per disengaged frame parks
-    // that cost in the parked countdown (4 steps ≈ 66 ms of frames) — before
-    // the car can even move. No phase gate: any disengaged frame is a safe
-    // host, and by racing speed the chain is long hot.
-    if (!this.blurActive && !this.speedFX.warmedUp) this.speedFX.warmUpStep();
-    if (!this.blurActive && s > 0.05) this.blurActive = true;
-    else if (this.blurActive && s <= 0.02) this.blurActive = false;
-    if (this.blurActive) this.speedFX.render();
-    else this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.camera);
   }
 
   /** car-vs-car collision resolution + impact feedback (FX/sound/shake) */
@@ -957,15 +847,8 @@ export class Game {
       this.resolveCollisions(dt);
       this.raceManager?.update(dt, racing);
       this.gearPopTick();
-      this.updateSpeedFX(dt);
     }
     this.emitHud();
-    // frame-true headless shots: camera + FX sync the rAF loop normally owns
-    // (speed FX math above ran per-tick; the camera-side refresh happens once
-    // here so debugTick screenshots carry blur + streaks + shake)
-    this.cameraRig.update(dt, this.player);
-    this.applySpeedShake();
-    this.speedLines.update(dt, this.camera, Math.abs(this.player.speed), this.speedFrac, this.nitroLevel, this.streakAlpha);
     this.renderFrame();
     const standing = this.raceManager?.standingFor(this.player);
     return {

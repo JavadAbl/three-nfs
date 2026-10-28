@@ -546,7 +546,13 @@ export class Car {
         const fade = THREE.MathUtils.clamp((naturalTop - vf) / (naturalTop * T.nitroFadeSpan), 0, 1);
         vf += T.nitroPower * fade * dt;
       } else {
-        this.nitro = Math.min(T.nitroCapacity, this.nitro + T.nitroRegen * dt);
+        // nitro refills by RUNNING (user directive 2026-10-28: "it should
+        // fill again by running") — no passive regen: the fill rate scales
+        // with forward speed, zero at standstill / reversing / coasting
+        // backwards, 100% above ~30% of the car's safety wall. Drifting
+        // still pays its own bonus on top (see updateDrift).
+        const fill = THREE.MathUtils.clamp(vf / (0.3 * T.maxSpeed), 0, 1);
+        this.nitro = Math.min(T.nitroCapacity, this.nitro + T.nitroRegen * fill * dt);
       }
       if (c.throttle > 0) vf += T.enginePower * c.throttle * dt * (vf < 0 ? 2.2 : 1);
       if (c.brake > 0) {

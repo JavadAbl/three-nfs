@@ -24,8 +24,12 @@ export const GAME_CONFIG = {
 export const CAR_TUNING = {
   /** Max engine acceleration m/s² */
   enginePower: 14.0,
-  /** Extra acceleration while nitro is engaged */
-  nitroPower: 16,
+  /** Extra acceleration while nitro is engaged — halved 2026-10-28
+   *  (user: "its strength should be reduced"): the boost used to exceed
+   *  the engine's own acceleration (16 vs 14 m/s²), making it a second
+   *  engine. 8 m/s² ≈ +57% thrust on top of the engine — decisive, no
+   *  longer absurd. */
+  nitroPower: 8,
   /** fraction of the car's natural top speed (enginePower/drag) over which
    *  the nitro boost fades to zero — nitro is ACCELERATION ONLY and must
    *  never raise top speed (user directive 2026-10-22) */
@@ -69,8 +73,14 @@ export const CAR_TUNING = {
    *  at speed, low-speed feel untouched. Per-car overridable. */
   latAccelSpeedBoost: 1.0,
   nitroCapacity: 100,
-  nitroDrain: 34, // per second
-  nitroRegen: 3.5, // passive per second
+  /** per second — a full tank buys ~3.6 s of boost (limited, not infinite:
+   *  user directive 2026-10-28) */
+  nitroDrain: 28,
+  /** refill per second at FULL RUN — nitro now refills only by DRIVING
+   *  (user: "it should fill again by running"): Car.ts scales this by
+   *  forward speed, zero at standstill/reverse, 100% above ~30% of
+   *  maxSpeed. Full-speed refill ≈ 17 s; drift still pays its bonus. */
+  nitroRegen: 6,
   /** Drift points → nitro conversion rate */
   driftNitroGain: 0.05,
 } as const;

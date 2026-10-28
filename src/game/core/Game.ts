@@ -119,9 +119,10 @@ export class Game {
   private netTimer = 0;
   /** radial speed-blur post chain (re-added 2026-10-28, user: "blur and
    *  special effects on high speed and more on nitro") — ported from the
-   *  pre-9ab8f86 chain with its iGPU lessons intact: mixed-res RGBA8 chain,
-   *  engage hysteresis, countdown warm-up. Nitro adds chromatic aberration
-   *  + vignette in the composite pass. */
+   *  pre-9ab8f86 chain with its iGPU lessons intact: RGBA8 post-tonemap
+   *  chain at FULL res (2026-10-28 sharpness fix — the 0.8× scale softened
+   *  textures on engage), engage hysteresis, countdown warm-up. Nitro adds
+   *  chromatic aberration + vignette in the composite pass. */
   private speedFX!: SpeedBlur;
   /** view-space wind streaks — periphery speed lines, neon-tinted on nitro */
   private speedLines!: SpeedLines;
@@ -811,7 +812,9 @@ export class Game {
    * sits where the smear first becomes perceptible — below it the chain would
    * burn an HDR MSAA target + 3 quad passes for an invisible ~2% edge smear,
    * which on iGPUs read as the "frame dropped a few seconds after launch"
-   * report. (Engaged frames render at 0.8× chain res — see SpeedBlur.) Wide
+   * report. (Engaged frames render the chain at FULL resolution since the
+   *  2026-10-28 sharpness fix — textures stay crisp through the smear; only
+   *  the periphery smear buffer is half-res. See SpeedBlur.) Wide
    * hysteresis (engage 0.05 / release 0.02) so a speed hovering at the seam
    * can't flap between paths frame to frame. OutputPass owns ACES + sRGB in
    * both paths, so they stay pixel-identical at the seam.

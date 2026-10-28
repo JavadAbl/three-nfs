@@ -15,27 +15,31 @@
 // vignette in the composite pass. Drama knob 0 (HUD F7) disengages the
 // chain entirely — the documented escape hatch for weak GPUs.
 //
-// ── iGPU frame-drop fix (2026-10-22, kept): bandwidth-first chain ───────────
-// The naive chain ran HalfFloat targets at FULL resolution (pixelRatio ≤ 2!)
-// — scene + resolve + tonemap + a 10-tap blur, every byte HDR: ~300MB/frame
-// of texture traffic, which read as "frames drop when the blur engages".
-// The engaged chain is now:
+// ── SHARPNESS FIX (2026-10-28, user: "why the blur effect, sharp the
+//    textures?") — the chain now runs at FULL resolution ──────────────────
+// The re-add rendered engaged frames at 0.8× and bilinearly upscaled, so the
+// instant the chain engaged (~150 km/h) EVERY texture — center included —
+// went visibly soft; the speed effect was costing image sharpness. Chain
+// buffers are now sized at the full pixel ratio: the composite's "sharp"
+// center is genuinely pixel-crisp, identical to the disengaged direct path.
+// Only the SMEAR buffer stays half-res (BLUR_SCALE) — a smear is the one
+// effect that hides its own resolution, so the periphery costs ~nothing.
 //
-//   scene ──▶ tScene   HalfFloat MSAA2 @ 0.8×   HDR + AA, 36% fewer pixels
-//         ──▶ OutputPass ──▶ tEncode  RGBA8      display-encoded = ½ the bytes
-//         ──▶ radial blur  ──▶ tBlur   RGBA8 ½×  ~16% of the old blur ALU/fill
+//   scene ──▶ tScene   HalfFloat MSAA2 @ 1.0×   HDR + AA, full-res sharp base
+//         ──▶ OutputPass ──▶ tEncode  RGBA8 1.0× display-encoded = ½ the bytes
+//         ──▶ radial blur  ──▶ tBlur   RGBA8 ½×   ~16% of the old blur ALU/fill
 //         ──▶ composite   ──▶ screen              sharp center, smeared ring
 //
-// Three levers, none visible while smeared at 60fps motion:
-//   1. QUALITY_SCALE — the engaged chain renders at 0.8× (see const) — the
-//      periphery is smeared and the bilinear upscale reads as part of the
-//      speed haze. Bump to 1 if the center window ever feels soft.
-//   2. post-tonemap targets are RGBA8 — OutputPass emits display-encoded
-//      values, so HalfFloat there was pure bandwidth waste (16bpx → 8bpx).
-//   3. the blur runs at half-res — each tap bilinearly downsamples the
-//      full chain buffer for free; a smear is the one effect that HIDES
-//      resolution. The composite pass then restores the sharp CENTER from
-//      the chain-res buffer, so only the smeared periphery is half-res.
+// Bandwidth notes (the 2026-10-22 iGPU lessons, still honored):
+//   1. only tScene is HalfFloat — the naive chain ran EVERY stage HDR
+//      full-res (~300MB/frame). tEncode/tBlur are RGBA8 post-tonemap.
+//   2. the blur runs at half-res — each tap bilinearly downsamples the
+//      full-res chain buffer for free; only the deliberately-smeared
+//      periphery is ever half-res.
+//   3. if weak-GPU drops ever force a scale back, re-introduce a QUALITY
+//      scale on tScene/tEncode — but that softens textures on engage, the
+//      exact complaint this revision fixes. The drama knob (HUD F7, 0 =
+//      chain disengaged, direct render) stays the real escape hatch.
 // All targets are allocated in setSize() — engaging never allocates, so the
 // engage seam can't hitch.
 //
@@ -50,9 +54,8 @@ import * as THREE from "three";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 
-/** engaged-chain resolution (0.8 → 64% of the pixels; only while smeared) */
-const QUALITY_SCALE = 0.8;
-/** blur resolution relative to the engaged chain — invisible under a smear */
+/** blur resolution relative to the chain — invisible under a smear, and the
+ *  one place low-res is free: only the periphery ever reads from it */
 const BLUR_SCALE = 0.5;
 
 const RadialBlurShader = {
@@ -195,9 +198,11 @@ export class SpeedBlur {
     this.scene = scene;
     this.camera = camera;
 
+    // FULL pixel-ratio sizing (2026-10-28 sharpness fix): the 0.8× scale is
+    // gone — it softened every texture the moment the chain engaged.
     const pr = renderer.getPixelRatio();
-    const cw = Math.max(1, Math.round(width * pr * QUALITY_SCALE));
-    const ch = Math.max(1, Math.round(height * pr * QUALITY_SCALE));
+    const cw = Math.max(1, Math.round(width * pr));
+    const ch = Math.max(1, Math.round(height * pr));
     // MSAA 2x, not 4x: half the resolve cost on iGPUs, and the periphery is
     // smeared by the blur anyway — only the sharp center really benefits.
     this.tScene = new THREE.WebGLRenderTarget(cw, ch, {
@@ -282,8 +287,8 @@ export class SpeedBlur {
 
   setSize(width: number, height: number) {
     const pr = this.renderer.getPixelRatio();
-    const cw = Math.max(1, Math.round(width * pr * QUALITY_SCALE));
-    const ch = Math.max(1, Math.round(height * pr * QUALITY_SCALE));
+    const cw = Math.max(1, Math.round(width * pr));
+    const ch = Math.max(1, Math.round(height * pr));
     this.tScene.setSize(cw, ch);
     this.tEncode.setSize(cw, ch);
     this.tBlur.setSize(

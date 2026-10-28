@@ -848,8 +848,16 @@ function pruneShowroom(root: THREE.Object3D): void {
     const centroid = new THREE.Vector3();
     for (const [, b] of alive) centroid.add(b.getCenter(new THREE.Vector3()));
     centroid.multiplyScalar(1 / alive.length);
+    // Dense Sketchfab interiors (the Renault 5 ships ~190 meshes, most of them
+    // dashboard knobs smaller than a finger) drag the p90 radius down to
+    // bumper depth — pass 2 then amputates real bumpers, plates and lamp bars
+    // as "far props". Nothing within 60% of the LARGEST surviving mesh's
+    // diameter (the body shell — the car itself is at least that big) can be
+    // a far prop; genuine showcase junk sits many shell-diameters out.
+    const maxDiag = Math.max(...alive.map(([, b]) => b.getSize(new THREE.Vector3()).length()));
+    const nearRadius = Math.max(p90 * 0.9, 0.5, maxDiag * 0.6);
     const near = alive.filter(
-      ([, b]) => b.getCenter(new THREE.Vector3()).distanceTo(centroid) < Math.max(p90 * 0.9, 0.5),
+      ([, b]) => b.getCenter(new THREE.Vector3()).distanceTo(centroid) < nearRadius,
     );
     if (near.length >= 3 && near.length < alive.length) alive = near;
   }

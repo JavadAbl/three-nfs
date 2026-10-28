@@ -16,6 +16,8 @@ const FAMILY_BY_CAR: Record<string, AudioFamily> = {
   viper08: "v10",
   viper16: "v10",
   classic: "4cyl-turbo",
+  elegy: "v6-tt", // RB26 twin-turbo straight-six — closest sampled note
+  r5: "4cyl-turbo", // 1.4L turbo hot hatch
 };
 
 export function familyForCar(carId?: string): AudioFamily {

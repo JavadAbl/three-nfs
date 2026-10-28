@@ -66,7 +66,8 @@ export interface CarDef {
 
 // Initial values are first-pass, balanced by feel — tune here, nowhere else.
 // Identity: GT-R = AWD launch monster, TT RS = nimble, SRT10 = wild tail,
-// ACR = track weapon, Muscle = drift king.
+// ACR = track weapon, Muscle = drift king, R34 = planted corner carver,
+// R5 = twitchy short-wheelbase drifter.
 // 2026-10-23 "too tame" rework: each car now pins its own (enginePower, drag)
 // pair so the NATURAL top speed (P/drag — the real ceiling, since nitro is
 // accel-only) lands NFS-high, plus its own maxSpeed safety wall above that
@@ -74,6 +75,8 @@ export interface CarDef {
 //   TT RS  240 km/h · 0-100 3.05s · 2.45g    GT-R 285 km/h · 0-100 2.15s · 2.75g
 //   Muscle 255 km/h · 0-100 2.84s · 2.65g    SRT10 295 km/h · 0-100 2.55s · 2.60g
 //                                             ACR 305 km/h · 0-100 2.45s · 2.95g
+// 2026-10-28 additions (same solver): R34 265 km/h · 0-100 2.7s · 2.65g,
+// R5 235 km/h · 0-100 3.2s · 2.5g — light hatch, fastest steering in the fleet.
 export const CAR_LIBRARY: CarDef[] = [
   {
     id: "gtr",
@@ -106,6 +109,22 @@ export const CAR_LIBRARY: CarDef[] = [
     modelUrl: "/models/viper-acr-2016.glb",
     spec: "V10 · 645 HP · ACR",
     tuning: { enginePower: 13.7, drag: 0.162, maxSpeed: 90, grip: 7.4, steerRate: 2.15, maxLatAccel: 29 },
+  },
+  {
+    id: "elegy",
+    name: "SKYLINE GT-R R34",
+    short: "R34",
+    modelUrl: "/models/skyline-gtr-r34.glb",
+    spec: "RB26 · TWIN TURBO",
+    tuning: { enginePower: 12.9, drag: 0.176, maxSpeed: 78, grip: 7.0, steerRate: 2.05, maxLatAccel: 26, mass: 1.05 },
+  },
+  {
+    id: "r5",
+    name: "RENAULT 5 GT TURBO",
+    short: "R5",
+    modelUrl: "/models/renault-5-turbo.glb",
+    spec: "1.4 L · GT TURBO",
+    tuning: { enginePower: 11.3, drag: 0.173, maxSpeed: 69, grip: 6.4, steerRate: 2.45, maxLatAccel: 24.5, mass: 0.82 },
   },
   {
     id: "classic",

@@ -71,8 +71,8 @@ export function RideSelect({ carId, onCarId, color, onColor, neonId, onNeonId, n
           <StatBar label="HANDLING" value={stats.handling} />
         </div>
 
-        {/* car chips */}
-        <div className="grid grid-cols-5 gap-1.5">
+        {/* car chips (7-car fleet: 4+3 rows) */}
+        <div className="grid grid-cols-4 gap-1.5">
           {CARS.map((c) => (
             <button
               key={c.id}

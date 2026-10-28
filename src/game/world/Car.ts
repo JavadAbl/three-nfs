@@ -209,9 +209,13 @@ export class Car {
     this.brakeLights.position.set(0, d.topY * 0.62, d.rearZ + 0.03);
     this.bodyGroup.add(this.brakeLights);
 
-    // nitro flames — procedural shader jet (see NitroFlame.ts)
+    // nitro flames — procedural shader jet (see NitroFlame.ts), tinted with
+    // the car's neon pick so the flame matches the underglow
     for (const sx of [1, -1]) {
-      const flame = new NitroFlame(sx * w2 * 0.35, 0.32, d.rearZ - 0.35, { scale: 0.85 });
+      const flame = new NitroFlame(sx * w2 * 0.35, 0.32, d.rearZ - 0.35, {
+        scale: 0.85,
+        neon: neonColorFor(this.neonId, this.color),
+      });
       this.nitroFlames.push(flame);
       this.bodyGroup.add(flame.root);
     }
@@ -388,9 +392,13 @@ export class Car {
       }
     }
 
-    // exhaust flames (nitro) — procedural shader jet (see NitroFlame.ts)
+    // exhaust flames (nitro) — procedural shader jet (see NitroFlame.ts),
+    // tinted with the car's neon pick so the flame matches the underglow
     for (const x of [0.45, -0.45]) {
-      const flame = new NitroFlame(x, 0.34, -2.75, { scale: 0.85 });
+      const flame = new NitroFlame(x, 0.34, -2.75, {
+        scale: 0.85,
+        neon: neonColorFor(this.neonId, this.color),
+      });
       this.nitroFlames.push(flame);
       this.bodyGroup.add(flame.root);
     }

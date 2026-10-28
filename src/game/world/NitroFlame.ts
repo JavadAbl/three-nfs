@@ -22,6 +22,7 @@ const frag = /* glsl */ `
   uniform float uTime;   // seconds — scrolls the noise field upward
   uniform float uPower;  // 0..1 smoothed boost intensity
   uniform float uPhase;  // per-flame random offset — fleet never pulses in sync
+  uniform vec3 uColor;    // the car's neon colour — flame matches the underglow
   varying vec2 vUv;
 
   float hash(vec2 p) {
@@ -68,13 +69,15 @@ const frag = /* glsl */ `
     // heat: hottest at the nozzle, cooling toward the tail
     float heat = flame * (1.25 - along * 1.05) + n * 0.12;
 
-    // colour ramp — narrow white-hot core, electric blue mid, deep blue fringe
-    vec3 col = mix(vec3(0.20, 0.45, 1.0), vec3(1.0, 1.0, 1.0), smoothstep(0.78, 1.12, heat));
-    col = mix(col, vec3(0.10, 0.16, 1.0), smoothstep(0.62, 0.1, heat));
+    // colour ramp — narrow white-hot core, neon mid, deep neon fringe.
+    // uColor is the car's neon pick (same source as the underglow), so the
+    // flame always matches the car's lighting identity; default electric blue
+    vec3 col = mix(uColor * 1.05, vec3(1.0), smoothstep(0.78, 1.12, heat));
+    col = mix(col, uColor * 0.42, smoothstep(0.62, 0.1, heat));
 
     // soft round glow hugging the nozzle — sells the light spill at night
     float glow = exp(-radial * radial * 7.0) * exp(-along * 5.5) * 0.8;
-    col += vec3(0.35, 0.55, 1.0) * glow;
+    col += uColor * glow;
 
     float alpha = clamp(flame * 1.35, 0.0, 1.0) * uPower;
     alpha += glow * uPower * 0.5;
@@ -95,7 +98,7 @@ export class NitroFlame {
     x: number,
     y: number,
     z: number,
-    opts: { length?: number; width?: number; scale?: number } = {}
+    opts: { length?: number; width?: number; scale?: number; neon?: THREE.Color } = {}
   ) {
     this.phase = Math.random() * 100;
     this.root.position.set(x, y, z);
@@ -104,12 +107,14 @@ export class NitroFlame {
 
     const len = (opts.length ?? 1.5) * (opts.scale ?? 1);
     const wid = (opts.width ?? 0.42) * (opts.scale ?? 1);
+    const neon = opts.neon ?? new THREE.Color(0.2, 0.45, 1.0); // electric blue default
 
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: Math.random() * 10 },
         uPower: { value: 0 },
         uPhase: { value: this.phase },
+        uColor: { value: neon.clone() },
       },
       vertexShader: vert,
       fragmentShader: frag,

@@ -78,7 +78,10 @@ export function HUD({ gameRef }: { gameRef: React.RefObject<Game | null> }) {
       )}
 
       {/* ── nitro bar ── */}
-      <div className="absolute bottom-24 sm:bottom-28 right-4 sm:right-6 w-28 sm:w-36">
+      {/* parked ABOVE the minimap (canvas paints later in the DOM, so an
+          overlap hides the bar behind the map — bug: "nitro bar is under
+          map"): minimap top edge = 12+110px mobile, 20+150px ≥sm */}
+      <div className="absolute bottom-[128px] sm:bottom-[176px] right-3 sm:right-5 w-28 sm:w-36 z-10">
         <div className="mb-1 text-[10px] font-bold tracking-[0.25em] text-zinc-400">NITRO</div>
         <div className="nitro-bar h-2.5 sm:h-3">
           <div

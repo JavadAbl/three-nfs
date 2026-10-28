@@ -531,9 +531,16 @@ export class Car {
 
     if (controlsEnabled && !this.finished) {
       // ── engine / brake ──
-      const boosting = c.nitro && this.nitro > 0 && vf > 2;
+      // EMPTY LATCH: when the tank drained to zero the boost must not re-arm
+      // on its own dribble — regen adds +0.1/frame, `nitro > 0` flips true
+      // again and the exhaust flames flickered back on while the key was
+      // still held (user: "when nitro comes to an end the fire effect still
+      // present"). Latched empty until the driver RELEASES the boost key.
+      if (!c.nitro) this.nitroLatch = false;
+      const boosting = c.nitro && !this.nitroLatch && this.nitro > 0 && vf > 2;
       if (boosting) {
         this.nitro = Math.max(0, this.nitro - T.nitroDrain * dt);
+        if (this.nitro <= 0) this.nitroLatch = true;
         // Nitro is ACCELERATION ONLY — never a temporary top-speed raise
         // (user directive: "nitro should not add temp top speed; nitro is all
         // about acc"). The boost tapers linearly to zero at the car's natural
@@ -687,6 +694,10 @@ export class Car {
   }
 
   nitroActive = false;
+  /** true once the tank drained to zero while boosting — re-arming the boost
+   *  requires releasing the key, otherwise regen's +0.1 dribble re-lights the
+   *  exhaust flames every other frame (bug: "fire effect still present") */
+  private nitroLatch = false;
 
   /** collision weight (relative, 1 = baseline) — from the car's tuning */
   get mass(): number {

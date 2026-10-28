@@ -87,10 +87,12 @@ const RadialBlurShader = {
       }
       vec4 sum = vec4(0.0);
       // taps spread along the radial line through this pixel, scaled by
-      // edge distance — the classic zoom/radial smear toward the borders
+      // edge distance — the classic zoom/radial smear toward the borders.
+      // 0.28 spread (down from 0.5, 2026-10-28 sharpness pass): the smear
+      // streaks without turning the mid-frame to mush.
       for (int i = 0; i < 10; i++) {
         float t = float(i) / 9.0 - 0.5;
-        vec2 uv = vUv - dir * (t * uStrength * 0.5 * dist);
+        vec2 uv = vUv - dir * (t * uStrength * 0.28 * dist);
         sum += texture2D(tDiffuse, uv);
       }
       gl_FragColor = sum / 10.0;
@@ -113,12 +115,14 @@ const CompositeShader = {
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
-  // The composite IS the center mask: inner ~13% of the frame stays the
-  // sharp chain-res pixel, full effect by ~50% radius. New since the re-add:
-  // on nitro the periphery splits its RGB channels along the radial line
-  // (chromatic aberration — the NFS boost "prism" look) and a smooth
-  // vignette tunnels the frame edges. Both are post-tonemap and gated by
-  // the same engage seam, so the disengaged path stays pixel-identical.
+  // SHARPNESS-FIRST mask (2026-10-28, user: "dont sharp at all" even after
+  // the full-res fix): the first mask went full-strength at 50% screen radius,
+  // so at racing speed everything but a small center disc was smeared — the
+  // effect read as "the whole game is blurry". Now the frame is 100% sharp
+  // out to ~2/3 screen radius (mask 0 below dist 0.34), the smear builds only
+  // in the far periphery and peaks at the corners (~79% blend at full
+  // strength) — texture detail stays readable everywhere at any speed.
+  // Nitro adds chromatic aberration + vignette in that same far ring.
   fragmentShader: /* glsl */ `
     uniform sampler2D tSharp;
     uniform sampler2D tBlurred;
@@ -133,7 +137,7 @@ const CompositeShader = {
       }
       vec2 dir = vUv - vec2(0.5);
       float dist = length(dir);
-      float mask = smoothstep(0.13, 0.5, dist);
+      float mask = smoothstep(0.34, 0.88, dist);
       vec4 blurred;
       // chromatic aberration on nitro: R/B re-sample slightly along the
       // radial line — periphery only, the readable center stays pristine

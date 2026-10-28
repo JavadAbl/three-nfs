@@ -774,8 +774,12 @@ export class Game {
     const maxV = this.player.tuning.maxSpeed;
     const speedFrac = THREE.MathUtils.clamp((v - 22) / (maxV - 22), 0, 1);
     this.speedFrac = speedFrac;
-    let target = Math.pow(speedFrac, 1.7) * 0.75;
-    if (this.player.nitroActive) target = Math.max(target, 0.8 + 0.5 * speedFrac);
+    // 2026-10-28 sharpness pass (user: "dont sharp at all"): targets cut
+    // (speed 0.75→0.5, nitro 0.8+0.5f→0.6+0.4f) so the smear is a corner
+    // streak, not a frame wash — and the engage seam rides up with them
+    // (~150 km/h): less of the race is smeared at all.
+    let target = Math.pow(speedFrac, 1.7) * 0.5;
+    if (this.player.nitroActive) target = Math.max(target, 0.6 + 0.4 * speedFrac);
     target *= drama;
     const rate = this.player.nitroActive ? 10 : 2.6;
     this.speedBlurLevel = THREE.MathUtils.lerp(this.speedBlurLevel, target, 1 - Math.exp(-rate * dt));

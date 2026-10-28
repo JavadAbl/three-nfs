@@ -247,7 +247,9 @@ export function applyPaint(mats: THREE.MeshStandardMaterial[], color: string) {
 }
 
 // ─── template build: normalize + rig ────────────────────────────────────────
-function buildTemplate(id: string, scene: THREE.Group): Template {
+// exported for dev probes (scripts/glass_probe.ts runs the real pipeline in
+// bun against shipped GLBs — no browser needed)
+export function buildTemplate(id: string, scene: THREE.Group): Template {
   const wrapper = new THREE.Group();
   wrapper.name = `carModel_${id}`;
   wrapper.add(scene);
@@ -367,8 +369,12 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
       // material after the model — treat it as paint so garage colours work.
       // "painted2"/"pickup": CSR2 game rips name the tintable body paint
       // "<car>_painted<N>" / "pickup" (a leftover name, never "pickup_glass")
+      // GLASS_MAT first: window materials are NEVER paint — a glass named
+      // "something_paint" or "…_by_Author" must stay black through every
+      // garage recolor (user rule: glasses never fit the selected color)
       if (
         m &&
+        !GLASS_MAT.test(mn) &&
         (/carpaint/i.test(mn) ||
           /(^|_)details$|(^|_)paint$/i.test(mn) ||
           /by[_\s]/i.test(mn) ||
@@ -399,6 +405,9 @@ function buildTemplate(id: string, scene: THREE.Group): Template {
       mesh.receiveShadow = false;
     }
   });
+
+  // ── glass policy (AFTER shadows — see-through windows opt back out) ──
+  finalizeGlass(wrapper, dims, paintNames, id);
 
   return { url: id, wrapper, dims, wheelRadius, paintNames, lampMats };
 }
@@ -1135,6 +1144,190 @@ function splitDarkLamps(wrapper: THREE.Group, out: LampMat[]): void {
       off += r.count;
     }
     mesh.geometry = ng;
+  }
+}
+
+// ─── glass policy: black windows, paint-proof, see-through only with interior ─
+/** window material names — "glass" (EN/Sketchfab), "Vitre" (FR), "vidrios"
+ * (ES), windshield/window (game rips). NOT_LAMP_MAT guards lamps FROM glass
+ * names; this regex claims those names FOR the glass pass — same tokens,
+ * opposite purpose. */
+const GLASS_MAT = /glass|vit(?:re|e)|vidrio|windshield|window/i;
+/** near-black tint — windows must never read as a body colour (user rule:
+ * glasses never fit the selected paint) */
+const GLASS_COLOR = 0x05070a;
+/** opaque blackout for models WITHOUT an interior (nothing inside to show) */
+const BLACKOUT_COLOR = 0x020204;
+/** base see-through opacity (0.36: a DoubleSide pane = 2 layers → ~59%
+ * net see-through — proper NFS tinted glass over a dark cabin; the interior
+ * witnesses stay visible instead of hiding behind the tint). Divided by the
+ * number of nested window SHELLS (GTA-style models stack an inner duplicate
+ * shell — 2 shells × 2 sides at full opacity would stack to near-opaque
+ * again) */
+const GLASS_OPACITY = 0.36;
+
+/** interior-evidence material names — a material literally named
+ * interior/seat/dashboard is interior detail BY DEFINITION: the ACR's
+ * "interior" prims (steering wheel, door cards, chassis details) sit at
+ * the cabin SIDES where the inboard geometric filter cannot see them */
+const INTERIOR_SEMANTIC_MAT = /interior|seat|dashb|cockpit/i;
+
+/** count interior witnesses two ways: geometric (small meshes parked inside
+ * the cabin box — see the cabin rules below) and semantic (materials that
+ * NAME themselves interior, size-capped so shells never qualify).
+ * 2+ semantic or 3+ geometric witnesses = the model ships real interior
+ * detail worth showing through the glass. */
+function countInteriorMeshes(
+  wrapper: THREE.Group,
+  dims: CarDims,
+  glassBoxes: THREE.Box3[],
+  paintNames: Set<string>,
+): { geometric: number; semantic: number } {
+  const halfW = dims.width / 2;
+  const halfL = Math.max(dims.length, 1) / 2;
+  const glassUnion = new THREE.Box3();
+  for (const b of glassBoxes) glassUnion.union(b);
+  if (glassUnion.isEmpty()) return { geometric: 0, semantic: 0 };
+  const cabin = new THREE.Box3(
+    new THREE.Vector3(
+      Math.max(-0.45 * halfW, Math.min(glassUnion.min.x, 0) * 0.5),
+      0.22 * dims.topY,
+      Math.max(glassUnion.min.z - 0.25, -0.42 * halfL),
+    ),
+    new THREE.Vector3(
+      Math.min(0.45 * halfW, Math.max(glassUnion.max.x, 0) * 0.5),
+      Math.min(glassUnion.max.y + 0.05, 0.99 * dims.topY),
+      Math.min(glassUnion.max.z + 0.25, 0.42 * halfL),
+    ),
+  );
+  let geometric = 0;
+  let semantic = 0;
+  wrapper.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    let isSemantic = false;
+    for (const m of mats) {
+      if (!m) continue;
+      const mn = m.name ?? "";
+      if (isLampMat(m) || paintNames.has(mn) || GLASS_MAT.test(mn)) return;
+      if (INTERIOR_SEMANTIC_MAT.test(mn)) isSemantic = true;
+    }
+    const b = new THREE.Box3().setFromObject(mesh);
+    if (b.isEmpty()) return;
+    const c = b.getCenter(new THREE.Vector3());
+    const s = b.getSize(new THREE.Vector3());
+    if (s.z > 0.55 * dims.length || s.x > 0.75 * dims.width || s.y > 0.85 * dims.height) return;
+    if (isSemantic) {
+      semantic++;
+      return;
+    }
+    if (c.x < cabin.min.x || c.x > cabin.max.x) return;
+    if (c.y < cabin.min.y || c.y > cabin.max.y) return;
+    if (c.z < cabin.min.z || c.z > cabin.max.z) return;
+    geometric++;
+  });
+  return { geometric, semantic };
+}
+
+/**
+ * Normalize every window in the fleet to ONE policy (user rule 2026-10-28):
+ *  - glass materials are never paint-tinted, never white/light-blue/red
+ *  - model WITH interior detail → real see-through dark glass (the interior
+ *    shows; the window surfaces stop casting shadows so light pours in)
+ *  - model WITHOUT interior → opaque glossy blackout (no hollow inside)
+ * Candidates = glass-named or already-transparent materials, minus lamps,
+ * minus paint, minus materials that only live at the extreme ends of the
+ * car (glassy LAMP COVERS — the SRT10's red_glass tail lens must keep its
+ * see-through red so the lit lamp behind stays visible).
+ */
+function finalizeGlass(
+  wrapper: THREE.Group,
+  dims: CarDims,
+  paintNames: Set<string>,
+  id: string,
+): void {
+  const halfL = Math.max(dims.length, 1) / 2;
+  const perMat = new Map<THREE.MeshStandardMaterial, THREE.Box3[]>();
+  wrapper.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      const sm = m as THREE.MeshStandardMaterial | undefined;
+      if (!sm || !sm.name) continue;
+      if (isLampMat(sm) || paintNames.has(sm.name)) continue;
+      if (!GLASS_MAT.test(sm.name) && !sm.transparent) continue;
+      if (!perMat.has(sm)) perMat.set(sm, []);
+      perMat.get(sm)!.push(new THREE.Box3().setFromObject(mesh));
+    }
+  });
+
+  const glassBoxes: THREE.Box3[] = [];
+  const candidates: { m: THREE.MeshStandardMaterial; boxes: THREE.Box3[] }[] = [];
+  let shellStack = 0;
+  for (const [m, boxes] of perMat) {
+    // lamp covers live past 80% of half-length; genuine windows straddle the cabin
+    const central = boxes.filter((b) => Math.abs((b.min.z + b.max.z) / 2) <= 0.8 * halfL);
+    if (central.length === 0) continue;
+    candidates.push({ m, boxes: central });
+    glassBoxes.push(...central);
+    if (central.some((b) => b.max.z - b.min.z > 0.55 * dims.length)) shellStack++;
+  }
+
+  if (candidates.length > 0) {
+    const { geometric, semantic } = countInteriorMeshes(wrapper, dims, glassBoxes, paintNames);
+    const hasInterior = semantic >= 2 || geometric >= 3;
+    const opacity = hasInterior ? Math.max(0.22, GLASS_OPACITY / Math.max(1, shellStack)) : 1;
+    const tint = new THREE.Color(GLASS_COLOR);
+    for (const { m } of candidates) {
+      m.color.copy(hasInterior ? tint : new THREE.Color(BLACKOUT_COLOR));
+      if (hasInterior) {
+        m.transparent = true;
+        m.opacity = opacity;
+        m.metalness = 0.9;
+        m.roughness = 0.06;
+        m.envMapIntensity = Math.max(m.envMapIntensity ?? 1, 2.2);
+        m.depthWrite = false;
+        // GTA window shells are single-sided — the far-side windows must
+        // exist when you look through the near ones
+        m.side = THREE.DoubleSide;
+      } else {
+        m.transparent = false;
+        m.opacity = 1;
+        m.metalness = 0.55;
+        m.roughness = 0.14;
+        m.envMapIntensity = Math.max(m.envMapIntensity ?? 1, 1.3);
+        m.depthWrite = true;
+      }
+      m.needsUpdate = true;
+    }
+    // see-through windows stop casting shadows — light pours through them
+    if (hasInterior) {
+      const glassSet = new Set(candidates.map((c) => c.m));
+      wrapper.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        if (mats.length && mats.every((m) => glassSet.has(m as THREE.MeshStandardMaterial)))
+          mesh.castShadow = false;
+      });
+    }
+    // dev probe (menu preloads every model → one report per car id)
+    if (typeof window !== "undefined") {
+      const w = window as unknown as { __carGlassReports?: Record<string, unknown> };
+      (w.__carGlassReports ??= {})[id] = {
+        hasInterior,
+        interiorGeometric: geometric,
+        interiorSemantic: semantic,
+        shellStack,
+        opacity,
+        glass: candidates.map((c) => ({ name: c.m.name, meshes: c.boxes.length })),
+        skipped: [...perMat.entries()]
+          .filter(([m]) => !candidates.some((c) => c.m === m))
+          .map(([m, b]) => ({ name: m.name, reason: "extreme-ends (lamp cover?)", meshes: b.length })),
+      };
+    }
   }
 }
 

@@ -160,6 +160,44 @@ for m in mats:
         print(f"mat   {old!r} -> {m['name']!r}")
 assert m_renamed == len(RENAME_MATS), f"expected {len(RENAME_MATS)} material renames, got {m_renamed}"
 
+# ── 6. window glass (2026-10-28 user rule: glasses never fit the selected
+#    color; see-through when the model has interior details) ──────────────
+# The GTA shells TWO full-cabin window meshes, both opaque black:
+#   outer  body.001_emzone_juoda1_0     1.40x0.97x3.04 -> NEW "juoda_glass"
+#   inner  body.001_emzone_plasmase1_0  1.35x0.81x3.13 -> DELETED (a 2nd
+#            stacked shell would quadruple the see-through layer count)
+# Only the outer shell's primitive is re-pointed: the 4 small juoda meshes
+# (2 mirror housings, bumper strip, arch bit) stay opaque. The loader's
+# GLASS_MAT matches "juoda_glass" and finalizeGlass turns it see-through
+# (R34 ships seats/dash/carpet interior witnesses).
+_juoda = next((i for i, m in enumerate(mats) if m.get("name") == "emzone_juoda1"), None)
+assert _juoda is not None, "emzone_juoda1 material missing"
+_glass = copy.deepcopy(mats[_juoda])
+_glass["name"] = "juoda_glass"
+mats.append(_glass)
+_glass_idx = len(mats) - 1
+print(f"mat   'emzone_juoda1' clone -> 'juoda_glass' (index {_glass_idx})")
+
+_shell = [i for i, n in enumerate(nodes) if n.get("name") == "body.001_emzone_juoda1_0"]
+assert len(_shell) == 1, f"outer juoda shell: expected 1 node, got {len(_shell)}"
+_mesh_idx = nodes[_shell[0]].get("mesh")
+_swapped = 0
+for prim in meshes[_mesh_idx].get("primitives", []):
+    if prim.get("material") == _juoda:
+        prim["material"] = _glass_idx
+        _swapped += 1
+print(f"      outer shell mesh {_mesh_idx}: {_swapped} primitive(s) -> juoda_glass")
+assert _swapped >= 1, "no primitives re-pointed to juoda_glass"
+assert [i for i, n in enumerate(nodes) if n.get("mesh") == _mesh_idx] == _shell, \
+    "shell mesh shared by other nodes (instancing would re-tint trims)"
+
+_inner = [i for i, n in enumerate(nodes) if n.get("name") == "body.001_emzone_plasmase1_0"]
+assert len(_inner) == 1, f"inner plasmase shell: expected 1 node, got {len(_inner)}"
+_parents = [i for i, n in enumerate(nodes) if _inner[0] in n.get("children", [])]
+assert len(_parents) == 1, f"plasmase shell parent count {len(_parents)}"
+nodes[_parents[0]]["children"].remove(_inner[0])
+print(f"      inner plasmase shell node {_inner[0]} spliced from parent {_parents[0]} (orphaned, never instantiated)")
+
 # ── re-serialize ──
 js_bytes = json.dumps(js, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 pad = (4 - len(js_bytes) % 4) % 4

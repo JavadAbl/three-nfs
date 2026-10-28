@@ -114,6 +114,26 @@ export class Game {
   private countdownStep = 0;
   private hudTimer = 0;
   private netTimer = 0;
+  /** last gear band the player was in — drives shift backfire detection */
+  private lastGear = "N";
+
+  /** gear-band change → exhaust backfire (flash + bang). Gear is derived
+   *  from speed, so a change of band = a shift. Upshifts bang full strength,
+   *  downshifts give a quieter rev-match blip; N/R transitions stay silent
+   *  so pulling away / stopping doesn't pop. Shared by the rAF loop and
+   *  debugTick so headless runs exercise it too. */
+  private gearPopTick() {
+    const [gearNow] = gearAndRpm(this.player.speed);
+    if (gearNow === this.lastGear) return;
+    const prev = parseInt(this.lastGear, 10);
+    const next = parseInt(gearNow, 10);
+    if (!Number.isNaN(prev) && !Number.isNaN(next) && next !== prev) {
+      const strength = next > prev ? 1 : 0.45;
+      this.player.exhaustPop(strength);
+      if (!this.audio.muted) this.audio.pop(strength);
+    }
+    this.lastGear = gearNow;
+  }
   private raf = 0;
   private disposed = false;
   private moon: THREE.DirectionalLight;
@@ -678,6 +698,9 @@ export class Game {
       this.audio.update(rpm, Math.abs(this.player.speed), this.player.drifting, this.player.nitroActive, gear);
     }
 
+    // ── gear-change backfire (user directive: flash + bang on shifts) ──
+    this.gearPopTick();
+
     // ── HUD feed at ~30 Hz ──
     this.hudTimer += dt;
     if (this.hudTimer > 1 / 30) {
@@ -823,6 +846,7 @@ export class Game {
       for (const ai of this.ais) ai.update(dt, this.track, racing);
       this.resolveCollisions(dt);
       this.raceManager?.update(dt, racing);
+      this.gearPopTick();
     }
     this.emitHud();
     this.renderFrame();

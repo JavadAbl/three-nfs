@@ -123,6 +123,39 @@ export class EngineAudio {
     seq.forEach((f, i) => setTimeout(() => this.blip(f, 0.18, "triangle", 0.3), i * 130));
   }
 
+  /** gear-shift exhaust bang — same recipe as the sampled mate: noise crack
+   *  + pitch-dropping sine thump, fully synthesised (silent-asset fallback) */
+  pop(strength = 1) {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const s = Math.min(Math.max(strength, 0), 1);
+    const len = Math.floor(ctx.sampleRate * 0.09);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1400 + Math.random() * 900;
+    bp.Q.value = 0.8;
+    const g1 = ctx.createGain();
+    g1.gain.value = 0.5 * s;
+    src.connect(bp).connect(g1).connect(this.master);
+    src.start(t);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(120 + 40 * s, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.1);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.65 * s, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    osc.connect(g2).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.16);
+  }
+
   dispose() {
     try {
       this.engineOsc?.stop();

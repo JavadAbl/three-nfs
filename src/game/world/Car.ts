@@ -689,6 +689,18 @@ export class Car {
   }
 
   nitroActive = false;
+
+  /** gear-change backfire — hot flash through both exhaust jets + a soot
+   *  puff; strength 1 = full upshift bang, ~0.45 = downshift blip */
+  exhaustPop(strength = 1) {
+    for (const f of this.nitroFlames) f.pop(strength);
+    if (!this.finished) {
+      const back = this.pos.clone().addScaledVector(this.forward, -2.3);
+      back.y += 0.18;
+      this.smokeRequest = { pos: back, strength: 0.3 + 0.3 * strength };
+    }
+  }
+
   /** true once the tank drained to zero while boosting — re-arming the boost
    *  requires releasing the key, otherwise regen's +0.1 dribble re-lights the
    *  exhaust flames every other frame (bug: "fire effect still present") */

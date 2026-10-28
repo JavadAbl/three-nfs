@@ -10,6 +10,9 @@
 // in/out instead of snapping with the boost key.
 import * as THREE from "three";
 
+/** backfire flash colour — unburnt fuel igniting at the tailpipe */
+const POP_COLOR = new THREE.Color(1.0, 0.62, 0.16);
+
 const vert = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -92,6 +95,10 @@ export class NitroFlame {
   private readonly geos: THREE.PlaneGeometry[] = [];
   private power = 0;
   private clock = 0;
+  private pulse = 0;
+  /** the car's neon colour — uColor temporarily lerps from this toward
+   *  POP_COLOR while a gear-change backfire pulse is running */
+  private readonly baseColor = new THREE.Color();
   private readonly phase: number;
 
   constructor(
@@ -108,6 +115,7 @@ export class NitroFlame {
     const len = (opts.length ?? 1.5) * (opts.scale ?? 1);
     const wid = (opts.width ?? 0.42) * (opts.scale ?? 1);
     const neon = opts.neon ?? new THREE.Color(0.2, 0.45, 1.0); // electric blue default
+    this.baseColor.copy(neon);
 
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
@@ -142,23 +150,35 @@ export class NitroFlame {
     this.root.visible = false;
   }
 
+  /** gear-change backfire — a hot orange-white flash through the jet,
+   *  layered on top of (or instead of) the boost flame */
+  pop(strength = 1) {
+    this.pulse = Math.max(this.pulse, Math.min(Math.max(strength, 0), 1));
+  }
+
   /** smooth power follow + time scroll; call once per frame from the car's
    *  visual sync with the boost state (latched empty ⇒ false, no flicker) */
   update(dt: number, active: boolean) {
     const target = active ? 1 : 0;
     // ~40 ms attack, ~90 ms release — reads instant but never snaps
     this.power += (target - this.power) * (1 - Math.exp(-(active ? 26 : 12) * dt));
-    if (this.power < 0.015) {
+    // backfire pulse decays in ~140 ms regardless of boost state
+    this.pulse = Math.max(0, this.pulse - dt * 7);
+    const p = Math.max(this.power, this.pulse);
+    if (p < 0.015) {
       this.root.visible = false;
       return;
     }
     this.root.visible = true;
-    this.clock += dt * (0.7 + 1.5 * this.power);
+    this.clock += dt * (0.7 + 1.5 * p);
     this.mat.uniforms.uTime.value = this.clock;
-    this.mat.uniforms.uPower.value = this.power;
+    this.mat.uniforms.uPower.value = p;
+    // unburnt fuel catching — the flash leans hot orange, then the neon
+    // colour reasserts itself as the pulse fades
+    this.mat.uniforms.uColor.value.copy(this.baseColor).lerp(POP_COLOR, this.pulse * 0.85);
     // flame length flickers per frame — turbopop instead of a static card
     const jitter = 0.82 + Math.random() * 0.36;
-    this.root.scale.set(0.8 + 0.3 * this.power, 0.8 + 0.3 * this.power, (0.55 + 0.45 * this.power) * jitter);
+    this.root.scale.set(0.8 + 0.3 * p, 0.8 + 0.3 * p, (0.55 + 0.45 * p) * jitter);
   }
 
   dispose() {

@@ -3,6 +3,7 @@ node_modules/
 .next/
 dev.log
 server.log
+race-service.log
 db/
 upload/
 download/

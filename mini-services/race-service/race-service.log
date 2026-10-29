@@ -1,0 +1,2 @@
+$ bun --hot index.ts
+[race-service] 2026-10-29T16:29:53.479Z race service listening on :3003

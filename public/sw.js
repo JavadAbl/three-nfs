@@ -17,7 +17,7 @@
  * Everything else (Next routes, chunks, HMR websockets, APIs) passes
  * straight through untouched — dev-server safe.
  */
-const CACHE_VERSION = "nfs-assets-v1";
+const CACHE_VERSION = "nfs-assets-v2"; // v2: 2026-10-30 R34 GLB greenhouse-liner patch (pg206 window paint-sync fix) — urgent invalidation
 const ASSET_PREFIXES = ["/models/", "/textures/", "/draco/", "/ktx2/", "/audio/", "/staging/"];
 
 self.addEventListener("install", () => {

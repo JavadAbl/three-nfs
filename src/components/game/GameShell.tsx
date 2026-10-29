@@ -15,6 +15,8 @@ import { mapDef } from "@/game/maps/registry";
 import { useGameStore } from "@/stores/gameStore";
 import { HUD } from "@/components/game/HUD";
 import { LoadingScreen } from "@/components/game/LoadingScreen";
+import { WebGLBlockedOverlay } from "@/components/game/WebGLBlockedOverlay";
+import { checkWebGLSupport } from "@/game/core/webglSupport";
 import { MainMenu } from "@/components/game/MainMenu";
 import { OnlineBrowser } from "@/components/game/OnlineBrowser";
 import { OnlineLobby } from "@/components/game/OnlineLobby";
@@ -57,6 +59,15 @@ export function GameShell() {
 
   const [raceSession, setRaceSession] = useState<StartRequest | null>(null);
   const launchingRef = useRef(false);
+  // ── WebGL gate: probe once after mount (client-only; SSR stays ok:true) ──
+  // A browser with no GPU (HW accel off / blocklisted / VM-RDP) used to die
+  // silently here: black canvas + "THREE.WebGLRenderer: A WebGL context
+  // could not be created" console spam. Now it gets an actionable overlay.
+  const [webgl, setWebgl] = useState<{ ok: true } | { ok: false; detail?: string }>({ ok: true });
+  useEffect(() => {
+    const probe = checkWebGLSupport();
+    if (!probe.ok) setWebgl({ ok: false, detail: probe.error });
+  }, []);
   // per-map warm overlay — non-null only while a not-yet-cached map's own
   // assets (ground set / scenery GLB / sky HDR) download behind the launch
   const [mapWarm, setMapWarm] = useState<BootProgress | null>(null);
@@ -116,6 +127,7 @@ export function GameShell() {
   const launchGame = useCallback(
     (m: GameMode, laps: number) => {
       if (!canvasRef.current || launchingRef.current) return;
+      if (!checkWebGLSupport().ok) return; // dead browser GPU — overlay already up
       launchingRef.current = true;
       disposeGame();
       void (async () => {
@@ -139,46 +151,53 @@ export function GameShell() {
         setMapWarm(null);
         launchingRef.current = false;
         if (!canvasRef.current) return; // unmounted while loading
-        const game = new Game(
-          canvasRef.current,
-          {
-            mode: m,
-            playerName: playerName.trim() || "DRIVER",
-            carColor,
-            carId,
-            mapId,
-            laps,
-            net: m === "online" ? netRef.current : null,
-            neonId,
-          },
-        {
-          onHud: setHud,
-          onCountdown: (step) => {
-            setCountdown(step);
-            if (step === null) setScreen("racing");
-          },
-          onLapFlash: flashLap,
-          onFinish: (results) => {
-            setResults(results);
-            setScreen("results");
-            // persist best lap
-            const mine = results.find((r) => r.isPlayer);
-            if (mine && mine.bestLapMs > 500) {
-              fetch("/api/records", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  playerName: playerName.trim() || "DRIVER",
-                  lapTimeMs: mine.bestLapMs,
-                  mode: m,
-                  carColor,
-                }),
-              }).catch(() => {});
+        let game: Game;
+        try {
+          game = new Game(
+            canvasRef.current,
+            {
+              mode: m,
+              playerName: playerName.trim() || "DRIVER",
+              carColor,
+              carId,
+              mapId,
+              laps,
+              net: m === "online" ? netRef.current : null,
+              neonId,
+            },
+            {
+              onHud: setHud,
+              onCountdown: (step) => {
+                setCountdown(step);
+                if (step === null) setScreen("racing");
+              },
+              onLapFlash: flashLap,
+              onFinish: (results) => {
+                setResults(results);
+                setScreen("results");
+                // persist best lap
+                const mine = results.find((r) => r.isPlayer);
+                if (mine && mine.bestLapMs > 500) {
+                  fetch("/api/records", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      playerName: playerName.trim() || "DRIVER",
+                      lapTimeMs: mine.bestLapMs,
+                      mode: m,
+                      carColor,
+                    }),
+                  }).catch(() => {});
+                }
+              },
+              onOnlineFinish: () => {},
             }
-          },
-          onOnlineFinish: () => {},
+          );
+        } catch (err) {
+          // context died between probe and boot (loss/exhaustion) — surface it
+          setWebgl({ ok: false, detail: err instanceof Error ? err.message : String(err) });
+          return;
         }
-      );
       gameRef.current = game;
       // dev/test hook — lets the browser console & automated tests drive the sim
       if (process.env.NODE_ENV === "development") {
@@ -390,6 +409,9 @@ export function GameShell() {
       {screen === "results" && (
         <ResultsScreen onRestart={handleRestart} onMenu={handleQuitToMenu} onLobby={backToLobby} />
       )}
+
+      {/* WebGL gate — above everything, incl. the boot loader (z-50) */}
+      {!webgl.ok && <WebGLBlockedOverlay detail={webgl.detail} />}
     </main>
   );
 }

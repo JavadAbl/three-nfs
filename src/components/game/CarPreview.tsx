@@ -6,6 +6,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { loadCarModel, instantiateCar, applyPaint, registerKTX2Renderer } from "@/game/world/CarModelLoader";
+import { checkWebGLSupport } from "@/game/core/webglSupport";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "@/game/world/ProceduralMuscle";
 import { carEntry } from "@/game/cars/registry";
 import { makeUnderglow, neonColorFor, neonPulseOpacity, type Underglow } from "@/game/world/NeonGlow";
@@ -37,6 +38,10 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    // no usable GPU → renderer creation would throw inside this effect and
+    // take the whole React tree down. Stay empty; GameShell's WebGL gate
+    // overlay explains the dead end.
+    if (!checkWebGLSupport().ok) return;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     registerKTX2Renderer(renderer); // refresh KTX2 GPU-format detection

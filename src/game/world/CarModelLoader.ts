@@ -395,7 +395,7 @@ export function buildTemplate(id: string, scene: THREE.Group): Template {
   // every dark lamp primitive inside merged bodies) is lit here; the lit
   // materials are reported so Car.ts drives them per time-of-day/brakes.
   const lampMats: LampMat[] = [];
-  splitDarkLamps(wrapper, lampMats);
+  splitDarkLamps(wrapper, lampMats, id);
 
   // shadows for the whole car
   wrapper.traverse((o) => {
@@ -958,14 +958,24 @@ interface GeoGroup {
 /** true when `m` is a lamp-family lens material. Both dark lenses and
  * baked-bright rips qualify — the fleet must end up UNIFORM: GT-R ships
  * headlight=white@2 / taillight=red@3, the Vipers gray bakes, Sketchfab
- * OBJ exports emissive=0; all of them get taken over. Glass impostors
- * ("glass_light" windshields) never qualify. */
+ * OBJ exports emissive=0; all of them get taken over. Glass impostors are
+ * excluded by NAME (windows must not glow) — with one exception: lens STRIPS
+ * wearing glassy names (ACR "glass_light") are lamp geometry and do qualify
+ * (isGlassLensStrip). */
 function isLampMat(m: THREE.Material | null | undefined): boolean {
+  // lit clones this module created are authoritative members even when their
+  // inherited name is glassy (ACR "glass_light_head"): finalizeGlass must
+  // never tint a lens the split just lit
+  if (litLampClones.has(m as THREE.Material)) return true;
   const sm = m as THREE.MeshStandardMaterial | null;
   if (!sm || !sm.emissive) return false;
   const name = sm.name ?? "";
   return !NOT_LAMP_MAT.test(name) && LAMP_MAT.test(name);
 }
+
+/** every lit lamp clone this module created — membership = lamp, regardless
+ * of inherited name tokens (see isLampMat) */
+const litLampClones = new WeakSet<THREE.Material>();
 
 /** clone `base` into a lit lens material: warm-white front / stop-red rear */
 function makeLitLampMat(base: THREE.MeshStandardMaterial, front: boolean): THREE.MeshStandardMaterial {
@@ -985,14 +995,106 @@ function makeLitLampMat(base: THREE.MeshStandardMaterial, front: boolean): THREE
   //    follow the baseColor map instead (the ACR even ships
   //    emissiveMap === map, proving the pattern).
   // Mapless lenses (GT-R's textureless lamp mats) stay flat — nothing to
-  // modulate with.
+  // modulate with. Dark-atlas cars (DARK_ATLAS_HEADS) get a procedural lens
+  // blob instead — their atlas texels multiply the glow to nothing.
   lit.emissiveMap = (front ? base.map ?? base.emissiveMap : base.emissiveMap ?? base.map) ?? null;
   lit.needsUpdate = true; // map presence changed vs the compiled shader — recompile
   // these lenses are the car's ONLY lamp visuals at night — the old floating
   // glow-quads/lamp-box impostors are gone, so the real geometry must carry
   // the glow alone
   lit.emissiveIntensity = front ? LAMP_HEAD_INTENSITY : LAMP_TAIL_INTENSITY;
+  litLampClones.add(lit);
   return lit;
+}
+
+/** glass-IMPOSTOR exception: a lens STRIP wearing a glassy name is lamp
+ * GEOMETRY, not a window. The ACR (viper16) ships one "glass_light" material
+ * on BOTH its front headlight band (z +1.80) and its rear tail band
+ * (z −2.00) — wide, flat, shallow strips. The old note called it "the
+ * windshield"; the windshield is the separate "glass" material, and the
+ * glass policy was tinting this lens to #05070a → black headlights.
+ * A windshield (≈1.6×0.9×1.2) or side window can never pass the strip test. */
+const GLASS_LENS_STRIP_MAT = /glass_light/i;
+function isGlassLensStrip(mat: THREE.Material, mesh: THREE.Mesh): boolean {
+  const sm = mat as THREE.MeshStandardMaterial;
+  if (!GLASS_LENS_STRIP_MAT.test(sm.name ?? "")) return false;
+  const bb = new THREE.Box3().setFromObject(mesh);
+  const s = bb.getSize(new THREE.Vector3());
+  return s.x > 0.4 && s.y < 0.3 && s.z < 0.7; // wide, flat, shallow — lens band
+}
+
+/** cars whose baseColor atlases are DARK at the headlamp UVs (probed
+ * 2026-10-30 + VLM garage read: matte black, zero glow, while the GT-R's
+ * bright lens texels glow fine). The texture-driven-glow doctrine multiplies
+ * warm-white by those black texels → nothing; heads on these cars get a
+ * procedural soft lens blob laid over their piece UVs instead. Tails are
+ * untouched — the artists' red bakes do their job everywhere. */
+const DARK_ATLAS_HEADS = new Set(["viper08", "viper16", "audi"]);
+
+/** UV bounds of everything a lit clone serves — the procedural lens blob is
+ * painted across exactly that region so the glow tracks the lens geometry. */
+interface UVBox {
+  minU: number;
+  minV: number;
+  maxU: number;
+  maxV: number;
+}
+
+function unionUVBox(
+  map: Map<THREE.Material, UVBox>,
+  m: THREE.Material,
+  geo: THREE.BufferGeometry,
+): void {
+  const uv = geo.attributes.uv as THREE.BufferAttribute | undefined;
+  if (!uv) return;
+  let b = map.get(m);
+  if (!b) {
+    b = { minU: Infinity, minV: Infinity, maxU: -Infinity, maxV: -Infinity };
+    map.set(m, b);
+  }
+  for (let i = 0; i < uv.count; i++) {
+    const x = uv.getX(i);
+    const y = uv.getY(i);
+    if (x < b.minU) b.minU = x;
+    if (x > b.maxU) b.maxU = x;
+    if (y < b.minV) b.minV = y;
+    if (y > b.maxV) b.maxV = y;
+  }
+}
+
+/** paint a soft grayscale lens blob across the material's UV box and make it
+ * the lit clone's emissiveMap — grayscale because emissive (warm white) is
+ * the colour source of truth; the canvas only shapes the glow. Procedural
+ * per the standing effects rule. flipY=false matches the glTF UV convention
+ * of the model's own maps (both maps share one UV attribute). */
+function applyProceduralLensGlow(lit: THREE.MeshStandardMaterial, b: UVBox): void {
+  if (typeof document === "undefined") return; // bun probes: no DOM, skip
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, S, S);
+  const cx = ((b.minU + b.maxU) / 2) * S;
+  const cy = ((b.minV + b.maxV) / 2) * S;
+  const rx = Math.max((b.maxU - b.minU) / 2, 0.04) * S;
+  const ry = Math.max((b.maxV - b.minV) / 2, 0.04) * S;
+  const rmax = Math.max(rx, ry);
+  g.save();
+  g.translate(cx, cy);
+  g.scale(rx / rmax, ry / rmax);
+  const grad = g.createRadialGradient(0, 0, 0, 0, 0, rmax);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.55, "rgba(255,255,255,0.72)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(-rmax, -rmax, rmax * 2, rmax * 2);
+  g.restore();
+  const tex = new THREE.CanvasTexture(c);
+  tex.flipY = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  lit.emissiveMap = tex;
+  lit.needsUpdate = true; // map presence changed vs the compiled shader
 }
 
 /** Light EVERY lamp-family lens so the geometry itself becomes the lamp:
@@ -1008,22 +1110,25 @@ function makeLitLampMat(base: THREE.MeshStandardMaterial, front: boolean): THREE
  *    slot swapped for a lit clone; a group spanning BOTH ends is extracted
  *    into a standalone mesh, split at the midline, and surgically dropped
  *    from the parent mesh.
- * Glass impostors are never touched. Lit materials are reported through
+ * Glass impostors are never touched (except lens strips — isGlassLensStrip).
+ * Lit materials are reported through
  * `out` (Car.ts drives them by time-of-day
  * and brake state). Coordinates are mesh-local — Sketchfab/OBJ-style exports
  * bake identity transforms, so local z ≈ the car's z midline. */
-function splitDarkLamps(wrapper: THREE.Group, out: LampMat[]): void {
+function splitDarkLamps(wrapper: THREE.Group, out: LampMat[], id: string): void {
   // pass 1 — scan only: the fixes below add/remove SIBLING nodes and
   // mutating a graph mid-traverse skips nodes, so collect victims first
   const singles: THREE.Mesh[] = [];
   const merged: THREE.Mesh[] = [];
+  // UV bounds per lit clone — feeds the procedural lens blob on dark-atlas cars
+  const uvBoxes = new Map<THREE.Material, UVBox>();
   wrapper.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mat = mesh.material;
     if (Array.isArray(mat)) {
       if (mesh.geometry.groups.length > 0 && mat.some((m) => isLampMat(m))) merged.push(mesh);
-    } else if (mat && mesh.geometry.groups.length === 0 && isLampMat(mat)) {
+    } else if (mat && mesh.geometry.groups.length === 0 && (isLampMat(mat) || isGlassLensStrip(mat, mesh))) {
       singles.push(mesh);
     }
   });
@@ -1051,6 +1156,7 @@ function splitDarkLamps(wrapper: THREE.Group, out: LampMat[]): void {
       // "Lights_315" sits on BOTH ends' kits) must split into head + tail
       const lit = makeLitLampMat(piece.material as THREE.MeshStandardMaterial, front);
       piece.material = lit;
+      unionUVBox(uvBoxes, lit, piece.geometry);
       out.push({ mat: lit, front });
     }
   }
@@ -1099,6 +1205,7 @@ function splitDarkLamps(wrapper: THREE.Group, out: LampMat[]): void {
             out.push({ mat: lit, front });
           }
           piece.material = lit;
+          unionUVBox(uvBoxes, lit, piece.geometry);
         }
         tmp.removeFromParent();
         tmp.geometry.dispose();
@@ -1144,6 +1251,18 @@ function splitDarkLamps(wrapper: THREE.Group, out: LampMat[]): void {
       off += r.count;
     }
     mesh.geometry = ng;
+  }
+
+  // ── dark-atlas heads: procedural lens blob over the lit pieces' UV box ──
+  // (their baseColor atlas is black at the headlamp UVs — atlas modulation
+  // yields zero glow; the blob restores headlight presence without the
+  // rejected map-less "white sticker" wash: it tracks the lens UV footprint)
+  if (DARK_ATLAS_HEADS.has(id)) {
+    for (const { mat, front } of out) {
+      if (!front) continue;
+      const b = uvBoxes.get(mat);
+      if (b && b.maxU > b.minU) applyProceduralLensGlow(mat, b);
+    }
   }
 }
 

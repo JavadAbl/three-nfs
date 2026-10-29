@@ -406,8 +406,44 @@ export function buildTemplate(id: string, scene: THREE.Group): Template {
     }
   });
 
+  // ── lamp covers vs windows (user report 2026-10-30: SRT10 + Audi heads
+  // pure black in garage AND game) — glassy geometry that sits over lit
+  // lamps becomes a clear smoked lens here; WITHOUT this the glass policy
+  // below blacked those covers out and buried the glowing lenses behind an
+  // opaque #020204 pane. Windows keep the policy; covers opt out below.
+  splitGlassLampCovers(wrapper, litLensZones(wrapper, lampMats), paintNames, dims);
+
   // ── glass policy (AFTER shadows — see-through windows opt back out) ──
   finalizeGlass(wrapper, dims, paintNames, id);
+
+  // dev probe (same convention as finalizeGlass's __carGlassReports):
+  // per-model lamp material state as the LIVE browser sees it — emissive
+  // color/intensity, whether the emissiveMap is the atlas or the procedural
+  // canvas blob, and how many meshes wear each lit clone.
+  if (typeof window !== "undefined") {
+    const w = window as unknown as { __carLampReports?: Record<string, unknown> };
+    const wearers = new Map<THREE.Material, number>();
+    wrapper.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+        if (m) wearers.set(m, (wearers.get(m) ?? 0) + 1);
+    });
+    (w.__carLampReports ??= {})[id] = lampMats.map(({ mat, front }) => ({
+      name: mat.name,
+      front,
+      emissive: `#${mat.emissive.getHexString()}`,
+      intensity: mat.emissiveIntensity,
+      map: mat.emissiveMap
+        ? mat.emissiveMap instanceof THREE.CanvasTexture
+          ? "canvas-blob"
+          : mat.emissiveMap.name || "texture"
+        : null,
+      baseColor: `#${mat.color.getHexString()}`,
+      diffuseMap: mat.map ? mat.map.name || "texture" : null,
+      wearers: wearers.get(mat) ?? 0,
+    }));
+  }
 
   return { url: id, wrapper, dims, wheelRadius, paintNames, lampMats };
 }
@@ -1097,6 +1133,167 @@ function applyProceduralLensGlow(lit: THREE.MeshStandardMaterial, b: UVBox): voi
   lit.needsUpdate = true; // map presence changed vs the compiled shader
 }
 
+// ─── lamp covers vs windows: the glass pass must not bury lit lamps ─────────
+/** clear-lens cover clones this module created — see splitGlassLampCovers.
+ * finalizeGlass skips them (they'd otherwise be re-blacked as glassy-named
+ * transparent materials — the very bug that hid the SRT10's and the Audi's
+ * lit headlamps behind an opaque #020204 pane). */
+const lensCoverClones = new WeakSet<THREE.Material>();
+
+/** world-space boxes around every lit lamp clone's geometry (+6cm margin) —
+ * the volume a lamp-cover pane can occupy. Computed from the meshes that
+ * actually wear the lit clone, so wraparound lenses (the Audi's lamps span
+ * back along the fender) get a correctly shaped zone. */
+function litLensZones(wrapper: THREE.Group, lampMats: LampMat[]): THREE.Box3[] {
+  wrapper.updateMatrixWorld(true);
+  const zones: THREE.Box3[] = [];
+  for (const { mat } of lampMats) {
+    const box = new THREE.Box3();
+    let any = false;
+    wrapper.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      if (!mats.includes(mat)) return;
+      box.expandByObject(mesh);
+      any = true;
+    });
+    if (any && !box.isEmpty()) zones.push(box.expandByScalar(0.06));
+  }
+  return zones;
+}
+
+/** A glassy pane over a lit lamp is a LENS COVER, not a window — blacking it
+ * out (the no-interior blackout) or even tinting it hides the lamp the split
+ * just lit: the SRT10's whole front kit cover and the Audi's "glass" mesh
+ * (headlamp covers MERGED with cabin glass, 34% of its verts inside the lamp
+ * zones) buried their glowing lenses → "pure black headlights" (user report
+ * 2026-10-30). This pass runs between the lamp split and finalizeGlass:
+ *  - meshes whose UNIQUE verts lie ≥25% inside lamp zones (unique = counted
+ *    once even when zone boxes overlap) get their in-zone triangles pulled
+ *    out (extractTriangles) into a sibling mesh wearing a CLEAR LENS clone
+ *    (smoked, see-through); the remainder stays a window and keeps the glass
+ *    policy. Whole-mesh covers simply swap materials.
+ *  - the 25% floor keeps grazing window corners out: the Audi's "vidrios"
+ *    (~12% — windshield edge touching the TT's wraparound lamp zone) and the
+ *    ACR's "grulle" (~20%) stay untouched windows, while the Audi's "glass"
+ *    (34% — covers MERGED with cabin glass) splits.
+ *  - materials whose meshes ALL live at the extreme ends mirror
+ *    finalizeGlass's lamp-cover exception — they keep their SOURCE state
+ *    there (the SRT10's see-through RED tail lens "red_glass") and are not
+ *    lens-ified here either. */
+function splitGlassLampCovers(
+  wrapper: THREE.Group,
+  zones: THREE.Box3[],
+  paintNames: Set<string>,
+  dims: CarDims,
+): void {
+  if (!zones.length) return;
+  const halfL = Math.max(dims.length, 1) / 2;
+  // materials finalizeGlass will actually CLAIM (mirror its central-boxes
+  // test) — only their covers need rescuing; unclaimed extreme-ends glass
+  // keeps its artist state and is left alone
+  const claimed = new Set<THREE.MeshStandardMaterial>();
+  wrapper.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const sm = mesh.material as THREE.MeshStandardMaterial | null;
+    if (!sm || Array.isArray(mesh.material)) return;
+    if (isLampMat(sm) || lensCoverClones.has(sm) || paintNames.has(sm.name ?? "")) return;
+    if (!GLASS_MAT.test(sm.name ?? "") && !sm.transparent) return;
+    const b = new THREE.Box3().setFromObject(mesh);
+    if (Math.abs((b.min.z + b.max.z) / 2) <= 0.8 * halfL) claimed.add(sm);
+  });
+  if (!claimed.size) return;
+
+  const v = new THREE.Vector3();
+  const victims: THREE.Mesh[] = [];
+  wrapper.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const sm = mesh.material as THREE.MeshStandardMaterial | null;
+    if (!sm || Array.isArray(mesh.material)) return;
+    if (isLampMat(sm) || lensCoverClones.has(sm) || paintNames.has(sm.name ?? "")) return;
+    if (!claimed.has(sm)) return;
+    // glow-carrying panes (the GT-R's "PlasticGlassWhite" ships white@2
+    // emissive) are SELF-LIT lens surfaces: the blackout only kills their
+    // diffuse channel, their bake keeps them glowing — that glow IS the
+    // car's headlight. Lens-ifying them (0.28 opacity dims even a kept
+    // emissive) would snuff it, so they stay with the plain glass policy.
+    if (sm.emissiveIntensity > 0.05 && (sm.emissive.r > 0.02 || sm.emissive.g > 0.02 || sm.emissive.b > 0.02))
+      return;
+    const pos = mesh.geometry.attributes.position as THREE.BufferAttribute | undefined;
+    if (!pos) return;
+    let inZone = 0;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+      if (zones.some((z) => z.containsPoint(v))) inZone++;
+    }
+    // 25% of the mesh's verts must sit inside lamp zones (unique count —
+    // overlapping lamp-zone boxes must not inflate the fraction)
+    if (inZone / pos.count >= 0.25) victims.push(mesh);
+  });
+
+  const coverClones = new Map<THREE.MeshStandardMaterial, THREE.MeshStandardMaterial>();
+  const clearLens = (base: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial => {
+    let c = coverClones.get(base);
+    if (c) return c;
+    c = base.clone();
+    c.name = `${base.name}_lenscover`;
+    c.color.setHex(GLASS_COLOR); // smoked, near-black tint — the lamp glows through
+    c.transparent = true;
+    c.opacity = 0.28;
+    c.metalness = 0.9;
+    c.roughness = 0.05;
+    c.envMapIntensity = Math.max(c.envMapIntensity ?? 1, 2.2);
+    c.depthWrite = false; // the lit lens behind must not be z-fought away
+    c.side = THREE.DoubleSide; // cover shells are often single-sided
+    c.emissive.setRGB(0, 0, 0);
+    c.emissiveMap = null;
+    c.needsUpdate = true;
+    lensCoverClones.add(c);
+    coverClones.set(base, c);
+    return c;
+  };
+
+  for (const mesh of victims) {
+    const geo = mesh.geometry as THREE.BufferGeometry;
+    const idx = geo.index;
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const triCount = (idx?.count ?? pos.count) / 3;
+    // FLAT vertex-index lists (extractTriangles wants slots, not tri numbers)
+    const coverFlat: number[] = [];
+    const keepFlat: number[] = [];
+    for (let t = 0; t < triCount; t++) {
+      let hit = false;
+      for (let k = 0; k < 3 && !hit; k++) {
+        const vi = idx ? idx.getX(t * 3 + k) : t * 3 + k;
+        v.fromBufferAttribute(pos, vi).applyMatrix4(mesh.matrixWorld);
+        if (zones.some((z) => z.containsPoint(v))) hit = true;
+      }
+      const target = hit ? coverFlat : keepFlat;
+      for (let k = 0; k < 3; k++) target.push(idx ? idx.getX(t * 3 + k) : t * 3 + k);
+    }
+    if (!coverFlat.length) continue; // ≥25% of verts in-zone makes this unreachable
+    if (!keepFlat.length) {
+      // whole mesh is a lamp cover — one material swap, geometry untouched
+      mesh.material = clearLens(mesh.material as THREE.MeshStandardMaterial);
+      mesh.castShadow = false;
+      continue;
+    }
+    // mixed: pull the cover triangles into a sibling, keep the window part
+    const cover = new THREE.Mesh(
+      extractTriangles(geo, coverFlat),
+      clearLens(mesh.material as THREE.MeshStandardMaterial),
+    );
+    cover.name = `${mesh.name || "glass"}_lenscover`;
+    mesh.parent?.add(cover);
+    cover.applyMatrix4(mesh.matrix); // inherit the source mesh's local transform
+    cover.castShadow = false;
+    mesh.geometry = extractTriangles(geo, keepFlat);
+  }
+}
+
 /** Light EVERY lamp-family lens so the geometry itself becomes the lamp:
  * dark Sketchfab exports get their first glow, baked-bright rips get
  * normalized into the same look — nobody skips, nothing double-glows.
@@ -1262,6 +1459,13 @@ function splitDarkLamps(wrapper: THREE.Group, out: LampMat[], id: string): void 
       if (!front) continue;
       const b = uvBoxes.get(mat);
       if (b && b.maxU > b.minU) applyProceduralLensGlow(mat, b);
+      // day look: the same black atlas texels render the lens a black void
+      // whenever the glow is off (daytime, lamps-unlit) — drop the diffuse
+      // map and wear a silver reflector instead, so the headlight reads as
+      // a lamp at ALL times, matching the GT-R's bright lens texels
+      mat.map = null;
+      mat.color.setHex(0xd9dde3);
+      mat.needsUpdate = true; // diffuse map slot removed — shader recompile
     }
   }
 }
@@ -1376,6 +1580,7 @@ function finalizeGlass(
       const sm = m as THREE.MeshStandardMaterial | undefined;
       if (!sm || !sm.name) continue;
       if (isLampMat(sm) || paintNames.has(sm.name)) continue;
+      if (lensCoverClones.has(sm)) continue; // clear lamp covers — never window-tinted
       if (!GLASS_MAT.test(sm.name) && !sm.transparent) continue;
       if (!perMat.has(sm)) perMat.set(sm, []);
       perMat.get(sm)!.push(new THREE.Box3().setFromObject(mesh));

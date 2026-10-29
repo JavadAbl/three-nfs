@@ -15,3 +15,6 @@ scripts/sky_src_island.hdr
 scripts/sky_candidates/
 scripts/island_sky_*.png
 scripts/new_src_*.png
+
+# session screenshot artifacts (garage/game lamp verification shots)
+scripts/shots/

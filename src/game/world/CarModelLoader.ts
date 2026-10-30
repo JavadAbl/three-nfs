@@ -70,8 +70,10 @@ const TARGET_LENGTH = 4.55;
 const PAIR_WIDTH = 1.15;
 /** wheel mesh longer than this = merged front+rear wheels needing a split */
 const MERGED_AXLE_LENGTH = 1.2;
-/** max distance for attaching loose nodes (brake discs, centre caps) to a wheel */
-const ATTACH_RADIUS = 0.55;
+/** max distance from a wheel HUB for attaching loose nodes (brake discs,
+ *  centre caps). Measured to the tyre centre — never the corner bbox — so
+ *  bumper/skirt pieces behind the axle cannot ride into a wheel. */
+const HUB_ATTACH_RADIUS = 0.35;
 
 const loader = new GLTFLoader();
 // Draco-compressed GLBs (decoder is fetched once from /draco/ and cached;
@@ -587,6 +589,24 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
     if (!p.isBrake) c.drive = true;
   }
 
+  // the corner's HUB: bbox of its largest piece (the tyre). Off-hub pieces
+  // must never move the spin pivot — the pg206 RL corner collected a bumper
+  // bit 0.43 m behind the axle, dragging its pivot 0.16 m off the wheel
+  // centre, so that wheel orbited its own axle and read as oversized
+  const hubBox = (corner: Corner): THREE.Box3 | null => {
+    let best: THREE.Box3 | null = null;
+    let bestDim = 0;
+    for (const m of corner.meshes) {
+      const b = new THREE.Box3().setFromObject(m);
+      const d = b.getSize(new THREE.Vector3()).length();
+      if (d > bestDim) {
+        bestDim = d;
+        best = b;
+      }
+    }
+    return best;
+  };
+
   // ── prune non-wheel junk that rode in with the anchors ──
   // Showcase rigs parent badges/logos under wheel nodes; their tiny boxes
   // drag the corner bbox (and with it the spin pivot) off the wheel hub.
@@ -622,8 +642,10 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
     corner.bbox = bbox;
   }
 
-  // small unnamed pieces hugging a wheel centre (e.g. GT-R centre caps)
-  // join that wheel so they spin with it — never whole body panels
+  // small unnamed pieces hugging a wheel HUB (e.g. GT-R centre caps) join
+  // that wheel so they spin with it — never whole body panels. Distance to
+  // the tyre centre, not the corner bbox: a bumper piece half a metre behind
+  // the axle sits inside the old bbox-radius but never on the hub itself
   const pieceSet = new Set(pieces.map((p) => p.mesh));
   for (const child of [...wrapper.children]) {
     const m = child as THREE.Mesh;
@@ -634,8 +656,9 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
     const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
     for (const corner of corners) {
       if (!corner.drive) continue;
-      const centre = corner.bbox.getCenter(new THREE.Vector3());
-      if (c.distanceTo(centre) < ATTACH_RADIUS) {
+      const hub = hubBox(corner);
+      if (!hub) continue;
+      if (c.distanceTo(hub.getCenter(new THREE.Vector3())) < HUB_ATTACH_RADIUS) {
         corner.meshes.push(m);
         corner.bbox.expandByObject(m);
         pieceSet.add(m);
@@ -648,8 +671,12 @@ function rigWheels(wrapper: THREE.Group): { wheelRadius: number } {
   let wheelRadius = 0.38;
   for (const corner of corners) {
     if (!corner.drive) continue;
-    const centre = corner.bbox.getCenter(new THREE.Vector3());
-    const sz = corner.bbox.getSize(new THREE.Vector3());
+    // pivot / radius / axle axis come from the corner's LARGEST piece (the
+    // tyre): the wheel spins on its own hub no matter what rides with it
+    const hub = hubBox(corner);
+    if (!hub) continue;
+    const centre = hub.getCenter(new THREE.Vector3());
+    const sz = hub.getSize(new THREE.Vector3());
     wheelRadius = Math.max(wheelRadius, sz.y / 2);
 
     // axle = thinnest horizontal axis

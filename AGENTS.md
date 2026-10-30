@@ -45,6 +45,12 @@ REWRITING .gitignore to a 2-line stub. These commits are local-only — but:
   diagnosing anything as "lost"; the remote is the only truth.
 - **Push soon after real work** — the remote is the only protection against both
   sandbox restarts and sweeper pollution.
+- **Push can fail on recycled sandboxes: the GitHub token embedded in
+  `origin`'s URL expires** (observed 2026-10-31: "Invalid username or token").
+  When that happens: NEVER `reset --hard` away real commits. Preserve them on
+  `git branch -f pending-unpushed`, keep working, and ask the user to refresh
+  credentials; once push works, push BOTH main and the backup branch, then
+  delete the backup. `scripts/recover.sh` automates this protection.
 - If the remote itself ever gets polluted (sweeper commits pushed), clean the
   history with a revert/rewrite commit ASAP, keeping the remote the source of
   truth.

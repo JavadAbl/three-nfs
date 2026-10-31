@@ -3,20 +3,41 @@
 // crossed-quad flame: 3 shader planes rotated 60° apart around the exhaust axis
 // read as a fiery volume from any camera angle — no billboarding pass needed.
 //
+// 2026-10 fix — the "rectangular halo near the car" bug: every crossed quad
+// CONTAINS the exhaust axis, so from a near-axial camera (exactly where the
+// chase cam sits while boosting — flames shoot back at it) all three planes
+// project to thin edge-on slivers: the mask stays fully open on the plane's
+// center strip (radial≈0), which reads as a straight bright bar with hard
+// ends. The base row made it worse: width = sin(pow(along,0.72)·π) is exactly
+// 0 at along=0, so smoothstep(0,0,x) saturated the ENTIRE nozzle row full-
+// bright across the quad width — a hard white cap right at the tailpipe.
+// Three-part fix:
+//   1. per-quad view-facing fade (vFacing): quads dim as they turn edge-on;
+//   2. a camera-facing nozzle puff sprite (soft radial core) so the boost
+//      look survives the near-axial views with soft edges instead of slivers;
+//   3. clamp the sin() argument so width never hits 0 — no degenerate rows.
+//
 // The fragment shader scrolls fbm noise along the flame length to make the
 // licks rise, tapers the tail, and maps heat to an NFS-style colour ramp:
 // white-hot core → electric blue → violet fringe, with a soft radial glow
 // baked around the nozzle. uPower is smoothed in update() so the flame fades
 // in/out instead of snapping with the boost key.
 import * as THREE from "three";
+import { radialGlowTexture } from "./NeonGlow";
 
 /** backfire flash colour — unburnt fuel igniting at the tailpipe */
 const POP_COLOR = new THREE.Color(1.0, 0.62, 0.16);
+/** white-hot nozzle core the puff leans toward (matches the shader's core) */
+const HOT_CORE = new THREE.Color(1.0, 0.93, 0.82);
 
 const vert = /* glsl */ `
   varying vec2 vUv;
+  varying float vFacing; // |cos(normal, view)| — 1 face-on, 0 edge-on
   void main() {
     vUv = uv;
+    // plane local normal is +Z; its view-space z is how face-on this quad is
+    vec3 nview = normalize((modelViewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+    vFacing = abs(nview.z);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -27,6 +48,7 @@ const frag = /* glsl */ `
   uniform float uPhase;  // per-flame random offset — fleet never pulses in sync
   uniform vec3 uColor;    // the car's neon colour — flame matches the underglow
   varying vec2 vUv;
+  varying float vFacing;
 
   float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -63,8 +85,10 @@ const frag = /* glsl */ `
     n += 0.5 * fbm(vec2(vUv.x * 6.0 - uPhase * 2.0, along * 5.2 - t * 1.7));
 
     // body mask: bulge ~25% out, taper to a point at the tip; the noise eats
-    // ragged licks into the silhouette so it never reads as a flat card
-    float width = sin(pow(along, 0.72) * 3.14159);
+    // ragged licks into the silhouette so it never reads as a flat card.
+    // clamp keeps width off exactly-0 at both ends — smoothstep(0,0,·) is
+    // degenerate (it saturates the whole nozzle row into a hard bright bar)
+    float width = sin(clamp(pow(along, 0.72), 0.03, 0.97) * 3.14159);
     float edge = smoothstep(width, width * 0.35, radial);
     float dissolve = smoothstep(1.15, 0.25, along * (1.35 - n * 0.9));
     float flame = edge * dissolve;
@@ -84,6 +108,10 @@ const frag = /* glsl */ `
 
     float alpha = clamp(flame * 1.35, 0.0, 1.0) * uPower;
     alpha += glow * uPower * 0.5;
+    // edge-on quads (near-axial chase view) dim to nothing — they would
+    // otherwise project as thin hard-capped light slivers (the halo bug);
+    // the nozzle puff sprite carries the boost look for those angles
+    alpha *= smoothstep(0.08, 0.42, vFacing);
     gl_FragColor = vec4(col * alpha, alpha);
   }
 `;
@@ -93,6 +121,10 @@ export class NitroFlame {
   readonly root = new THREE.Group();
   private readonly mat: THREE.ShaderMaterial;
   private readonly geos: THREE.PlaneGeometry[] = [];
+  /** camera-facing soft core at the nozzle — covers the near-axial views */
+  private readonly puff: THREE.Sprite;
+  private readonly puffMat: THREE.SpriteMaterial;
+  private readonly puffTex: THREE.CanvasTexture;
   private power = 0;
   private clock = 0;
   private pulse = 0;
@@ -147,6 +179,23 @@ export class NitroFlame {
       wrap.add(quad);
       this.root.add(wrap);
     }
+
+    // nozzle puff — soft radial core that always faces the camera. The crossed
+    // quads fade out near-axially (see the shader), so without this the boost
+    // jet would vanish in the chase view where you need it most; the puff also
+    // guarantees the flame reads with SOFT edges from every angle.
+    this.puffTex = radialGlowTexture();
+    this.puffMat = new THREE.SpriteMaterial({
+      map: this.puffTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.puff = new THREE.Sprite(this.puffMat);
+    this.puff.scale.set(0.62, 0.62, 1);
+    this.puff.position.z = -0.06;
+    this.root.add(this.puff);
+
     this.root.visible = false;
   }
 
@@ -179,10 +228,18 @@ export class NitroFlame {
     // flame length flickers per frame — turbopop instead of a static card
     const jitter = 0.82 + Math.random() * 0.36;
     this.root.scale.set(0.8 + 0.3 * p, 0.8 + 0.3 * p, (0.55 + 0.45 * p) * jitter);
+    // puff: hot core tinted by the flame colour, breathing with the same
+    // flicker so nozzle light spill stays soft and alive from every angle
+    this.puffMat.opacity = Math.min(1, 0.85 * p) * (0.72 + 0.28 * jitter);
+    this.puffMat.color.copy(this.baseColor).lerp(POP_COLOR, this.pulse * 0.85).lerp(HOT_CORE, 0.62);
+    const puffS = 0.42 + 0.3 * p * jitter;
+    this.puff.scale.set(puffS, puffS, 1);
   }
 
   dispose() {
     this.mat.dispose();
     for (const g of this.geos) g.dispose();
+    this.puffMat.dispose();
+    this.puffTex.dispose();
   }
 }

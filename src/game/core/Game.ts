@@ -13,6 +13,7 @@ import { resolveCarCollisions } from "../world/Collisions";
 import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
 import { InputManager } from "./Input";
+import { PerfHUD } from "./PerfHUD";
 import { EngineAudio } from "../audio/EngineAudio";
 import { SampledEngineAudio, familyForCar } from "../audio/SampledEngineAudio";
 import type { NetClient, NetFinishEntry } from "../net/NetClient";
@@ -149,6 +150,8 @@ export class Game {
   private fpsFrames = 0;
   private fps = 0;
   private frameMs = 0;
+  /** F8 dev overlay: fps / frame-time split / draw calls (dev builds only by default) */
+  perf: PerfHUD;
   net: NetClient | null;
   results: RaceResultEntry[] = [];
   private finishOrder = 0;
@@ -200,6 +203,7 @@ export class Game {
     // ── renderer ──
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     registerKTX2Renderer(this.renderer); // refresh KTX2 GPU-format detection
+    this.perf = new PerfHUD(this.renderer, process.env.NODE_ENV !== "production");
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -357,6 +361,7 @@ export class Game {
       if (a === "mute") this.audio.setMuted(!this.audio.muted);
       if (a === "reset") this.player.resetToTrack(this.track);
       if (a === "pause") this.togglePause();
+      if (a === "stats") this.perf.toggle();
     };
     // NFS-Carbon mouse free-look: hold right mouse, orbit, auto-recenter
     this.input.onLookToggle = (pressed) =>
@@ -593,6 +598,7 @@ export class Game {
     for (const rc of this.remotes.values()) rc.dispose();
     this.remotes.clear();
     delete (window as unknown as { __nightFx?: object }).__nightFx;
+    this.perf.dispose();
     this.renderer.dispose();
   }
 
@@ -630,6 +636,7 @@ export class Game {
   private loop = () => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
+    const t0 = performance.now();
     const rawDt = this.clock.getDelta();
     const dt = Math.min(rawDt, 1 / 30);
 
@@ -717,7 +724,10 @@ export class Game {
       }
     }
 
+    // ── render (timed: this is the CPU cost of issuing the frame) ──
+    const t1 = performance.now();
     this.renderFrame();
+    this.perf.frame(rawDt * 1000, t1 - t0, performance.now() - t1);
   };
 
   /**

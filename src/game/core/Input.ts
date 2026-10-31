@@ -14,7 +14,7 @@ export class InputManager {
   private touch = { left: false, right: false, gas: false, brake: false, nitro: false, hb: false };
   private target: CarControls | null = null;
   /** extra one-shot actions consumed by the game */
-  onAction: ((action: "camera" | "mute" | "reset" | "pause") => void) | null = null;
+  onAction: ((action: "camera" | "mute" | "reset" | "pause" | "stats") => void) | null = null;
   /** mouse free-look (NFS Carbon style): deltas while RIGHT button held */
   onLookDelta: ((dx: number, dy: number) => void) | null = null;
   onLookToggle: ((pressed: boolean) => void) | null = null;
@@ -35,6 +35,7 @@ export class InputManager {
     if (k === "KeyM") this.onAction?.("mute");
     if (k === "KeyR") this.onAction?.("reset");
     if (k === "Escape" || k === "KeyP") this.onAction?.("pause");
+    if (k === "F8" || k === "Backquote") this.onAction?.("stats");
   };
 
   private boundKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);

@@ -101,7 +101,8 @@ export function MainMenu({
                 <p className="text-[10px] text-zinc-600 tracking-wider leading-relaxed px-1">
                   Controls: <b className="text-zinc-400">WASD</b> drive · <b className="text-zinc-400">SPACE</b> drift ·{" "}
                   <b className="text-zinc-400">SHIFT</b> nitro · <b className="text-zinc-400">C</b> camera ·{" "}
-                  <b className="text-zinc-400">R</b> reset · <b className="text-zinc-400">ESC</b> pause
+                  <b className="text-zinc-400">R</b> reset · <b className="text-zinc-400">ESC</b> pause ·{" "}
+                  <b className="text-zinc-400">F8</b> perf
                 </p>
               </div>
 

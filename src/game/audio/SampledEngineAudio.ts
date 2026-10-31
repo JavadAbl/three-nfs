@@ -18,6 +18,8 @@ const FAMILY_BY_CAR: Record<string, AudioFamily> = {
   classic: "4cyl-turbo",
   elegy: "v6-tt", // RB26 twin-turbo straight-six — closest sampled note
   r5: "4cyl-turbo", // 1.4L turbo hot hatch
+  c7: "v10", // LT1 6.2 NA V8 — big-cylinder rumble, closest sampled note
+  c6r: "v10", // GT2 6.0 NA V8 race motor
 };
 
 export function familyForCar(carId?: string): AudioFamily {

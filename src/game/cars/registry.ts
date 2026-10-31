@@ -77,6 +77,9 @@ export interface CarDef {
 //                                             ACR 305 km/h · 0-100 2.45s · 2.95g
 // 2026-10-28 additions (same solver): R34 265 km/h · 0-100 2.7s · 2.65g,
 // R5 235 km/h · 0-100 3.2s · 2.5g — light hatch, fastest steering in the fleet.
+// 2026-10-31 additions (same solver): C7 285 km/h · 0-100 2.8s · 2.65g —
+// RWD bruiser, power over grip; C6.R 300 km/h · 0-100 2.5s · 3.05g — GT2
+// race slicks, highest lateral budget in the fleet (ACR rival).
 export const CAR_LIBRARY: CarDef[] = [
   {
     id: "gtr",
@@ -125,6 +128,22 @@ export const CAR_LIBRARY: CarDef[] = [
     modelUrl: "/models/renault-5-turbo.glb",
     spec: "1.4 L · GT TURBO",
     tuning: { enginePower: 11.3, drag: 0.173, maxSpeed: 69, grip: 6.4, steerRate: 2.45, maxLatAccel: 24.5, mass: 0.82 },
+  },
+  {
+    id: "c7",
+    name: "CHEVROLET CORVETTE C7",
+    short: "C7",
+    modelUrl: "/models/chevrolet-corvette-c7.glb",
+    spec: "LT1 V8 · 460 HP",
+    tuning: { enginePower: 12.22, drag: 0.154, maxSpeed: 84, grip: 7.0, steerRate: 2.0, maxLatAccel: 26, mass: 1.05 },
+  },
+  {
+    id: "c6r",
+    name: "CORVETTE C6.R '10",
+    short: "C6.R",
+    modelUrl: "/models/corvette-c6r-2010.glb",
+    spec: "GT2 · 6.0 V8",
+    tuning: { enginePower: 13.52, drag: 0.162, maxSpeed: 88, grip: 7.6, steerRate: 2.05, maxLatAccel: 30, mass: 1.08 },
   },
   {
     id: "classic",

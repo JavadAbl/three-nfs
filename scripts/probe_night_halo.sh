@@ -27,6 +27,13 @@ echo "boot phase: $PH"
 
 agent-browser eval "$(cat scripts/halo_capture.js)" >/dev/null 2>&1
 agent-browser eval "window.__haloInit()" 2>&1 | tr -d '"'
+# incremental fast-forward (short evals — see halo_capture.js)
+for i in $(seq 1 40); do
+  T=$(agent-browser eval "window.__haloTick()" 2>/dev/null | tr -d '"')
+  [ "$T" = "racing" ] && break
+  sleep 1
+done
+echo "halo tick end: $T"
 
 for k in $(seq 0 17); do
   agent-browser eval "window.__haloCap($k)" 2>/dev/null | tr -d '"'

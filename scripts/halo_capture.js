@@ -27,11 +27,16 @@ window.__haloInit = () => {
     dst.getContext("2d").drawImage(src, 0, 0, dw, dh);
     window.__shots.push({ b64: dst.toDataURL("image/png").split(",")[1], meta, rear });
   };
-  // fast-forward the countdown: debugTick renders ONCE per call, so ONE call
-  // with many steps beats a render-per-60-steps loop
-  let guard = 0;
-  while (g.phase !== "racing" && guard++ < 6) g.debugTick(300, { autoSteer: true });
+  // fast-forward is split out into __haloTick — one SHORT eval per call; the
+  // original 6x300 single eval tripped agent-browser's tab-wedged recovery on
+  // a warm SwiftShader box. probe_night_halo.sh loops it until 'racing'.
   return "phase=" + g.phase;
+};
+window.__haloTick = () => {
+  const g = window.__game;
+  if (!g) return "nogame";
+  if (g.phase !== "racing") { g.debugTick(300, { autoSteer: true }); return g.phase; }
+  return "racing";
 };
 window.__haloCap = (k) => {
   const g = window.__game;

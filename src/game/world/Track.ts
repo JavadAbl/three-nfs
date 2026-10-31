@@ -400,8 +400,13 @@ export class Track {
         mat.emissiveIntensity = ASPHALT_EMISSIVE;
         // wet-street sheen: the road leans into the night IBL harder than the
         // global 0.3 — it is the one large glossy surface in the scene and the
-        // sodium-haze blobs in the env are what a damp street would reflect
-        mat.envMapIntensity = 0.85;
+        // sodium-haze blobs in the env are what a damp street would reflect.
+        // 0.55, not 0.85: at 0.85 the env sheen stacked on the beam/fill
+        // specular lobes SATURATED into a hard-edged white slab lying on the
+        // asphalt beside the car — the second "rectangular halo" report
+        // (first was the nitro crossed-quad slivers). Each contribution is
+        // fine alone; only the sum crossed the clipping line.
+        mat.envMapIntensity = 0.55;
       }
       mat.needsUpdate = true;
     });
@@ -419,10 +424,18 @@ export class Track {
     load("asphalt-2k-rough.jpg", (t) => {
       mat.roughnessMap = tile(t, 2.4, 1); // matches albedo scale
       // scalar multiplies the map: night wet-look lets smooth patches (dark
-      // in the map) go properly reflective while rough aggregate stays
-      // semi-gloss — damp street, not rain-slicked puddle. Day runs the same
-      // map through the scalar set in the albedo callback (0.78 = dry).
-      if (!this.day) mat.roughness = 0.5;
+      // in the map) stay glossier than rough aggregate — damp street, not
+      // rain-slicked puddle. 0.72, not 0.5: at 0.5 the smooth patches went
+      // full mirror, so the two headlight spotlights + the sodium car-fill
+      // + the env haze each smeared into tight specular streaks on the road;
+      // where they overlapped they clipped into a white rectangular slab
+      // near the car ("rectangular halo of light" report). 0.72 spreads the
+      // lobes into the wide soft sheen a damp street actually has — verified
+      // headlessly (probe_sheen_ab.sh): base slabs 430-880 px with 4 hard
+      // sides at 9 camera angles; 20-57 px and soft after the change, wet
+      // night look intact per VLM. Day runs the same map through the scalar
+      // set in the albedo callback (0.78 = dry).
+      if (!this.day) mat.roughness = 0.72;
       mat.needsUpdate = true;
     });
   }

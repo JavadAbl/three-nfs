@@ -373,6 +373,18 @@ export class Game {
 
     window.addEventListener("resize", this.onResize);
     this.onResize();
+
+    // ── shader warm-up: link every program NOW, not at first activation ──
+    // A DevTools trace of a 4-car race caught a 322 ms mid-race freeze: 496
+    // v8 samples inside one frame sat in getProgramInfoLog — the NitroFlame
+    // fbm shader first becoming visible at the player's first gear change,
+    // linked synchronously mid-race. renderer.compile() traverses the WHOLE
+    // graph (hidden objects included — flames spawn visible=false), and
+    // compileAsync defers linking off the hot path via
+    // KHR_parallel_shader_compile where available. The countdown absorbs
+    // the cost; the race itself never compiles again. (Late online joiners
+    // still link on arrival — their cars don't exist to precompile.)
+    void this.warmup();
     this.loop();
   }
 
@@ -653,6 +665,7 @@ export class Game {
     }
 
     this.advanceCountdown(dt);
+    this.warmupSchedule(dt);
 
     const controlsEnabled = this.phase === "racing" && !this.paused;
     if (!this.paused) {
@@ -741,6 +754,40 @@ export class Game {
    */
   private renderFrame() {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Precompile every shader program currently in the scene — pay the link
+   * cost at load time instead of at first activation mid-race. Re-entrant:
+   * repeat calls are cheap (cached programs return instantly; only materials
+   * new to the graph link, off the hot path via KHR_parallel_shader_compile
+   * where available). The loop re-runs this on a short schedule because
+   * async scene mutations — the city-GLB upgrade, imported scenery — attach
+   * just after construction and are invisible to the first pass.
+   */
+  private async warmup() {
+    if (this.disposed) return;
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } catch (e) {
+      // exotic contexts (headless software GL) may reject — the game still
+      // runs, shaders just link lazily like they did before this warm-up
+      console.warn("[Game] shader warm-up skipped:", e);
+    }
+  }
+
+  /** post-construction warm-up schedule (seconds): city models / imported
+   * scenery attach a microtask after the constructor, invisible to the
+   * first pass — re-link them before the racing line matters */
+  private static readonly WARM_AT_S = [1, 4];
+  private warmClock = 0;
+  private warmPass = 0;
+  private warmupSchedule(dt: number) {
+    this.warmClock += dt;
+    if (this.warmPass < Game.WARM_AT_S.length && this.warmClock >= Game.WARM_AT_S[this.warmPass]) {
+      this.warmPass++;
+      void this.warmup();
+    }
   }
 
   /** car-vs-car collision resolution + impact feedback (FX/sound/shake) */
@@ -835,6 +882,7 @@ export class Game {
     const dt = 1 / 60;
     for (let i = 0; i < n; i++) {
       this.advanceCountdown(dt);
+      this.warmupSchedule(dt);
       const racing = this.phase === "racing";
       const c = this.player.controls;
       if (opts.autoSteer && this.player.loc) {

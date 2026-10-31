@@ -254,6 +254,34 @@ export function GameShell() {
     [requireName, setMode, setScreen, launchGame]
   );
 
+  // ── dev/probe autostart: ?start=quick|trial&map=<id>&name=<tag> ──────────
+  // Headless compare/probe runs can't use the menu wizard: the ride step's
+  // WebGL turntable (CarPreview) wedges software renderers (SwiftShader
+  // blocks the whole renderer on it), so the tab dies before GO. This
+  // dev-only hook (dead code in production builds) boots straight into the
+  // countdown with the map/name/car picked from the URL. NOTE: the driver
+  // label of that first launch reads the not-yet-updated store, so the
+  // in-race tag is "DRIVER" — the leaderboard still gets ?name=.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (!bootDone || screen !== "menu") return;
+    const p = new URLSearchParams(window.location.search);
+    const m = p.get("start");
+    if (m !== "quick" && m !== "trial") return;
+    const st = useGameStore.getState();
+    const urlMap = p.get("map");
+    if (urlMap && mapDef(urlMap)) st.setMapId(urlMap);
+    const urlName = p.get("name");
+    if (urlName) st.setPlayerName(urlName);
+    const urlCar = p.get("car");
+    if (urlCar) st.setCarId(urlCar);
+    setMode(m);
+    setScreen("countdown");
+    launchGame(m, mapDef(useGameStore.getState().mapId)?.defaultLaps ?? 3);
+    // one-shot per load: deps stay [bootDone, screen] and the screen leaves
+    // "menu" immediately, so this can never re-fire mid-race
+  }, [bootDone, screen]);
+
   const handleQuitToMenu = useCallback(() => {
     disposeGame();
     setRaceSession(null);

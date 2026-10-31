@@ -17,6 +17,11 @@ Notes learned from real traces (2026-10, three-nfs):
     event-mass window, not [min,max].
   - getProgramInfoLog / linkProgram concentration by second = mid-race shader
     compiles → precompile (renderer.compileAsync warm-up).
+  - The one >150 ms long task at t~0 of every DevTools "Save" trace is
+    CpuProfiler::StartProfiling — the Record button itself, before the first
+    game frame. Don't chase it (autopsy_long_task.py can confirm contents).
+  - A FunctionCall showing an absurd dur (seconds) next to a healthy RunTask
+    series is a trace-writer quirk, not a real block.
 Requires: ijson  (pip install ijson)  — 3 GB RAM handles 145 MB traces.
 """
 import sys
@@ -30,7 +35,13 @@ except ImportError:
     sys.exit("need ijson:  pip install ijson")
 
 path = sys.argv[1] if len(sys.argv) > 1 else "trace.json"
-opener = gzip.open if path.endswith(".gz") else open
+
+
+def opener(p, mode="rb"):
+    """DevTools 'Save' downloads often carry no .gz suffix — sniff magic bytes."""
+    with open(p, "rb") as fh:
+        is_gz = fh.read(2) == b"\x1f\x8b"
+    return (gzip.open if is_gz else open)(p, mode)
 
 MAIN = None  # (pid, tid) of CrRendererMain — auto-detected
 thread_names = {}

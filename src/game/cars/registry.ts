@@ -60,26 +60,36 @@ export interface CarDef {
   modelUrl: string | null;
   /** garage subtitle */
   spec: string;
+  /** NFS class — sets the tuning bands + garage badge (see CLASS BANDS below) */
+  class: CarClass;
   /** physics deltas over DEFAULT_CAR_TUNING (unspecified = default) */
   tuning?: CarTuningOverride;
 }
 
-// Initial values are first-pass, balanced by feel — tune here, nowhere else.
-// Identity: GT-R = AWD launch monster, TT RS = nimble, SRT10 = wild tail,
-// ACR = track weapon, Muscle = drift king, R34 = planted corner carver,
-// R5 = twitchy short-wheelbase drifter.
-// 2026-10-23 "too tame" rework: each car now pins its own (enginePower, drag)
-// pair so the NATURAL top speed (P/drag — the real ceiling, since nitro is
-// accel-only) lands NFS-high, plus its own maxSpeed safety wall above that
-// and an arcade lateral budget. Solved via scripts/excitement_calib.ts:
-//   TT RS  240 km/h · 0-100 3.05s · 2.45g    GT-R 285 km/h · 0-100 2.15s · 2.75g
-//   Muscle 255 km/h · 0-100 2.84s · 2.65g    SRT10 295 km/h · 0-100 2.55s · 2.60g
-//                                             ACR 305 km/h · 0-100 2.45s · 2.95g
-// 2026-10-28 additions (same solver): R34 265 km/h · 0-100 2.7s · 2.65g,
-// R5 235 km/h · 0-100 3.2s · 2.5g — light hatch, fastest steering in the fleet.
-// 2026-10-31 additions (same solver): C7 285 km/h · 0-100 2.8s · 2.65g —
-// RWD bruiser, power over grip; C6.R 300 km/h · 0-100 2.5s · 3.05g — GT2
-// race slicks, highest lateral budget in the fleet (ACR rival).
+// ─── class system ────────────────────────────────────────────────────────────
+// 2026-11-01 normalization (user directive): specs follow the class, not the
+// car's real-world résumé. Solved + validated by scripts/specs_calib.ts
+// (analytic drag ODE cross-checked against the discrete integrator), which
+// also asserts the strict class invariants:
+//   accel:   muscle (0-100 2.28-2.47s, bars 81-97) > exotic (2.50-2.57s, 71-76)
+//            > tuner (2.87-3.17s, 14-43)
+//   handling: tuner (79-91) > exotic (63-69) > muscle (13-41)
+//   top:      exotic (298-305 km/h, 92-94) > muscle (285-298, 70-86)
+//            > tuner (240-265, 16-46)
+// Identity inside the bands: MUSCLE = classic drift-king (fastest launch,
+// wildest tail), SRT10 wild tail, C7 RWD bruiser, C6.R race-bred → top of
+// the muscle handling band. TUNER = R5 twitchy lightest + fastest steering,
+// R34 planted, TT RS nimble AWD. EXOTIC = ACR the fleet's best overall,
+// GT-R right behind.
+export type CarClass = "muscle" | "tuner" | "exotic";
+
+/** garage-facing class metadata (badge label + NFS-Carbon-style colour) */
+export const CAR_CLASS_META: Record<CarClass, { label: string; color: string }> = {
+  muscle: { label: "MUSCLE", color: "#f87171" }, // red
+  tuner: { label: "TUNER", color: "#38bdf8" }, // cyan
+  exotic: { label: "EXOTIC", color: "#fbbf24" }, // gold
+};
+
 export const CAR_LIBRARY: CarDef[] = [
   {
     id: "gtr",
@@ -87,7 +97,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "GT-R",
     modelUrl: "/models/nissan-gtr-r35.glb",
     spec: "NISMO · 600 HP",
-    tuning: { enginePower: 15.9, drag: 0.201, maxSpeed: 84, grip: 8.0, steerRate: 2.0, maxLatAccel: 27, mass: 1.15 },
+    class: "exotic",
+    tuning: { enginePower: 13.22, drag: 0.157, maxSpeed: 88.2, grip: 7.4, steerRate: 2.1, maxLatAccel: 27.2, mass: 1.15 },
   },
   {
     id: "audi",
@@ -95,7 +106,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "TT RS",
     modelUrl: "/models/audi-tt-rs-2010.glb",
     spec: "QUATTRO · 400 HP",
-    tuning: { enginePower: 11.8, drag: 0.177, maxSpeed: 71, grip: 7.6, steerRate: 2.3, maxLatAccel: 24, mass: 0.95 },
+    class: "tuner",
+    tuning: { enginePower: 11.82, drag: 0.17, maxSpeed: 73.4, grip: 7.9, steerRate: 2.35, maxLatAccel: 27.5, mass: 0.95 },
   },
   {
     id: "viper08",
@@ -103,7 +115,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "SRT10",
     modelUrl: "/models/viper-srt10-2008.glb",
     spec: "V10 · 600 HP",
-    tuning: { enginePower: 13.3, drag: 0.162, maxSpeed: 87, grip: 6.4, steerRate: 1.9, maxLatAccel: 25.5, mass: 1.05 },
+    class: "muscle",
+    tuning: { enginePower: 14.13, drag: 0.172, maxSpeed: 85.9, grip: 6.0, steerRate: 1.85, maxLatAccel: 24.5, mass: 1.05 },
   },
   {
     id: "viper16",
@@ -111,7 +124,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "ACR",
     modelUrl: "/models/viper-acr-2016.glb",
     spec: "V10 · 645 HP · ACR",
-    tuning: { enginePower: 13.7, drag: 0.162, maxSpeed: 90, grip: 7.4, steerRate: 2.15, maxLatAccel: 29 },
+    class: "exotic",
+    tuning: { enginePower: 13.46, drag: 0.159, maxSpeed: 88.7, grip: 7.5, steerRate: 2.15, maxLatAccel: 28, mass: 1.0 },
   },
   {
     id: "elegy",
@@ -119,7 +133,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "R34",
     modelUrl: "/models/skyline-gtr-r34.glb",
     spec: "RB26 · TWIN TURBO",
-    tuning: { enginePower: 12.9, drag: 0.176, maxSpeed: 78, grip: 7.0, steerRate: 2.05, maxLatAccel: 26, mass: 1.05 },
+    class: "tuner",
+    tuning: { enginePower: 12.24, drag: 0.166, maxSpeed: 77.6, grip: 8.0, steerRate: 2.2, maxLatAccel: 28.5, mass: 1.05 },
   },
   {
     id: "r5",
@@ -127,7 +142,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "R5",
     modelUrl: "/models/renault-5-turbo.glb",
     spec: "1.4 L · GT TURBO",
-    tuning: { enginePower: 11.3, drag: 0.173, maxSpeed: 69, grip: 6.4, steerRate: 2.45, maxLatAccel: 24.5, mass: 0.82 },
+    class: "tuner",
+    tuning: { enginePower: 11.41, drag: 0.171, maxSpeed: 70.7, grip: 8.2, steerRate: 2.5, maxLatAccel: 29, mass: 0.82 },
   },
   {
     id: "c7",
@@ -135,7 +151,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "C7",
     modelUrl: "/models/chevrolet-corvette-c7.glb",
     spec: "LT1 V8 · 460 HP",
-    tuning: { enginePower: 12.22, drag: 0.154, maxSpeed: 84, grip: 7.0, steerRate: 2.0, maxLatAccel: 26, mass: 1.05 },
+    class: "muscle",
+    tuning: { enginePower: 13.94, drag: 0.175, maxSpeed: 83.7, grip: 6.3, steerRate: 1.9, maxLatAccel: 25.2, mass: 1.05 },
   },
   {
     id: "c6r",
@@ -143,7 +160,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "C6.R",
     modelUrl: "/models/corvette-c6r-2010.glb",
     spec: "GT2 · 6.0 V8",
-    tuning: { enginePower: 13.52, drag: 0.162, maxSpeed: 88, grip: 7.6, steerRate: 2.05, maxLatAccel: 30, mass: 1.08 },
+    class: "muscle",
+    tuning: { enginePower: 14.59, drag: 0.176, maxSpeed: 86.8, grip: 6.5, steerRate: 1.95, maxLatAccel: 26, mass: 1.08 },
   },
   {
     id: "classic",
@@ -151,7 +169,8 @@ export const CAR_LIBRARY: CarDef[] = [
     short: "MUSCLE",
     modelUrl: null,
     spec: "V8 · PROCEDURAL",
-    tuning: { enginePower: 12.4, drag: 0.175, maxSpeed: 75, grip: 5.8, steerRate: 1.8, maxLatAccel: 26, mass: 1.1 },
+    class: "muscle",
+    tuning: { enginePower: 15.0, drag: 0.19, maxSpeed: 83.2, grip: 5.6, steerRate: 1.75, maxLatAccel: 23.5, mass: 1.1 },
   },
 ];
 
@@ -199,18 +218,18 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const pct = (v: number) => Math.round(clamp01(v) * 100);
 
 export function statsOf(t: CarTuning): CarStats {
-  // 2026-10-23: bars now derive from what the physics ACTUALLY gives the
-  // player — the natural top speed (enginePower/drag, the real ceiling) and
-  // the analytic 0-100 time of the drag ODE — not the safety wall. The
-  // windows span the current fleet (240-305 km/h, 2.15-3.05s) so bars read
-  // as game-relative position, NFS-garage style.
+  // Bars derive from what the physics ACTUALLY gives the player — the
+  // natural top speed (enginePower/drag, the real ceiling) and the analytic
+  // 0-100 time of the drag ODE — not the safety wall. Windows span the
+  // 2026-11-01 normalized fleet (240-305 km/h, 2.25-3.3s 0-100) so bars
+  // read as game-relative position, NFS-garage style.
   const naturalTop = t.enginePower / t.drag; // m/s — the real ceiling
   const v100 = 100 / 3.6;
   const t100 =
     naturalTop > v100 + 1 ? (1 / t.drag) * Math.log(naturalTop / (naturalTop - v100)) : 9.9;
   return {
     topSpeed: pct((naturalTop - 63) / 23), // 240→305 km/h window
-    accel: pct((3.4 - t100) / 1.5), // 3.4s→2.15s 0-100 window
+    accel: pct((3.3 - t100) / 1.05), // 3.3s→2.25s 0-100 window
     // handling includes the lateral-grip budget — with the v·ω yaw cap
     // in place, maxLatAccel is what actually separates stiff from planted
     // at race speeds, so the bar must reflect it

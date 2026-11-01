@@ -3,7 +3,7 @@
 // Used by the menu wizard (car step) and the online lobby car modal.
 import { motion } from "framer-motion";
 import { CarPreview } from "./CarPreview";
-import { CARS, carStats, carEntry } from "@/game/cars/registry";
+import { CARS, carStats, carEntry, CAR_CLASS_META } from "@/game/cars/registry";
 import { CAR_COLORS, NEON_COLORS, type NeonId } from "@/game/constants";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, User } from "lucide-react";
@@ -40,6 +40,19 @@ export function RideSelect({ carId, onCarId, color, onColor, neonId, onNeonId, n
           <div className="mt-1 text-[10px] font-bold tracking-[0.25em] text-amber-500/90">
             {entry?.spec}
           </div>
+          {/* class badge — the spec system's identity: red muscle / cyan tuner / gold exotic */}
+          {entry && (
+            <div
+              className="mt-1.5 inline-block rounded-sm border px-1.5 py-px text-[9px] font-black italic tracking-[0.2em]"
+              style={{
+                color: CAR_CLASS_META[entry.class].color,
+                borderColor: `${CAR_CLASS_META[entry.class].color}55`,
+                backgroundColor: `${CAR_CLASS_META[entry.class].color}14`,
+              }}
+            >
+              {CAR_CLASS_META[entry.class].label}
+            </div>
+          )}
         </div>
 
         {/* chevrons */}

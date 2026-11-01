@@ -26,6 +26,13 @@ async function main() {
       const draco = new DRACOLoader();
       draco.setDecoderPath("file:///home/z/my-project/public/draco/");
       loader.setDRACOLoader(draco);
+      // KTX2 stub: satisfy GLTFLoader's presence check, fail per-texture →
+      // maps drop, everything else survives (same as lamp_probe)
+      const stub = {
+        load: (_u: unknown, _on: unknown, onError: (e: Error) => void) =>
+          onError(new Error("ktx2-stubbed")),
+      };
+      (loader as unknown as { setKTX2Loader: (s: unknown) => void }).setKTX2Loader(stub);
       const gltf = (await new Promise((res, rej) =>
         loader.parse(buf, "", res as never, rej),
       )) as { scene: THREE.Group };

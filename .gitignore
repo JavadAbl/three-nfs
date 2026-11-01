@@ -8,6 +8,7 @@ db/
 upload/
 download/
 public/models/staging/
+scripts/ktx/
 tool-results/
 worklog.md
 scripts/audio_dl/

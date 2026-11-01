@@ -5,6 +5,7 @@
 // the race skin, so what you see is what you drive.
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadCarModel, instantiateCar, applyPaint, registerKTX2Renderer } from "@/game/world/CarModelLoader";
 import { checkWebGLSupport } from "@/game/core/webglSupport";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "@/game/world/ProceduralMuscle";
@@ -79,11 +80,28 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
     const rimR = new THREE.DirectionalLight(0xf59e0b, 1.1);
     rimR.position.set(6, 2.5, -6);
     scene.add(rimL, rimR);
+    // soft cool fill from the camera side — lifts the faces the key leaves black
+    const fill = new THREE.DirectionalLight(0xbcd0ff, 0.85);
+    fill.position.set(0.5, 3, 9);
+    scene.add(fill);
+
+    // IBL: the GLB cars ship with envMapIntensity boosted for the race sky —
+    // with no environment in here their metallic paint reflected pure black,
+    // which is why the room read so dark. A PMREM'd RoomEnvironment gives the
+    // paint (and the floor) something to mirror; intensity kept modest so the
+    // dark showroom mood survives.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    const envRT = pmrem.fromScene(room, 0.04);
+    scene.environment = envRT.texture;
+    scene.environmentIntensity = 0.6;
+    room.dispose();
+    pmrem.dispose();
 
     // floor: dark disc + amber halo ring
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(3.6, 48),
-      new THREE.MeshStandardMaterial({ color: 0x0b0b0f, roughness: 0.9, metalness: 0.1 })
+      new THREE.MeshStandardMaterial({ color: 0x111118, roughness: 0.6, metalness: 0.2 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -168,6 +186,8 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
       (floor.material as THREE.Material).dispose();
       halo.geometry.dispose();
       (halo.material as THREE.Material).dispose();
+      envRT.dispose();
+      scene.environment = null;
       underglow.dispose();
       underglowRef.current = null;
       renderer.dispose();

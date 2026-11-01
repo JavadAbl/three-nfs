@@ -7,6 +7,7 @@ race-service.log
 db/
 upload/
 download/
+public/models/staging/
 tool-results/
 worklog.md
 scripts/audio_dl/

@@ -128,6 +128,18 @@ export const CAR_LIBRARY: CarDef[] = [
     tuning: { enginePower: 13.46, drag: 0.159, maxSpeed: 88.7, grip: 7.5, steerRate: 2.15, maxLatAccel: 28, mass: 1.0 },
   },
   {
+    // STAGED (2026-11-01): user-uploaded widebody GLB under /models/staging/
+    // (gitignored) pending acceptance; accept flow = compress via the KTX
+    // pipeline → public/models/ → commit. Tuning solved by specs_calib.
+    id: "m4",
+    name: "BMW M4 COMPETITION",
+    short: "M4",
+    modelUrl: "/models/staging/bmw-m4-competition-g82.glb",
+    spec: "G82 · WIDEBODY · 510 HP",
+    class: "exotic",
+    tuning: { enginePower: 13.4, drag: 0.16, maxSpeed: 87.6, grip: 7.45, steerRate: 2.12, maxLatAccel: 27.6, mass: 1.1 },
+  },
+  {
     id: "elegy",
     name: "SKYLINE GT-R R34",
     short: "R34",

@@ -42,6 +42,7 @@ const TARGETS: Target[] = [
   // exotic — balanced, fleet-topping top speed
   { id: "gtr", short: "GT-R", cls: "exotic", topKmh: 303, t100: 2.55, grip: 7.4, steerRate: 2.1, maxLatAccel: 27.2, mass: 1.15 },
   { id: "viper16", short: "ACR", cls: "exotic", topKmh: 305, t100: 2.5, grip: 7.5, steerRate: 2.15, maxLatAccel: 28.0, mass: 1.0 },
+  { id: "m4", short: "M4", cls: "exotic", topKmh: 301, t100: 2.52, grip: 7.45, steerRate: 2.12, maxLatAccel: 27.6, mass: 1.1 },
   // tuner — corner carvers
   { id: "audi", short: "TT RS", cls: "tuner", topKmh: 250, t100: 3.0, grip: 7.9, steerRate: 2.35, maxLatAccel: 27.5, mass: 0.95 },
   { id: "elegy", short: "R34", cls: "tuner", topKmh: 265, t100: 2.85, grip: 8.0, steerRate: 2.2, maxLatAccel: 28.5, mass: 1.05 },

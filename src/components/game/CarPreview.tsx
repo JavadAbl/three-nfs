@@ -6,6 +6,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { loadCarModel, instantiateCar, applyPaint, registerKTX2Renderer } from "@/game/world/CarModelLoader";
 import { checkWebGLSupport } from "@/game/core/webglSupport";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "@/game/world/ProceduralMuscle";
@@ -18,6 +19,34 @@ interface CarHandle {
   paint: THREE.MeshStandardMaterial[];
   /** disposal: GLB clones only own their cloned materials; procedural owns all */
   procedural: boolean;
+}
+
+/** RectAreaLightUniformsLib.init() rebuilds its LTC textures on every call —
+ *  guard it so remounts don't leak them */
+let rectAreaLightsReady = false;
+function initRectAreaLights() {
+  if (rectAreaLightsReady) return;
+  RectAreaLightUniformsLib.init();
+  rectAreaLightsReady = true;
+}
+
+/** soft elongated glow sprite for the tube lamps — canvas gradient, no asset */
+function makeTubeGlowTexture(): THREE.Texture {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 64;
+  const ctx = c.getContext("2d")!;
+  ctx.translate(64, 32);
+  ctx.scale(1, 0.5); // squash the radial gradient into a tube-shaped ellipse
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.4, "rgba(255,255,255,0.4)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(-64, -64, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 export function CarPreview({ carId, color, neonId, className }: { carId: string; color: string; neonId?: string; className?: string }) {
@@ -120,6 +149,64 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
     scene.add(underglow.mesh);
     underglowRef.current = underglow;
 
+    // ── garage roof lamps ── two rows of twin fluorescent tubes hung above
+    // the turntable. The whole rig is yawed to face the camera so the rows
+    // read as screen-horizontal "roof beams"; suspension wires run past the
+    // top of the frame, implying the ceiling we never see. Each row carries
+    // a RectAreaLight — the soft elongated highlight real tube fixtures
+    // throw on car paint (and the light pool on the floor disc).
+    initRectAreaLights();
+    const lamps = new THREE.Group();
+    lamps.rotation.y = Math.atan2(camera.position.x, camera.position.z);
+    const lampDisposables: Array<THREE.BufferGeometry | THREE.Material | THREE.Texture> = [];
+    const housingGeo = new THREE.BoxGeometry(4.9, 0.12, 0.34);
+    const tubeGeo = new THREE.BoxGeometry(4.5, 0.06, 0.1);
+    const wireGeo = new THREE.CylinderGeometry(0.012, 0.012, 2.6, 6);
+    const glowGeo = new THREE.PlaneGeometry(5.0, 1.15);
+    const housingMat = new THREE.MeshStandardMaterial({ color: 0x15151b, metalness: 0.7, roughness: 0.45 });
+    const wireMat = new THREE.MeshStandardMaterial({ color: 0x2a2a32, metalness: 0.5, roughness: 0.8 });
+    const glowTex = makeTubeGlowTexture();
+    lampDisposables.push(housingGeo, tubeGeo, wireGeo, glowGeo, housingMat, wireMat, glowTex);
+    const lampGlows: THREE.MeshBasicMaterial[] = [];
+    const lampTubes: THREE.MeshStandardMaterial[] = [];
+    for (const z of [-1.7, 1.7]) {
+      const fixture = new THREE.Group();
+      fixture.position.set(0, 3.35, z);
+      fixture.add(new THREE.Mesh(housingGeo, housingMat));
+      // per-row tube material so the far row can hum independently
+      const tubeMat = new THREE.MeshStandardMaterial({
+        color: 0x0c0c10, emissive: 0xeaf3ff, emissiveIntensity: 3, roughness: 0.4,
+      });
+      lampTubes.push(tubeMat);
+      lampDisposables.push(tubeMat);
+      for (const tz of [-0.08, 0.08]) {
+        const tube = new THREE.Mesh(tubeGeo, tubeMat);
+        tube.position.set(0, -0.09, tz);
+        fixture.add(tube);
+      }
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0xcfe0ff, map: glowTex, transparent: true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      lampGlows.push(glowMat);
+      lampDisposables.push(glowMat);
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      glow.position.y = -0.09;
+      fixture.add(glow);
+      for (const wx of [-1.9, 1.9]) {
+        const wire = new THREE.Mesh(wireGeo, wireMat);
+        wire.position.set(wx, 1.36, 0);
+        fixture.add(wire);
+      }
+      const area = new THREE.RectAreaLight(0xdfeaff, 6, 4.5, 0.32);
+      area.rotation.x = -Math.PI / 2; // panel flat under the housing, emitting straight down
+      area.position.y = -0.12;
+      fixture.add(area);
+      lamps.add(fixture);
+    }
+    scene.add(lamps);
+
+
     rendererRef.current = renderer;
     sceneRef.current = scene;
     cameraRef.current = camera;
@@ -168,6 +255,11 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
       const t = clock.getElapsedTime();
       (halo.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.18 * Math.sin(t * 2.2);
       underglow.mat.opacity = neonPulseOpacity(t, 0.6);
+      // garage lamps: glow breathes slowly; the far row hums like an old ballast
+      for (let i = 0; i < lampGlows.length; i++) {
+        lampGlows[i].opacity = 0.3 + 0.06 * Math.sin(t * 1.9 + i * 2.4);
+      }
+      lampTubes[0].emissiveIntensity = 3 + 0.22 * Math.sin(t * 2.1) * Math.sin(t * 6.3);
       renderer.render(scene, camera);
     };
     tick();
@@ -188,6 +280,8 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
       (halo.material as THREE.Material).dispose();
       envRT.dispose();
       scene.environment = null;
+      scene.remove(lamps);
+      for (const d of lampDisposables) d.dispose();
       underglow.dispose();
       underglowRef.current = null;
       renderer.dispose();

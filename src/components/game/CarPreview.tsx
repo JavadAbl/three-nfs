@@ -10,13 +10,15 @@ import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLigh
 import { loadCarModel, instantiateCar, applyPaint, registerKTX2Renderer } from "@/game/world/CarModelLoader";
 import { checkWebGLSupport } from "@/game/core/webglSupport";
 import { buildMuscleBody, buildMuscleWheel, MUSCLE_WHEEL_POS } from "@/game/world/ProceduralMuscle";
-import { carEntry } from "@/game/cars/registry";
+import { carEntry, CARS } from "@/game/cars/registry";
 import { makeUnderglow, neonColorFor, neonPulseOpacity, type Underglow } from "@/game/world/NeonGlow";
 
 interface CarHandle {
   root: THREE.Group;
   /** tintable materials for live recolor */
   paint: THREE.MeshStandardMaterial[];
+  /** per-instance cloned LIT lamp materials (GLB only) — ours to dispose */
+  lamps: THREE.MeshStandardMaterial[];
   /** disposal: GLB clones only own their cloned materials; procedural owns all */
   procedural: boolean;
 }
@@ -63,6 +65,11 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
   colorRef.current = color;
   /** bump to rebuild the current car from scratch */
   const buildToken = useRef(0);
+  /** built + compiled cars by id — a cached instance pins its linked programs
+   *  (refcounted on the cloned materials), so revisiting a car never relinks */
+  const cacheRef = useRef(new Map<string, CarHandle>());
+  /** fleet prewarm runs once per mount */
+  const prewarmDone = useRef(false);
 
   // ── persistent three.js scaffolding (renderer / scene / lights / floor) ──
   useEffect(() => {
@@ -272,8 +279,11 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       if (carRef.current) scene.remove(carRef.current.root);
-      disposeCar(carRef.current);
       carRef.current = null;
+      // every shown car is also a cache entry — one loop disposes them all
+      // (materials first, programs release with them)
+      for (const h of cacheRef.current.values()) disposeCar(h);
+      cacheRef.current.clear();
       floor.geometry.dispose();
       (floor.material as THREE.Material).dispose();
       halo.geometry.dispose();
@@ -295,61 +305,101 @@ export function CarPreview({ carId, color, neonId, className }: { carId: string;
   // ── build / swap the car when carId changes ──
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!scene) return;
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    if (!scene || !renderer || !camera) return;
     const token = ++buildToken.current;
 
+    const swapIn = (handle: CarHandle) => {
+      if (token !== buildToken.current) return false;
+      // detach the old car BEFORE any disposal — a disposed material still
+      // attached gets re-uploaded, leaving a frozen ghost overlapping the new car
+      if (carRef.current) scene.remove(carRef.current.root);
+      carRef.current = handle;
+      scene.add(handle.root);
+      return true;
+    };
+
+    /** store a built handle, unless a racing build (prewarm vs. on-demand for
+     *  the same car) got there first — then dispose ours and return theirs */
+    const cacheOrDispose = (id: string, handle: CarHandle): CarHandle => {
+      const existing = cacheRef.current.get(id);
+      if (existing) {
+        disposeCar(handle);
+        return existing;
+      }
+      cacheRef.current.set(id, handle);
+      return handle;
+    };
+
     const build = async () => {
-      const entry = carEntry(carId);
-      let handle: CarHandle | null = null;
-
-      if (entry?.modelUrl) {
-        // GLB path — template cache shared with the race
-        try {
-          const tpl = await loadCarModel(carId);
-          if (token !== buildToken.current) return; // superseded mid-load
-          const inst = tpl ? instantiateCar(carId, colorRef.current) : null;
-          if (inst) {
-            const root = new THREE.Group();
-            root.add(inst.root);
-            handle = { root, paint: inst.paintMaterials, procedural: false };
-          }
-        } catch {
-          // missing GLB → procedural fallback below
-        }
-      }
-      if (!handle) {
-        // procedural muscle — same builder the race uses
-        const shell = buildMuscleBody(colorRef.current);
-        const root = new THREE.Group();
-        root.add(shell.root);
-        for (const [x, y, z] of MUSCLE_WHEEL_POS) {
-          const wheel = buildMuscleWheel();
-          wheel.position.set(x, y, z);
-          root.add(wheel);
-        }
-        handle = { root, paint: [shell.paint], procedural: true };
+      // cache hit: instance + linked programs already exist — zero shader
+      // work, pure scene-graph swap
+      const cached = cacheRef.current.get(carId);
+      if (cached) {
+        applyPaint(cached.paint, colorRef.current); // recolor while it was away
+        swapIn(cached);
+        return;
       }
 
-      setCastShadows(handle.root);
-      // Both the GLB wrapper (normalized: ground y=0) and the procedural
-      // muscle (wheel centers at y = radius) have ground contact at local
-      // y=0, matching the disc at y=0 — no offset needed. The previous
-      // -MUSCLE_WHEEL_RADIUS shift sank the wheels into the opaque disc.
+      const handle = await buildCarHandle(carId, colorRef.current);
+      if (!handle || token !== buildToken.current) {
+        if (handle) disposeCar(handle); // superseded mid-build
+        return;
+      }
 
+      // Link every program BEFORE the car joins the scene. A trace of this
+      // garage caught 1313/514/326 ms freezes on car switch — all synchronous
+      // getProgramInfoLog inside the first render of the newly added car.
+      // compileAsync compiles the detached object against the garage's light
+      // rig (targetScene) and defers linking off the hot path via
+      // KHR_parallel_shader_compile; the old car keeps spinning meanwhile.
+      try {
+        await renderer.compileAsync(handle.root, camera, scene);
+      } catch {
+        // exotic contexts may reject — the car still shows, it just links
+        // lazily like it did before this warm-up
+      }
       if (token !== buildToken.current) {
         disposeCar(handle);
         return;
       }
-      // swap: detach the old car from the scene BEFORE disposing — a disposed
-      // material still attached gets re-uploaded by the renderer, leaving a
-      // frozen ghost of the previous car overlapping the new one.
-      if (carRef.current) scene.remove(carRef.current.root);
-      disposeCar(carRef.current);
-      carRef.current = handle;
-      scene.add(handle.root);
+      if (swapIn(cacheOrDispose(carId, handle))) scheduleFleetPrewarm();
     };
 
     void build();
+
+    /** one-time background prewarm: build + compile the rest of the fleet so
+     *  the NEXT car switch is a pure cache hit. Delayed past the first paint
+     *  and paced one car per 150 ms so the idle browse stays smooth.
+     *  (const arrow, not a hoisted function — the non-null narrowing of
+     *  camera/scene above must carry into the closure) */
+    const scheduleFleetPrewarm = () => {
+      if (prewarmDone.current) return;
+      prewarmDone.current = true;
+      window.setTimeout(async () => {
+        for (const c of CARS) {
+          if (cacheRef.current.has(c.id)) continue;
+          if (!rendererRef.current) return; // unmounted mid-prewarm
+          const handle = await buildCarHandle(c.id, colorRef.current);
+          if (!rendererRef.current || !handle) {
+            if (handle) disposeCar(handle);
+            return;
+          }
+          try {
+            await rendererRef.current.compileAsync(handle.root, camera, scene);
+          } catch {
+            // keep going — an unprewarmed car just links on demand
+          }
+          if (!rendererRef.current) {
+            disposeCar(handle);
+            return;
+          }
+          cacheOrDispose(c.id, handle);
+          await new Promise((r) => window.setTimeout(r, 150));
+        }
+      }, 1200);
+    };
   }, [carId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── live recolor (no rebuild) ──
@@ -374,6 +424,40 @@ function setCastShadows(root: THREE.Group) {
   });
 }
 
+/** build a preview car — GLB through the shared template cache, procedural
+ *  muscle as fallback. Does NOT compile; callers own that step. */
+async function buildCarHandle(carId: string, color: string): Promise<CarHandle | null> {
+  const entry = carEntry(carId);
+  if (entry?.modelUrl) {
+    try {
+      const tpl = await loadCarModel(carId);
+      const inst = tpl ? instantiateCar(carId, color) : null;
+      if (inst) {
+        const root = new THREE.Group();
+        root.add(inst.root);
+        setCastShadows(root);
+        // Both the GLB wrapper (normalized: ground y=0) and the procedural
+        // muscle (wheel centers at y = radius) have ground contact at local
+        // y=0, matching the disc at y=0 — no offset needed.
+        return { root, paint: inst.paintMaterials, lamps: inst.lampMats.map((l) => l.mat), procedural: false };
+      }
+    } catch {
+      // missing GLB → procedural fallback below
+    }
+  }
+  // procedural muscle — same builder the race uses
+  const shell = buildMuscleBody(color);
+  const root = new THREE.Group();
+  root.add(shell.root);
+  for (const [x, y, z] of MUSCLE_WHEEL_POS) {
+    const wheel = buildMuscleWheel();
+    wheel.position.set(x, y, z);
+    root.add(wheel);
+  }
+  setCastShadows(root);
+  return { root, paint: [shell.paint], lamps: [], procedural: true };
+}
+
 function disposeCar(car: CarHandle | null) {
   if (!car) return;
   if (car.procedural) {
@@ -386,7 +470,8 @@ function disposeCar(car: CarHandle | null) {
       else if (mat) mat.dispose();
     });
   } else {
-    // GLB clones share template geometry — only the cloned paint materials are ours
+    // GLB clones share template geometry — the cloned paint + lamp materials are ours
     for (const p of car.paint) p.dispose();
+    for (const l of car.lamps) l.dispose();
   }
 }

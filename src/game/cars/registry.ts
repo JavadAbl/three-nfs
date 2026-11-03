@@ -149,14 +149,13 @@ export const CAR_LIBRARY: CarDef[] = [
     tuning: { enginePower: 12.24, drag: 0.166, maxSpeed: 77.6, grip: 8.0, steerRate: 2.2, maxLatAccel: 28.5, mass: 1.05 },
   },
   {
-    // STAGED (2026-11-03): user-uploaded Izzy NFS:MW RX-8 GLB under
-    // /models/staging/ (gitignored) pending acceptance; accept flow =
-    // compress via the KTX pipeline (scripts/m4_compress.sh pattern) →
-    // public/models/ → commit. Tuning solved by specs_calib.
+    // ACCEPTED (2026-11-03): Izzy NFS:MW RX-8, compressed via the KTX
+    // pipeline (3.54MB → 859KB, Draco + basisu). Raw original kept in
+    // public/models/staging/ for regeneration. Tuning solved by specs_calib.
     id: "rx8",
     name: "MAZDA RX-8",
     short: "RX-8",
-    modelUrl: "/models/staging/mazda-rx-8-nfsmw.glb",
+    modelUrl: "/models/mazda-rx-8-nfsmw.glb",
     spec: "13B MSP · ROTARY",
     class: "tuner",
     tuning: { enginePower: 12.05, drag: 0.175, maxSpeed: 72.9, grip: 8.0, steerRate: 2.3, maxLatAccel: 28.2, mass: 0.88 },

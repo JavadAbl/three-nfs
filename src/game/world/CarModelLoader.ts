@@ -381,7 +381,10 @@ export function buildTemplate(id: string, scene: THREE.Group): Template {
           /(^|_)details$|(^|_)paint$/i.test(mn) ||
           /by[_\s]/i.test(mn) ||
           /painted/i.test(mn) ||
-          /(^|_)pickup$/i.test(mn))
+          /(^|_)pickup$/i.test(mn) ||
+          // Spanish rips (RX-8 NFS:MW): carriceria = bodywork (carrocería),
+          // pintura = paint
+          /carriceria|carrocereria|pintura/i.test(mn))
       ) {
         paintNames.add(m.name);
       }
@@ -458,8 +461,9 @@ interface WheelAnchor {
 
 /** wheel-ish names in MATERIALS — Sketchfab OBJ→glTF exports carry all
  *  semantics in material names (tireL, rim1, brakedisk…) while nodes are
- *  generic "Object_42" */
-const WHEEL_MAT = /wheel|tire|tyre|(^|[_\s\d])rim|rim($|[_\s\d.])|brake/i;
+ *  generic "Object_42". Spanish exports (RX-8 NFS:MW rip) say llantas
+ *  (tires) / rines (rims) — same i18n treatment as GLASS_MAT (vidrio…). */
+const WHEEL_MAT = /wheel|tire|tyre|(^|[_\s\d])rim|rim($|[_\s\d.])|brake|llanta|rines|rueda|neum/i;
 /** wheel-ish material names that are NOT wheels (lights, signals, interior) */
 const MAT_EXCLUDE = /light|lamp|glow|steer|turn|pedal/i;
 
@@ -1502,7 +1506,7 @@ function splitDarkLamps(wrapper: THREE.Group, out: LampMat[], id: string): void 
  * (ES), windshield/window (game rips). NOT_LAMP_MAT guards lamps FROM glass
  * names; this regex claims those names FOR the glass pass — same tokens,
  * opposite purpose. */
-const GLASS_MAT = /glass|vit(?:re|e)|vidrio|windshield|window/i;
+const GLASS_MAT = /glass|vit(?:re|e)|vidrio|cristal|windshield|window/i;
 /** near-black tint — windows must never read as a body colour (user rule:
  * glasses never fit the selected paint) */
 const GLASS_COLOR = 0x05070a;
@@ -1520,7 +1524,7 @@ const GLASS_OPACITY = 0.36;
  * interior/seat/dashboard is interior detail BY DEFINITION: the ACR's
  * "interior" prims (steering wheel, door cards, chassis details) sit at
  * the cabin SIDES where the inboard geometric filter cannot see them */
-const INTERIOR_SEMANTIC_MAT = /interior|seat|dashb|cockpit/i;
+const INTERIOR_SEMANTIC_MAT = /in[te]rior|seat|dashb|cockpit|asiento|tablero/i;
 
 /** count interior witnesses two ways: geometric (small meshes parked inside
  * the cabin box — see the cabin rules below) and semantic (materials that
@@ -1567,7 +1571,12 @@ function countInteriorMeshes(
     if (b.isEmpty()) return;
     const c = b.getCenter(new THREE.Vector3());
     const s = b.getSize(new THREE.Vector3());
-    if (s.z > 0.55 * dims.length || s.x > 0.75 * dims.width || s.y > 0.85 * dims.height) return;
+    // semantic interior shells may legitimately span the cabin (merged
+    // dash-to-rear-shelf meshes run ~60% of car length — the RX-8's
+    // "inerior" is 2.60m on a 4.55m car); only reject body-sized meshes.
+    // Non-semantic candidates keep the tight gate.
+    const zGate = (isSemantic ? 0.8 : 0.55) * dims.length;
+    if (s.z > zGate || s.x > 0.75 * dims.width || s.y > 0.85 * dims.height) return;
     if (isSemantic) {
       semantic++;
       return;

@@ -46,7 +46,7 @@ async function main() {
         for (const m of mats) {
           const sm = m as THREE.MeshStandardMaterial;
           if (!sm || !sm.name || seen.has(sm.name)) continue;
-          if (!/glass|vit|vidrio|windshield|window|salo|sedy|kili|skyd|tissu|compteur|interior/i.test(sm.name)) continue;
+          if (!/glass|vit|vidrio|cristal|windshield|window|salo|sedy|kili|skyd|tissu|compteur|interior/i.test(sm.name)) continue;
           seen.add(sm.name);
           const b = new THREE.Box3().setFromObject(mesh);
           const c = b.getCenter(new THREE.Vector3());

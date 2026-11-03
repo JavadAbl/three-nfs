@@ -47,6 +47,9 @@ const TARGETS: Target[] = [
   { id: "audi", short: "TT RS", cls: "tuner", topKmh: 250, t100: 3.0, grip: 7.9, steerRate: 2.35, maxLatAccel: 27.5, mass: 0.95 },
   { id: "elegy", short: "R34", cls: "tuner", topKmh: 265, t100: 2.85, grip: 8.0, steerRate: 2.2, maxLatAccel: 28.5, mass: 1.05 },
   { id: "r5", short: "R5", cls: "tuner", topKmh: 240, t100: 3.15, grip: 8.2, steerRate: 2.5, maxLatAccel: 29.0, mass: 0.82 },
+  // RX-8 (Izzy's NFS:MW ride): 231hp n/a rotary, ~1340kg — light, revvy,
+  // corner-happy; sits between R34 and R5 on pace, mid-band handling
+  { id: "rx8", short: "RX-8", cls: "tuner", topKmh: 248, t100: 2.95, grip: 8.0, steerRate: 2.3, maxLatAccel: 28.2, mass: 0.88 },
 ];
 
 // analytic: t100 = (1/drag)·ln(top/(top−v100))  →  drag = ln(...)/t100

@@ -9,6 +9,9 @@ import { instantiateCar, hasCarModel, registerKTX2Renderer, type CarModelInstanc
 import { AI_POOL_IDS, carDef, resolveCarId, resolveCarTuning } from "../cars/registry";
 import { DEFAULT_MAP_ID, mapDef, resolveEnvTheme, resolveMapPalette } from "../maps/registry";
 import { ParticlePool } from "../world/Particles";
+import { SkidMarks } from "../world/SkidMarks";
+import { SpeedLines } from "../world/SpeedLines";
+import { neonColorFor } from "../world/NeonGlow";
 import { resolveCarCollisions } from "../world/Collisions";
 import { RaceManager } from "../race/RaceManager";
 import { CameraRig, type CameraMode } from "./CameraRig";
@@ -97,6 +100,10 @@ export class Game {
   track: Track;
   city: CityEnvironment;
   particles = new ParticlePool(240);
+  /** drift ribbons on the tarmac — one draw call, write-once quads */
+  skidMarks = new SkidMarks();
+  /** view-space wind streaks above ~150 km/h (see world/SpeedLines.ts) */
+  speedLines!: SpeedLines;
 
   // cars
   player!: Car;
@@ -204,14 +211,23 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     registerKTX2Renderer(this.renderer); // refresh KTX2 GPU-format detection
     this.perf = new PerfHUD(this.renderer, process.env.NODE_ENV !== "production");
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // ── dev/probe soft-GL relief (?soft=1): shadows OFF + pixelRatio 1 ──
+    // Headless probes run on SwiftShader (software GL): the 2048² PCF shadow
+    // pass is pure CPU fill and the depth-program links add minutes to the
+    // compile wall — enough for the automation daemon to declare the tab
+    // wedged and replace it with a blank. This dev-only switch (real GPUs
+    // never send it) cuts the frame to the single main pass so ?start=
+    // probes can reach the racing line at all. The FX under test (additive
+    // streaks, transparent ribbons) need no shadows to verify.
+    const softGL = new URLSearchParams(window.location.search).get("soft") === "1";
+    this.renderer.setPixelRatio(softGL ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // night: 1.45 lifts the whole frame out of the void once real textured
     // buildings moved in (VLM: 2/10, "near-black silhouettes"). day: the sun
     // rig carries the energy — 1.05 keeps sky and tarmac from blowing out
     this.renderer.toneMappingExposure = this.day ? 1.05 : 1.45;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !softGL;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.camera = new THREE.PerspectiveCamera(74, canvas.clientWidth / canvas.clientHeight, 0.1, 1400);
@@ -326,6 +342,13 @@ export class Game {
     this.city = new CityEnvironment(this.track, envTheme);
     this.scene.add(this.city.group);
     this.scene.add(this.particles.points);
+    // speed-fx layer: view-space wind streaks tinted with the player's neon
+    // identity (same source as flames/underglow). Constructed after opts are
+    // set; the shader links in the countdown warm-up (group spawns hidden —
+    // renderer.compile traverses invisible objects, see NitroFlame note).
+    this.speedLines = new SpeedLines(neonColorFor(this.opts.neonId, this.opts.carColor));
+    this.scene.add(this.speedLines.group);
+    this.scene.add(this.skidMarks.mesh);
     // daytime maps dress the sky: the HDR panorama becomes background + IBL
     if (this.day) {
       this.daySky = new DaySky(this.scene, this.renderer, this.mapId);
@@ -384,14 +407,25 @@ export class Game {
     // KHR_parallel_shader_compile where available. The countdown absorbs
     // the cost; the race itself never compiles again. (Late online joiners
     // still link on arrival — their cars don't exist to precompile.)
-    void this.warmup();
-    this.loop();
+    // headless verification hook (?park=1): construct the world but never
+    // start the rAF loop NOR the constructor warm-up — in SwiftShader the
+    // warm-up compiles synchronously (no KHR_parallel_shader_compile), which
+    // blocks the page's load event for minutes; the automation daemon reads
+    // that as a wedged tab and blanks it. Parked pages load instantly and
+    // stay idle; probes pay the compile wall inside their own eval (a timed-
+    // out eval keeps running in-page — stash results on window and read them
+    // with a later, fast eval; never let TWO consecutive commands time out).
+    const parked = new URLSearchParams(window.location.search).get("park") === "1";
+    if (!parked) void this.warmup();
+    if (!parked) this.loop();
   }
 
   // ─── setup ──────────────────────────────────────────────────────────────
 
   private setupCars() {
-    // clear any previous grid (restart flow)
+    // clear any previous grid (restart flow) — cars are new objects, so the
+    // skid ribbons keyed by car identity must drop too
+    this.skidMarks.reset();
     for (const c of this.allCars) {
       this.scene.remove(c.group);
       c.dispose();
@@ -603,6 +637,8 @@ export class Game {
     this.city.dispose();
     this.daySky?.dispose();
     this.particles.dispose();
+    this.skidMarks.dispose();
+    this.speedLines.dispose();
     for (const c of this.allCars) {
       this.scene.remove(c.group);
       c.dispose();
@@ -691,6 +727,8 @@ export class Game {
         }
       }
       this.particles.update(dt);
+      // ── drift ribbons + speed streaks (geometry layer, see updateVisualFX) ──
+      this.updateVisualFX(dt);
       // island maps: drift the sea (no-op everywhere else)
       this.city.update(dt);
     }
@@ -745,15 +783,57 @@ export class Game {
 
   /**
    * Single render seam. The speed-blur post chain was REMOVED by user
-   * request (2026-10-22, "remove blur") after a run of iGPU pain (steady
-   * FPS drops + first-engage compile stall) — this is now a plain direct
-   * render; the renderer's own ACES + sRGB pipeline is unchanged, so colors
-   * are identical to the old disengaged path. If a post effect is ever
-   * re-added, do it here and mind the first-use compile stall (see
-   * SpeedBlur in git history for the warm-up pattern).
+   * request (2026-10-22, "remove blur"; era rolled back 2026-10-28,
+   * 66bac16) after sharpness rounds didn't read sharp in real play — this
+   * is a plain direct render, and every effect on the visual-effects branch
+   * is SCENE GEOMETRY (SpeedLines streaks, SkidMarks ribbons), never a
+   * pixel-pipeline pass: zero resolution loss by construction. If a post
+   * effect is ever re-added, do it here and mind the first-use compile
+   * stall (see SpeedBlur in git history for the warm-up pattern).
    */
-  private renderFrame() {
+  renderFrame() {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // ─── visual FX (geometry layer) ─────────────────────────────────────────
+  // Both effects share one seam so the rAF loop and debugTick feed identical
+  // math (the SpeedBlur-era invariant, kept): speed streaks engage above
+  // ~150 km/h with hysteresis so the threshold never flickers, drift
+  // ribbons track every car's rear wheels. The HUD's SPEED DRAMA knob
+  // (F7 panel, cameraRig.tuning.drama) scales the streaks — 0 disengages
+  // the layer entirely, the documented weak-GPU escape hatch. Ribbons are
+  // world furniture and stay (they cost one draw call regardless).
+  private speedFx = { engaged: false, ramp: 0, nitro: 0 };
+  private fxScratch = new THREE.Vector3();
+
+  private updateVisualFX(dt: number) {
+    // ── drift ribbons: rear-wheel ground contacts of every car ──
+    for (const car of this.allCars) {
+      const rz = car.camDims.rearZ;
+      for (let w = 0; w < 2; w++) {
+        const side = w === 0 ? -1 : 1;
+        this.fxScratch
+          .copy(car.pos)
+          .addScaledVector(car.right, side * 0.95)
+          .addScaledVector(car.forward, rz);
+        this.fxScratch.y = car.pos.y + 0.03;
+        this.skidMarks.mark(car, w, this.fxScratch, car.drifting, THREE.MathUtils.clamp(car.slipAngle * 1.8, 0.25, 1));
+      }
+    }
+    this.skidMarks.update(dt);
+
+    // ── speed streaks: engage/release hysteresis around the threshold ──
+    const drama = THREE.MathUtils.clamp(this.cameraRig.tuning.drama ?? 1, 0, 1);
+    const kmh = Math.abs(this.player.speed) * 3.6;
+    if (!this.speedFx.engaged && kmh > 150) this.speedFx.engaged = true;
+    else if (this.speedFx.engaged && kmh < 118) this.speedFx.engaged = false;
+    this.speedFx.ramp += ((this.speedFx.engaged ? 1 : 0) - this.speedFx.ramp) * (1 - Math.exp(-5 * dt));
+    // nitro channel: fast attack, slower release — the slam then the settle
+    const nT = this.player.nitroActive ? 1 : 0;
+    this.speedFx.nitro += (nT - this.speedFx.nitro) * (1 - Math.exp(-(nT > this.speedFx.nitro ? 9 : 4) * dt));
+    // streak length grows 140→300 km/h; visibility is the ramp × drama knob
+    const speedFrac = THREE.MathUtils.clamp((kmh - 140) / 160, 0, 1);
+    this.speedLines.update(dt, this.camera, Math.abs(this.player.speed), speedFrac, this.speedFx.nitro, this.speedFx.ramp * drama);
   }
 
   /**
@@ -904,6 +984,7 @@ export class Game {
       for (const ai of this.ais) ai.update(dt, this.track, racing);
       this.resolveCollisions(dt);
       this.raceManager?.update(dt, racing);
+      this.updateVisualFX(dt);
       this.gearPopTick();
     }
     this.emitHud();

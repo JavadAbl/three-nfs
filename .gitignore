@@ -1,18 +1,65 @@
-skills/
+# dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# builds
 .next/
+out/
+build/
+dist/
+
+# env & db — NEVER commit secrets or local databases
+.env
+.env*.local
+db/
+*.db
+*.db-journal
+
+# logs
+*.log
 dev.log
 server.log
 race-service.log
-db/
-upload/
+
+# sandbox infra
+.zscripts/
 download/
-public/models/staging/
-scripts/ktx/
-tool-results/
 worklog.md
-scripts/audio_dl/
+
+# misc
+.DS_Store
+*.pem
+*.tar
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# next.js
+.vercel
+next-env.d.ts
+*.tsbuildinfo
 tsconfig.tsbuildinfo
+
+# internal (not part of the game repo)
+skills/
+scripts/
+
+# raw 3d asset sources (processed copies live in public/models)
+assets-src/
+upload/
+
+# USER RULE: new models/assets are NOT committed until user accepts them.
+# Candidate assets awaiting acceptance go here (game loads fine, git never sees them).
+public/models/staging/
+public/audio/staging/
+public/textures/staging/
+scripts/ktx/
+
+# agent verification artifacts (local only)
+tool-results/
+scripts/audio_dl/
 scripts/sky_src_island.hdr
 scripts/sky_candidates/
 scripts/island_sky_*.png

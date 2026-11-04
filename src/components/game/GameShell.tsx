@@ -206,6 +206,55 @@ export function GameShell() {
       game.audio.setMuted(muted);
       game.beginCountdown();
       setRaceSession({ mode: m, laps });
+
+      // ── dev FX self-drive probe (?fxprobe=1) ────────────────────────────
+      // Software-GL pages block the main thread for minutes while assets +
+      // shaders settle, and any automation eval sent in that window times
+      // out — two consecutive timeouts make the daemon blank the tab. So the
+      // page drives ITSELF: after the asset settle delay, run the player to
+      // top speed with autoSteer, render one frame (the canvas keeps showing
+      // it), and park the stats on window.__fxprobe for a later fast read.
+      // __fxDrift() (phase 2, triggered manually once the page is idle)
+      // breaks traction to lay skid ribbons, then re-frames the camera back
+      // down the drift arc for the second screenshot.
+      if (process.env.NODE_ENV === "development" && new URLSearchParams(window.location.search).get("fxprobe") === "1") {
+        const settleMs = 12000;
+        const fxWin = window as unknown as { __fxprobe?: object; __fxDrift?: () => void };
+        setTimeout(() => {
+          const r = game.debugTick(1100, { throttle: 1, autoSteer: true });
+          fxWin.__fxprobe = {
+            step: 1,
+            phase: r.phase,
+            speedKmh: r.speed,
+            streaksVisible: game.speedLines.group.visible,
+            streakAlpha: +game.speedLines.alpha.toFixed(3),
+            skidSegments: game.skidMarks.liveSegments,
+          };
+        }, settleMs);
+        fxWin.__fxDrift = () => {
+          const c = game.player.controls;
+          c.throttle = 1;
+          c.steer = 0.62;
+          game.debugTick(200, { throttle: 1 });
+          // frame the drift arc: camera ahead of + above the car, looking
+          // back along the ribbon trail
+          const fwd = game.player.forward;
+          const camPos = game.player.pos.clone().addScaledVector(fwd, 22);
+          camPos.y = game.player.pos.y + 14;
+          game.camera.position.copy(camPos);
+          game.camera.lookAt(game.player.pos.clone().addScaledVector(fwd, -30));
+          game.camera.fov = 60;
+          game.camera.updateProjectionMatrix();
+          game.renderFrame();
+          fxWin.__fxprobe = {
+            step: 2,
+            speedKmh: Math.round(Math.abs(game.player.speed) * 3.6),
+            drifting: game.player.drifting,
+            skidSegments: game.skidMarks.liveSegments,
+          };
+          return "phase2-done";
+        };
+      }
       })();
     },
     [disposeGame, playerName, carColor, neonId, carId, muted, setHud, setCountdown, flashLap, setResults, setScreen]
